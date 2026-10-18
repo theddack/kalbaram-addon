@@ -1116,6 +1116,12 @@ class HudIcons(unittest.TestCase):
         r.hud_ids = ["A1", "A2", "A3", "A4"]
         self.assertEqual(r._hud_wait(), float("inf"))
         self.assertEqual(r._hud_wait(soon=True), 2, "막 골랐으면 바로 확인")
+        # 여러 번 읽고도 하나도 못 찾았으면 (평소 능력치 창) 주기 읽기를 멈춘다. 고른 직후 확인은 그대로
+        r.hud_ids, r._hud_runs = [], augocr.HUD_GIVE_UP - 1
+        self.assertEqual(r._hud_wait(), augocr.HUD_EVERY)
+        r._hud_runs = augocr.HUD_GIVE_UP
+        self.assertEqual(r._hud_wait(), float("inf"), "2026-10-18 세나 판: 44번 읽고 0개")
+        self.assertEqual(r._hud_wait(soon=True), 2)
 
     def test_shop_top_band_skipped_after_bottom_works(self):
         # 아래 버튼 줄로 상점을 알아본 창 크기에서는 위쪽 띠(큰 그림)를 따로 읽지 않는다

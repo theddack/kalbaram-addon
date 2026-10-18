@@ -37,6 +37,10 @@ SLOW_N = 20  # 최근 몇 바퀴로 보는지
 HUD_SETTLED = 60.0  # 초. 고른 증강을 증강 칸에서 다 찾았으면 다음 고르기 전까지는 이만큼에 한 번만 (확인용)
 MAX_AUGMENTS = 4  # 한 판에 고르는 증강 수. 다 찾으면 증강 칸은 다시 안 읽는다 (새로 고르면 그때만)
 HUD_EVERY_MISSING = 60.0  # 초. 그 판 선택 화면을 하나도 못 봤으면(증강 215개 전부와 비교해 무겁다) 더 드물게
+# 증강 칸을 이만큼 읽고도 아이콘을 하나도 못 찾았으면 주기 읽기를 멈춘다 (고른 직후 확인만 한다).
+# 게임 화면 그 자리가 평소엔 능력치 창이라 거의 못 찾는다: 2026-10-18 세나 판 44번 평균 2.9초·최대 8.4초 읽고 0개.
+# 고른 증강 정답은 경기 결과(eog)로 맞춰 본다 (세나·그레이브즈·트리스타나 클릭으로 고른 것 4/4)
+HUD_GIVE_UP = 6
 CARD_Y = (0.18, 0.66)  # 카드 몸통 (이 안을 클릭해야 고른 것. 그 밑 새로고침 버튼은 제외)
 CARD_HALF_W = 0.09  # 카드 반폭 (게임 창 너비 비율)
 MIN_RATIO = 0.72  # 이름 비슷한 정도 (OCR 이 한두 글자 틀려도 잡게)
@@ -755,6 +759,7 @@ class Reader(threading.Thread):
         self._verify = None
         self._fix = None
         self._recover = None
+        self._hud_runs = 0
         self._picked_names = set()
         self._unverified = []
         self._shop_probes = 0
@@ -954,6 +959,7 @@ class Reader(threading.Thread):
                 self.hud.hint = self.hud.size
             if v is not None and "tries" in v:
                 v["tries"] -= 1
+            self._hud_runs = getattr(self, "_hud_runs", 0) + 1
             self._time(kind, t0)
         except ImportError as e:  # numpy·Pillow 가 없으면 이 기능만 끈다
             self.hud_error = str(e)[:120]
@@ -997,6 +1003,8 @@ class Reader(threading.Thread):
             return 2  # 확인 중: 연속 2번 보여야 인정
         if len(self.hud_ids) >= MAX_AUGMENTS:
             return float("inf")  # 다 골랐다. 새로 고르면(클릭) 그때 다시 읽는다
+        if not self.hud_ids and getattr(self, "_hud_runs", 0) >= HUD_GIVE_UP:
+            return float("inf")  # 증강 칸이 안 보이는 화면: 새로 고르면 그때 몇 번만 확인
         if self.hud_ids and len(self.hud_ids) >= len(self._picked_names):
             return HUD_SETTLED
         return HUD_EVERY if self.offered else HUD_EVERY_MISSING
