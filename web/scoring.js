@@ -35,6 +35,13 @@
   const MAIN_STAT_DECAY = 0.92; // 공격력·주문력은 계속 쌓는 게 정상이라 감쇠를 약하게
   const MISMATCH = 0.3; // 주 공격 스탯이 반대인 아이템 감점
   const RULE_ITEM_BOOST = 1.5; // 고른 증강이 요구하는 아이템(퀘스트·업그레이드) 가산
+  // 라이엇 공식 챔피언별 추천 아이템(champ.officialItems, 칼바람 우선) 가산. 목록으로만 고르게 하지는 않는다 (증강 맞춤이 우리 장점).
+  // 묶음 순서: 핵심 → 신발 → 3·4·5번째 → 상황별. 변칙(챔피언 성향을 뒤집는 빌드)에는 넣지 않는다.
+  // 세기 3: 공식 핵심을 담는 챔피언 24 → 76 / 108, 겹치는 칸 평균 2.4 → 3.9 / 6 (5 면 4.7 칸으로 거의 목록 복사) — tools/official_check.js.
+  // 균형에만 넣으면 몰빵 점검이 98.4 → 94.0% (몰빵이 공식 아이템을 놓쳐 균형보다 증강을 덜 살림) → 몰빵에도 같게 넣어 98.4% 유지
+  const OFFICIAL_BOOST = 3;
+  const officialK = (c) => (c.flip ? 0 : 1);
+  const OFFICIAL_RANGE_W = { first: 1, middle: 0.7, last: 0.4 };
   // 아이템 점수 = 수치 증가분 × NUM_K + 태그 점수 × TAG_K.
   // 수치: 최종 능력치로 계산한 스킬 콤보·DPS·유효 체력·회복/보호막의 상대 증가율 (18레벨, 칼바람 보정 포함)
   // 태그: 고유 효과·증강 연계처럼 수치로 안 잡히는 부분
@@ -302,6 +309,11 @@
     parts.sort((a, b) => b.value - a.value);
     const reasons = [];
     if (ctx) {
+      const off = ctx.official && ctx.official[item.id];
+      if (off) {
+        score += OFFICIAL_BOOST * off;
+        reasons.push(ctx.officialLabel);
+      }
       if (ctx.wanted[item.name]) {
         score += RULE_ITEM_BOOST;
         reasons.push(`${ctx.wanted[item.name].join("·")} 증강과 연계`);
@@ -317,6 +329,23 @@
       if (offAD || offAP) { score *= MISMATCH; mismatch = true; }
     }
     return { score, parts, reasons: [...new Set(reasons)].slice(0, 3), mismatch };
+  }
+
+  // 공식 추천 아이템 → {아이템 id: 가중치} (k = 컨셉의 챔피언 비중). 없으면 null
+  function officialWeights(champ, k = 1) {
+    const o = champ && champ.officialItems;
+    if (!o || !o.ranges || !o.ranges.length || k <= 0) return null;
+    const out = {};
+    o.ranges.forEach((r, i) => {
+      const w = i === 0 ? OFFICIAL_RANGE_W.first : i === o.ranges.length - 1 && o.ranges.length > 2 ? OFFICIAL_RANGE_W.last : OFFICIAL_RANGE_W.middle;
+      for (const id of r) out[id] = Math.max(out[id] || 0, w * k);
+    });
+    return out;
+  }
+  const officialLabel = (champ) => (champ.officialItems.mode === "ARAM" ? "라이엇 추천 (칼바람)" : "라이엇 추천 (일반 게임)");
+  function withOfficial(ctx, champ, k) {
+    const official = officialWeights(champ, k);
+    return official ? { ...ctx, official, officialLabel: officialLabel(champ) } : ctx;
   }
 
   // 빌드 가중치 → 지표 가중치 (합 1)
@@ -517,7 +546,8 @@
     return CONCEPTS.filter((c) => !keys || keys.includes(c.key)).map((c) => {
       const iw = conceptWeights(w, ctx, c);
       const off = offTypeFilter(champ, ctx, c);
-      const cctx = c.focus ? { ...ctx, must: [...ctx.must, ...tagMust(items, chosen, rules, ctx, off)] } : ctx;
+      const octx = withOfficial(ctx, champ, officialK(c));
+      const cctx = c.focus ? { ...octx, must: [...ctx.must, ...tagMust(items, chosen, rules, ctx, off)] } : octx;
       if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: null, focus: c.focus, off }) };
       const twist = twistSupport(w, ctx);
       const k = twistK(twist);
@@ -531,8 +561,8 @@
   // conceptKey: 아이템 목록 정렬 기준 컨셉 (증강을 골랐으면 "augment" 로 연계 아이템을 위로)
   function rankItems(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, conceptKey = "balanced") {
     champ = champ && withChosenFeatures(champ, chosen, rules);
-    const ctx = augContext(chosen, rules);
     const concept = CONCEPTS.find((c) => c.key === conceptKey) || CONCEPTS[1];
+    const ctx = withOfficial(augContext(chosen, rules), champ, officialK(concept));
     const iw = conceptWeights(w, ctx, concept);
     const off = offTypeFilter(champ, ctx, concept);
     const covered = {};
@@ -675,7 +705,9 @@
   const objId = (o) => (o && typeof o === "object" ? (objNo.get(o) || (objNo.set(o, ++objSeq), objSeq)) : null);
   function memoKey(name, list, w, chosen, fixed, champ, statOpts, extra, rules = null) {
     const T = (typeof Stats !== "undefined" && Stats.TARGET) || {};
-    return JSON.stringify([name, ids(list).join(","), champ && champ.id, (champ && champ.features) || null, ids(chosen), ids(fixed),
+    // 공식 추천 아이템 유무도 키에 (같은 챔피언을 공식 추천 없이 비교하는 점검·테스트가 이전 결과를 돌려받지 않게)
+    return JSON.stringify([name, ids(list).join(","), champ && champ.id, (champ && champ.features) || null,
+      Boolean(champ && champ.officialItems), ids(chosen), ids(fixed),
       w, statOpts, extra, objId(rules), [T.ARMOR, T.MR, T.HP]]);
   }
   function remember(key, fn) {
@@ -705,7 +737,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures,
+    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

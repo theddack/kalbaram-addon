@@ -257,6 +257,33 @@ FEATURES = {
 TRAIT_TAGS = {"HEALSHIELD", "CC", "ONHIT", "MS", "TRUE", "VAMP", "HASTE", "ULT", "LETHAL", "MPEN", "HP", "AS", "CRIT"}
 
 
+OFFICIAL_MODES = (("ARAM", 12), ("CLASSIC", 11))  # 공식 추천 아이템: 칼바람(맵 12) 우선, 없으면 일반 게임(맵 11)
+
+
+def official_items(champ_bin):
+    """라이엇 공식 챔피언별 추천 아이템 (챔피언 데이터 ItemRecommendationOverrideSet → mOverrides).
+    mRecItemRanges 순서: 핵심 → 신발 → 3·4·5번째 → 상황별. → {"mode": "ARAM"|"CLASSIC", "ranges": [[아이템 id]]} 또는 None"""
+    found = {}
+    for v in champ_bin.values():
+        if not isinstance(v, dict) or v.get("__type") != "ItemRecommendationOverrideSet":
+            continue
+        for o in v.get("mOverrides") or []:
+            for ctx in o.get("mOverrideContexts") or []:
+                for mode, map_id in OFFICIAL_MODES:
+                    if ctx.get("mMapID") == map_id and ctx.get("mModeNameStringId") == mode:
+                        found.setdefault(mode, o)
+    for mode, _ in OFFICIAL_MODES:
+        o = found.get(mode)
+        if not o:
+            continue
+        ranges = [[str(i).split("/", 1)[1] for i in r.get("items") or [] if str(i).startswith("Items/") and str(i).split("/", 1)[1].isdigit()]
+                  for r in o.get("mRecItemRanges") or []]
+        ranges = [r for r in ranges if r]
+        if ranges:
+            return {"mode": mode, "ranges": ranges}
+    return None
+
+
 def champion_traits(detail):
     """패시브 + 스킬 4개 설명에서 특성 태그와 피해 유형 비율을 뽑는다.
 
@@ -1182,6 +1209,8 @@ def main():
                 "hp": (mode_global.get("hp") or {}).get("melee" if c["stats"]["attackrange"] <= 250 else "ranged"),
                 "asCap": mode_global.get("asCap"), "critAdaptive": mode_global.get("critAdaptive")}.items() if v} or None,
             "patch": patch_lines.get(c["name"]),
+            # 라이엇 공식 추천 아이템 (추천 점수 가산점. 칼바람 전용이 없으면 일반 게임, 둘 다 없으면 None)
+            "officialItems": official_items(bins[cid]),
             "refs": [r for r in [
                 {"label": "스킬 수치 (게임 데이터)", "url": f"{CDRAGON}/game/data/characters/{cid.lower()}/{cid.lower()}.bin.json"},
                 {"label": "기본 능력치 (Data Dragon)", "url": f"{DDRAGON}/cdn/{version}/data/ko_KR/champion/{cid}.json"},

@@ -385,3 +385,23 @@ test("진: 공격 속도는 아이템으로 오르지 않고, 추가 공격 속�
   const S2 = require("../web/scoring.js");
   assert.ok(S2.profile(jhin, d.tags).AS < S2.profile(champ("Jinx"), d.tags).AS);
 });
+
+test("라이엇 공식 추천 아이템 가산점: 균형 빌드에 핵심이 들어오고 이유에 표시, 변칙에는 안 들어간다", () => {
+  // 럭스: 공식 칼바람 핵심 아이템이 가산점 없이는 균형 빌드에 안 들어갔다 (tools/official_check.js)
+  const off = champ("Lux");
+  assert.equal(off.officialItems.mode, "ARAM");
+  const core = off.officialItems.ranges[0];
+  const plain = { ...off, officialItems: null };
+  const w = S.profile(off, d.tags);
+  S.clearMemo();
+  const base = S.buildConcepts(d.items, w, [], [], d.rules, plain, {}, ["balanced"])[0].pick;
+  assert.ok(!base.some((p) => core.includes(p.item.id)), "가산점 없을 땐 핵심이 없었다");
+  const bal = S.buildConcepts(d.items, w, [], [], d.rules, off, {}, ["balanced"])[0].pick;
+  const hit = bal.find((p) => core.includes(p.item.id));
+  assert.ok(hit, "핵심 아이템이 들어온다");
+  assert.ok((hit.reasons || []).includes("라이엇 추천 (칼바람)"), JSON.stringify(hit.reasons));
+  const tw = S.buildConcepts(d.items, w, [], [], d.rules, off, {}, ["twist"])[0].pick;
+  assert.ok(!tw.some((p) => (p.reasons || []).includes("라이엇 추천 (칼바람)")), "변칙은 공식 추천을 따르지 않는다");
+  assert.equal(S.officialWeights(off, 0.5)[core[0]], 0.5, "세기를 곱한다");
+  assert.equal(S.officialWeights(plain, 1), null);
+});
