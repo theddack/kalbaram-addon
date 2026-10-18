@@ -19,6 +19,7 @@ function loadMatches(dir) {
 }
 
 function check(d, matches) {
+  S.attachSimilar(d.champions, null, d.items);  // 화면과 같게
   const champByKey = Object.fromEntries(d.champions.map((c) => [Number(c.key), c]));
   const augByNum = Object.fromEntries(d.augments.filter((a) => a.num).map((a) => [a.num, a]));
   const legendary = new Set(d.items.filter((i) => i.kind === "legendary").map((i) => i.id));

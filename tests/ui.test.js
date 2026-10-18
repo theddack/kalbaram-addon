@@ -939,7 +939,10 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   p.w.renderItemList();
   p.w.applyAug({ offers: null, seq: 1, picked: "무한 반복", pickSeq: 1 });
   p.w.renderItemList();
-  assert.match(p.text("#next-buy"), /🔁 정수 약탈자 먼저 ← 무한 반복 골라서/);
+  // 무한 반복만으론 다음 3개가 그대로 → 탄환 세례까지 고르면 바뀌고, 원인은 방금 고른 탄환 세례 (먼저 고른 무한 반복이 아니라)
+  p.w.applyAug({ offers: null, seq: 2, picked: "탄환 세례", pickSeq: 2 });
+  p.w.renderItemList();
+  assert.match(p.text("#next-buy"), /🔁 .+ ← 탄환 세례 골라서/);
   assert.ok(sent.at(-1).hud.some((l) => l.startsWith("🔁 ")), "게임 화면 상자에도");
   const heal = { champion: "Soraka", level: 9, items: [] }, heal2 = { champion: "Yuumi", level: 9, items: [] };
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],

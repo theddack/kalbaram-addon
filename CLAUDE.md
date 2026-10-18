@@ -62,6 +62,8 @@ v0.1.44 에 들어간 것: 상점 추천(아이템 세트) 막판 대기석 교�
 
 1. **추천이 챔피언마다 거의 같다** (원딜 16명 중 7명이 6칸 순서까지 같음: 크라켄·윤 탈·루난·도미닉…). 원인은 역할별 공통 가중치(`web/scoring.js` ROLE_PRESET).
    - **2026-10-18 ①② 함**: build_data `official_items` → champ `officialItems`, scoring `OFFICIAL_BOOST` 3 (변칙 제외). `node tools/official_check.js`: 공식 핵심 담기 24 → 76 / 108, 같은 역할 똑같은 구성 137 → 100 / 173, 몰빵 점검 98.4% 유지. 남은 것: ③ 없는 54명(원딜 다수) ④는 도구로 대체.
+   - **2026-10-19 ③ 함**: 공식 추천이 없는 54명은 비슷한 챔피언 3명 공식 추천을 빌림 (`attachSimilar`, 채점 `official_check.js --loo` 20 → 58 / 108). 같은 때 **크라켄 학살자 버그** 수정: '세 번째 기본 공격마다'(한글 숫자)를 평타마다로, 최대값 350 을 평소 값으로 써서 평타 초당 피해 4.95배 → 원딜 1순위가 늘 크라켄이었다 (`build_data.fix_attack_count`, 게임 데이터 AttackCount 근거). 서로 다른 6칸 구성 49 → 79.
+   - 남은 모델 문제: 바루스를 주문력 0.5 로 본다(스킬 피해가 마법이라 magicShare). 라이엇 칼바람 추천은 물리 관통. 원딜 공통 핵심(윤 탈·루난·도미닉·무한)은 여전히 많이 겹친다 — 챔피언 고유 평타 강화(징크스 패시브·케이틀린 헤드샷 등) 계산이 없어서.
    - 별개로 발견: 탱커를 상대로 고르면 18레벨 추천 빌드가 방어 6칸이라 시온·갈리오 마법 저항력 287~365 처럼 지나치게 단단하다 (이번 변경 전부터).
    - **라이엇 공식 챔피언별 추천 아이템**이 게임 파일에 있다: 챔피언 bin(`game/data/characters/<id>/<id>.bin.json`)의 `ItemRecommendationOverrideSet` → `mOverrides[]` 중 `mOverrideContexts` 가 `mMapID 12 · mModeNameStringId "ARAM"` 인 것의 `mRecItemRanges`(핵심 → 신발 → 상황별). 173명 중 ARAM 108명, 일반 게임만 11명, **없음 54명**(징크스·진·베인·케이틀린·트리스타나 등 원딜 다수).
    - 공통 파일 `game/items.cdtb.bin.json` 에도 이름 없는 묶음 37개(ARAM 32개)가 있으나 어느 챔피언 것인지 연결 고리를 못 찾음 (hashes.binentries 에 이름 없음, 챔피언·맵 bin 에서 참조 없음).

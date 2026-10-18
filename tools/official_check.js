@@ -10,7 +10,7 @@ const S = require(path.join(WEB, "scoring.js"));
 function measure(d, withOfficial) {
   const rows = [];
   for (const c0 of d.champions) {
-    const c = withOfficial ? c0 : { ...c0, officialItems: null };
+    const c = withOfficial ? c0 : { ...c0, officialItems: null, similarItems: null };
     const w = S.profile(c, d.tags);
     const pick = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"])[0].pick.map((p) => p.item);
     const o = c0.officialItems;
@@ -42,13 +42,37 @@ function summary(rows) {
   };
 }
 
+// 채점: 공식 칼바람 추천이 있는 챔피언마다 자기 것을 가리고 '비슷한 챔피언' 추천만으로 공식 핵심을 담는지
+function loo(d) {
+  const aram = d.champions.filter((c) => c.officialItems && c.officialItems.mode === "ARAM");
+  let hit = 0, overlap = 0;
+  for (const c of aram) {
+    S.attachSimilar(d.champions, new Set([c.id]), d.items);
+    const hidden = { ...c, officialItems: null, similarItems: c.similarItems };
+    delete c.similarItems;
+    S.clearMemo();
+    const pick = S.buildConcepts(d.items, S.profile(c, d.tags), [], [], d.rules, hidden, {}, ["balanced"])[0].pick.map((p) => p.item.id);
+    if (pick.some((id) => c.officialItems.ranges[0].includes(id))) hit++;
+    const all = new Set(c.officialItems.ranges.flat());
+    overlap += pick.filter((id) => all.has(id)).length;
+  }
+  S.attachSimilar(d.champions, null, d.items);
+  return { n: aram.length, hit, overlap: +(overlap / aram.length).toFixed(2) };
+}
+
 if (require.main === module) {
   const d = require(path.join(WEB, "data.json"));
+  if (process.argv.includes("--loo")) {
+    const r = loo(d);
+    console.log(`자기 공식 추천을 가리고 비슷한 챔피언 추천만: 핵심 담기 ${r.hit} / ${r.n}, 겹치는 칸 평균 ${r.overlap} / 6`);
+    process.exit(0);
+  }
   const before = measure(d, false);
+  S.attachSimilar(d.champions, null, d.items);
   S.clearMemo();
   const after = measure(d, true);
   const b = summary(before), a = summary(after);
-  console.log(`공식 칼바람 추천이 있는 챔피언 ${a.aram}명 (일반 게임만 ${after.filter((r) => r.mode === "CLASSIC").length}명 · 없음 ${after.filter((r) => !r.mode).length}명)`);
+  console.log(`공식 칼바람 추천이 있는 챔피언 ${a.aram}명 (일반 게임만 ${after.filter((r) => r.mode === "CLASSIC").length}명 · 없음 ${after.filter((r) => !r.mode).length}명 → 비슷한 챔피언 추천)`);
   console.log(`핵심 아이템을 담은 챔피언   : ${b.coreHit} → ${a.coreHit} / ${a.aram}`);
   console.log(`공식 추천과 겹치는 칸 (평균) : ${b.overlapAvg} → ${a.overlapAvg} / 6`);
   console.log(`같은 역할에서 구성이 똑같은 챔피언 : ${b.sameBuild} → ${a.sameBuild} / ${after.length}`);

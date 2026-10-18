@@ -5,6 +5,7 @@ const W = __dirname + "/../web/";
 global.Stats = require(W + "stats.js");
 const S = require(W + "scoring.js");
 const d = require(W + "data.json");
+S.attachSimilar(d.champions, null, d.items);  // 화면과 같게: 공식 추천이 없는 챔피언은 비슷한 챔피언 추천
 const rows = d.champions.map((c) => {
   const [b] = S.buildConcepts(d.items, S.profile(c, d.tags), [], [], d.rules, c, { aram: true }, ["balanced"]);
   const t = Stats.computeStats(c, 18, b.pick.map((p) => p.item), [], { aram: true }).total;

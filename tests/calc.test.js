@@ -405,3 +405,28 @@ test("라이엇 공식 추천 아이템 가산점: 균형 빌드에 핵심이 �
   assert.equal(S.officialWeights(off, 0.5)[core[0]], 0.5, "세기를 곱한다");
   assert.equal(S.officialWeights(plain, 1), null);
 });
+
+test("공식 칼바람 추천이 없는 챔피언: 비슷한 챔피언 공식 추천을 빌린다 (주 피해 유형 반대 아이템은 빼고)", () => {
+  const champs = d.champions.map((c) => ({ ...c }));
+  S.attachSimilar(champs, null, d.items);
+  const k = champs.find((c) => c.id === "Kindred");
+  assert.equal(k.officialItems, null);
+  assert.equal(k.similarItems.from.length, 3);
+  const apOnly = (id) => { const it = d.items.find((i) => i.id === id); return it && (it.tags.AP || 0) >= 0.5 && !((it.tags.AD || 0) >= 0.5); };
+  assert.ok(!k.similarItems.ranges.flat().some(apOnly), "물리 챔피언에게 주문력 아이템을 빌려 오지 않는다");
+  const lux = champs.find((c) => c.id === "Lux");
+  assert.ok(lux.officialItems && !lux.similarItems, "자기 공식 추천이 있으면 안 빌린다");
+  S.clearMemo();
+  const pick = S.buildConcepts(d.items, S.profile(k, d.tags), [], [], d.rules, k, {}, ["balanced"])[0].pick;
+  const why = pick.flatMap((p) => p.reasons || []).find((r) => r.startsWith("비슷한 챔피언 라이엇 추천"));
+  assert.ok(why && why.includes(k.similarItems.from[0]), "이유에 어느 챔피언 것인지");
+});
+
+test("크라켄 학살자는 3번째 평타마다 기본 피해 (최대값을 평타마다로 계산해 평타 초당 피해가 5배가 되던 것)", () => {
+  const c = champ("Varus");
+  const base = St.evaluate(c, 18, [], [], { aram: true }).m.dps;
+  const kraken = St.evaluate(c, 18, [d.items.find((i) => i.id === "6672")], [], { aram: true }).m.dps;
+  const ie = St.evaluate(c, 18, [item("무한의 대검")], [], { aram: true }).m.dps;
+  assert.ok(kraken / base < 3, `크라켄 ${(kraken / base).toFixed(2)}배`);
+  assert.ok(kraken / base < 1.6 * (ie / base), "무한의 대검보다 터무니없이 크지 않다");
+});

@@ -350,7 +350,27 @@ def item_passive(item_bin, strings):
             e["rangedScale"] = round(ranged_scale, 4)
         if e["name"].lower() in cd_names:
             e["cooldown"] = vals["Cooldown"]  # 발동 횟수 상한
+        fix_attack_count(e, spell, vals)
     return effects, html, mode_used
+
+
+def fix_attack_count(e, spell, vals):
+    """'세 번째 기본 공격마다' 처럼 한글 숫자로 쓴 효과를 '적중 시'(평타마다)로 읽던 것과, 최대값을 평소 값으로 쓰던 것을 고친다.
+    게임 데이터에 근거가 있을 때만: AttackCount(몇 번째 공격) · 최대값 계산식(GameCalculationModified × 배수).
+    2026-10-19 크라켄 학살자: '최대 350 을 평타마다'로 계산해 평타 초당 피해가 4.95배 → 원딜 추천 1순위가 늘 크라켄이었다
+    (게임 데이터: AttackCount 3, DamageAmount 150 + 9레벨부터 레벨당 5, MaximumDamage = DamageAmount × MaxAmpNumber 1.75)"""
+    n = vals.get("AttackCount")
+    if n and (e.get("trigger") or {}).get("type") == "onhit":
+        e["trigger"] = {"type": "attacks", "n": int(n), "from": f"{int(n)}번째 기본 공격마다 (게임 데이터 AttackCount)"}
+    c = (spell.get("mSpellCalculations") or {}).get(e["name"]) or {}
+    mult = (c.get("mMultiplier") or {}).get("mDataValue")
+    k = vals.get(mult) if mult else None
+    if e["name"].lower().startswith("maximum") and c.get("mModifiedGameCalculation") and k:
+        for key in ("base", "lvl"):
+            if isinstance(e.get(key), list):
+                e[key] = [round(x / k, 3) for x in e[key]]
+        e["name"] = c["mModifiedGameCalculation"]
+        e["assume"] = f"최대값(기본 × {k:g})이 아니라 기본 피해로 계산 (대상 체력이 깎일수록 최대 {k:g}배)"
 
 
 # ---------------------------------------------------------------- 위키 보강 데이터 (CC BY-SA)

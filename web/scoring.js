@@ -42,6 +42,11 @@
   const OFFICIAL_BOOST = 3;
   const officialK = (c) => (c.flip ? 0 : 1);
   const OFFICIAL_RANGE_W = { first: 1, middle: 0.7, last: 0.4 };
+  // 공식 칼바람 추천이 없는 챔피언(54명, 원딜 다수): 성향이 비슷한 챔피언 SIMILAR_N 명의 공식 추천을 빌려 SIMILAR_K 배로.
+  // 성향 = 역할 · 주 피해 유형 · 평타 비중(18레벨 맨몸, 평타 4초 ÷ (평타 4초 + 스킬 한 바퀴)) · 사거리 · 근접 여부.
+  // 채점: 공식 추천이 있는 108명에서 자기 것을 가리고 이 방법만 쓰면 공식 핵심 담기 24 → 57명 (tools/official_check.js --loo)
+  const SIMILAR_N = 3;
+  let SIMILAR_K = 1;
   // 아이템 점수 = 수치 증가분 × NUM_K + 태그 점수 × TAG_K.
   // 수치: 최종 능력치로 계산한 스킬 콤보·DPS·유효 체력·회복/보호막의 상대 증가율 (18레벨, 칼바람 보정 포함)
   // 태그: 고유 효과·증강 연계처럼 수치로 안 잡히는 부분
@@ -309,17 +314,18 @@
     parts.sort((a, b) => b.value - a.value);
     const reasons = [];
     if (ctx) {
-      const off = ctx.official && ctx.official[item.id];
-      if (off) {
-        score += OFFICIAL_BOOST * off;
-        reasons.push(ctx.officialLabel);
-      }
       if (ctx.wanted[item.name]) {
         score += RULE_ITEM_BOOST;
         reasons.push(`${ctx.wanted[item.name].join("·")} 증강과 연계`);
       }
       for (const p of parts.slice(0, 3)) {
         if (ctx.src[p.tag]) reasons.push(`${ctx.src[p.tag][0]}: ${TAG_LABEL[p.tag]}`);
+      }
+      // 라이엇 추천은 증강 연계 이유 뒤에 (고른 증강에 맞춘 이유가 먼저 보이게)
+      const off = ctx.official && ctx.official[item.id];
+      if (off) {
+        score += OFFICIAL_BOOST * off;
+        reasons.push(ctx.officialLabel);
       }
     }
     let mismatch = false;
@@ -331,9 +337,11 @@
     return { score, parts, reasons: [...new Set(reasons)].slice(0, 3), mismatch };
   }
 
-  // 공식 추천 아이템 → {아이템 id: 가중치} (k = 컨셉의 챔피언 비중). 없으면 null
+  // 공식 추천 아이템 → {아이템 id: 가중치} (k = 컨셉의 챔피언 비중). 없으면 비슷한 챔피언 것(similarItems)을 SIMILAR_K 배로, 둘 다 없으면 null
   function officialWeights(champ, k = 1) {
-    const o = champ && champ.officialItems;
+    const own = champ && champ.officialItems;
+    const o = own || (champ && champ.similarItems);
+    if (!own && o) k *= SIMILAR_K;
     if (!o || !o.ranges || !o.ranges.length || k <= 0) return null;
     const out = {};
     o.ranges.forEach((r, i) => {
@@ -342,7 +350,53 @@
     });
     return out;
   }
-  const officialLabel = (champ) => (champ.officialItems.mode === "ARAM" ? "라이엇 추천 (칼바람)" : "라이엇 추천 (일반 게임)");
+  const officialLabel = (champ) => (champ.officialItems ? (champ.officialItems.mode === "ARAM" ? "라이엇 추천 (칼바람)" : "라이엇 추천 (일반 게임)")
+    : `비슷한 챔피언 라이엇 추천 (${champ.similarItems.from.join("·")})`);
+
+  // 평타 비중: 18레벨 맨몸에서 평타 4초 피해 ÷ (평타 4초 + 스킬 한 바퀴)
+  function autoShare(champ) {
+    const m = Stats.evaluate(champ, 18, [], [], { aram: true }).m;
+    const a = m.dps * 4;
+    return a / Math.max(1, a + m.combo);
+  }
+  // 두 챔피언 성향 거리 (작을수록 비슷)
+  function champDistance(a, b, fa, fb) {
+    const ra = new Set(a.tags || []), rb = new Set(b.tags || []);
+    const inter = [...ra].filter((r) => rb.has(r)).length, uni = new Set([...ra, ...rb]).size || 1;
+    const dt = a.damageType === b.damageType ? 0 : a.damageType === "mixed" || b.damageType === "mixed" ? 0.5 : 1;
+    return (1 - inter / uni) + dt + 2 * Math.abs(fa - fb) + Math.abs((a.range || 0) - (b.range || 0)) / 500 + (a.melee === b.melee ? 0 : 0.5);
+  }
+  // 공식 칼바람 추천이 없는 챔피언에 similarItems = {from: [이름], ranges: [자주 나온 핵심, [], 나머지]} 를 붙인다.
+  // skip: 이 챔피언 id 들은 공식 추천이 있어도 없는 것처럼 (채점용)
+  const SHARE = new WeakMap();  // 챔피언 객체 → 평타 비중 (데이터를 새로 받으면 객체도 새것)
+  // 주 피해 유형에 맞는 아이템인가 (물리 챔피언에게 주문력만 있는 아이템, 마법 챔피언에게 공격력만 있는 아이템은 아니다)
+  function typeOk(c, it) {
+    const t = it.tags || {};
+    if (c.damageType === "physical") return !((t.AP || 0) >= 0.5 && !((t.AD || 0) >= 0.5));
+    if (c.damageType === "magic") return !((t.AD || 0) >= 0.5 && !((t.AP || 0) >= 0.5));
+    return true;
+  }
+  function attachSimilar(champs, skip = null, items = null) {
+    const f = (c) => { if (!SHARE.has(c)) SHARE.set(c, autoShare(c)); return SHARE.get(c); };
+    const pool = champs.filter((c) => c.officialItems && c.officialItems.mode === "ARAM");
+    for (const c of champs) {
+      const hide = skip && skip.has(c.id);
+      if (c.officialItems && !hide) { delete c.similarItems; continue; }
+      const near = pool.filter((x) => x.id !== c.id).map((x) => [champDistance(c, x, f(c), f(x)), x])
+        .sort((p, q) => p[0] - q[0]).slice(0, SIMILAR_N).map((p) => p[1]);
+      // 내 주 피해 유형과 반대인 아이템은 빌리지 않는다 (카이사 공식 칼바람 추천이 AP 라 킨드레드가 루덴·리안드리를 빌렸다)
+      const ok = (id) => { const it = (items || []).find((i) => i.id === id); return !it || typeOk(c, it); };
+      const count = {};
+      for (const x of near) for (const id of x.officialItems.ranges[0]) if (ok(id)) count[id] = (count[id] || 0) + 1;
+      for (const x of near) for (const r of x.officialItems.ranges.slice(2, -1)) for (const id of r) if (ok(id)) count[id] = (count[id] || 0) + 0.5;
+      const top = Object.entries(count).sort((p, q) => q[1] - p[1]);
+      const max = top.length ? top[0][1] : 0;
+      c.similarItems = top.length ? { from: near.map((x) => x.name), ranges: [top.filter(([, v]) => v >= 0.6 * max).map(([id]) => id), [],
+        top.filter(([, v]) => v < 0.6 * max).map(([id]) => id)] } : null;
+    }
+    return champs;
+  }
+  const setSimilarK = (k) => { SIMILAR_K = k; memo.clear(); };
   function withOfficial(ctx, champ, k) {
     const official = officialWeights(champ, k);
     return official ? { ...ctx, official, officialLabel: officialLabel(champ) } : ctx;
@@ -707,7 +761,7 @@
     const T = (typeof Stats !== "undefined" && Stats.TARGET) || {};
     // 공식 추천 아이템 유무도 키에 (같은 챔피언을 공식 추천 없이 비교하는 점검·테스트가 이전 결과를 돌려받지 않게)
     return JSON.stringify([name, ids(list).join(","), champ && champ.id, (champ && champ.features) || null,
-      Boolean(champ && champ.officialItems), ids(chosen), ids(fixed),
+      Boolean(champ && champ.officialItems), champ && champ.similarItems ? champ.similarItems.from.join() : null, ids(chosen), ids(fixed),
       w, statOpts, extra, objId(rules), [T.ARMOR, T.MR, T.HP]]);
   }
   function remember(key, fn) {
@@ -737,7 +791,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights,
+    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;
