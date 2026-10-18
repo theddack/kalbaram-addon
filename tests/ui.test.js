@@ -863,6 +863,35 @@ test("게임 화면 상자는 다음 구매가 맨 위, 고른 증강은 맨 아
   assert.deepEqual(p.errors, []);
 });
 
+test("6칸이 다 찼어도 적 대응(치유 감소)이 필요하면 바꾸기로 (2026-10-19 킨드레드: 조언은 처형인, 위에는 '그대로 좋아요')", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const id = (n) => p.data.items.find((i) => i.name === n).id;
+  const six = ["크라켄 학살자", "광전사의 군화", "윤 탈 야생화살", "도미닉 경의 인사", "몰락한 왕의 검", "루난의 허리케인"].map(id);
+  const foes = ["Samira", "Caitlyn"];
+  const live = (items, builds) => p.w.applyLive({ enabled: true, inGame: true, champion: "Kindred", level: 18, items, enemies: foes,
+    enemyBuilds: foes.map((c) => ({ champion: c, level: 18, items: builds })) });
+  live(six, [id("피바라기")]);
+  p.w.renderItemList();
+  p.w.sendOverlay();
+  const sw = sent.at(-1).swap;
+  assert.ok(sw, "바꾸기 보냄");
+  assert.equal(sw.why, "치유 감소");
+  const buy = p.data.items.find((i) => i.id === sw.buy);
+  assert.ok(JSON.stringify([buy.desc, buy.passiveHtml]).includes("고통스러운 상처"), buy.name);
+  assert.ok(six.includes(sw.sell) && sw.sell !== id("광전사의 군화"), "완성 아이템을 판다 (신발은 안 판다)");
+  if (buy.limit) assert.ok(!six.filter((x) => x !== sw.sell).some((x) => p.data.items.find((i) => i.id === x).limit === buy.limit), "같은 계열이면 그걸 판다");
+  assert.match(p.text("#next-buy"), /적 대응으로 바꾸면 좋아요/);
+  assert.match(sent.at(-1).hud[0], /적 대응\(치유 감소\)/);
+  // 이미 치유 감소 아이템이 있으면 적 대응 바꾸기 없음
+  live([...six.slice(0, 5), buy.id], [id("피바라기")]);
+  p.w.renderItemList();
+  p.w.sendOverlay();
+  assert.notEqual((sent.at(-1).swap || {}).why, "치유 감소");
+  assert.deepEqual(p.errors, []);
+});
+
 test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완성' · 추천이 바뀌면 이유 줄", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
