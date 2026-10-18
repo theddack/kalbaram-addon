@@ -424,7 +424,9 @@ EOG_STATS = {  # 경기 결과 칸 → (우리 이름, 단위)
     "TIME_CCING_OTHERS": "CC 점수",
     "TOTAL_TIME_CROWD_CONTROL_DEALT": "CC 건 시간(초)",
 }
-EOG_NAME_KEYS = ("summonerName", "riotIdGameName", "riotIdTagLine", "gameName", "tagLine", "puuid", "summonerId", "accountId")
+EOG_NAME_KEYS = ("summonerName", "riotIdGameName", "riotIdTagLine", "gameName", "tagLine", "puuid", "summonerId", "accountId",
+                 # 경기 후 채팅방 접속 토큰: 안에 내 계정 고유 ID(puuid)가 들어 있다 (2026-10-18 세나·바드 판 경기 결과 파일에서 발견)
+                 "jwt", "multiUserChatPassword")
 
 
 def redact_eog(eog):

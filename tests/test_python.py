@@ -509,14 +509,14 @@ class DataQuality(unittest.TestCase):
 
 
 class Measure(unittest.TestCase):
-    EOG = {"gameId": 123, "gameLength": 900, "gameMode": "KIWI",
+    EOG = {"mucJwtDto": {"jwt": "eyJsecret.abc"}, "multiUserChatPassword": "eyJsecret.abc", "gameId": 123, "gameLength": 900, "gameMode": "KIWI",
            "localPlayer": {"summonerName": "나", "puuid": "abc", "championId": 222, "level": 18,
                            "stats": {"TOTAL_DAMAGE_DEALT_TO_CHAMPIONS": 30000, "TOTAL_DAMAGE_TAKEN": 24000, "TOTAL_HEAL": 3000}},
            "teams": [{"players": [{"summonerName": "나", "puuid": "abc"}, {"summonerName": "적", "puuid": "x"}]}]}
 
     def test_redact_and_summary(self):
         red = json.dumps(desktop.redact_eog(self.EOG), ensure_ascii=False)
-        for n in ('"나"', '"적"', "abc"):
+        for n in ('"나"', '"적"', "abc", "eyJ"):
             self.assertNotIn(n, red)
         d = pathlib.Path(tempfile.mkdtemp())
         (d / "eog_123.json").write_text(red)
