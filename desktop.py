@@ -493,6 +493,32 @@ def measure_summary(measure_dir):
     return out
 
 
+MATCH_WAIT = 600  # 초. 판이 끝난 뒤 전적에 그 판 상세가 올라올 때까지 기다리는 최대 시간
+
+
+def board_check(enemy_augs, match, champ_by_key, aug_by_num):
+    """Tab 점수판에서 읽은 적 증강 ↔ 전적의 정답 (적 팀만).
+    enemy_augs: {챔피언 id: [증강 id]}, champ_by_key: {숫자 key: 챔피언 id}, aug_by_num: {증강 번호: 증강 id}
+    → {"right": 맞게 읽은 수, "wrong": [[챔피언, 증강]], "missed": 못 읽은 수, "truth": 적 증강 수} 또는 None (내 칸을 모름)"""
+    players = (match or {}).get("players") or []
+    me = next((p for p in players if p.get("me")), None)
+    if not me:
+        return None
+    read = {str(c).lower(): set(v) for c, v in (enemy_augs or {}).items()}
+    out = {"right": 0, "wrong": [], "missed": 0, "truth": 0}
+    for p in players:
+        if p.get("team") == me.get("team"):
+            continue
+        cid = champ_by_key.get(int(p.get("champion") or 0))
+        truth = {aug_by_num.get(n) for n in p.get("augments") or []} - {None}
+        got = read.get(str(cid).lower(), set())
+        out["truth"] += len(truth)
+        out["right"] += len(got & truth)
+        out["missed"] += len(truth - got)
+        out["wrong"] += [[cid, a] for a in sorted(got - truth)]
+    return out
+
+
 class LcuWatcher(threading.Thread):
     """롤 클라이언트: 챔피언 선택 단계와 내 챔피언을 읽는다 (아이템 세트 등록 시점 판단용).
     게임이 끝나면 경기 결과를 실측 폴더에 저장한다."""
@@ -504,11 +530,16 @@ class LcuWatcher(threading.Thread):
         self.measure_dir = measure_dir
         self._saved_games = set()
         self.on_eog = None  # 경기 결과를 처음 받았을 때 (한 판 기록 정리)
+        self.on_match = None  # 방금 끝난 판의 전적 상세(10명 증강 정답)를 받았을 때 (점수판 읽기 대조)
+        self._match_wait = None  # (게임 id, 기다리기 시작한 시각)
+        self._match_games = set()  # 전적 상세를 기다리기 시작한 판
+        self._aug_ids = None  # 클라이언트 증강 번호표 (연결마다 한 번)
         self.beat = time.time()
 
     def save_eog(self):
-        """경기 결과 저장 (게임마다 한 번). 실패해도 다른 기능에는 영향 없게"""
-        if not self.measure_dir or not getattr(self, "record", True):
+        """경기 결과 저장 (게임마다 한 번). 실패해도 다른 기능에는 영향 없게.
+        기록이 꺼져 있어도 그 판 전적 상세는 기다린다 (점수판 대조는 진단 기록 한 줄만 남긴다)"""
+        if not self.measure_dir:
             return
         try:
             eog = self.client.req("GET", "/lol-end-of-game/v1/eog-stats-block")
@@ -516,6 +547,11 @@ class LcuWatcher(threading.Thread):
             return
         gid = (eog or {}).get("gameId") if isinstance(eog, dict) else None
         if not gid or gid in self._saved_games or not eog_summary(eog):
+            return
+        if gid not in self._match_games:  # 전적 상세는 판마다 한 번 기다린다 (기록을 켜고 끄는 것과 따로)
+            self._match_games.add(gid)
+            self._match_wait = (gid, time.time())
+        if not getattr(self, "record", True):
             return
         self.measure_dir.mkdir(parents=True, exist_ok=True)
         path = self.measure_dir / f"eog_{int(gid)}.json"
@@ -533,6 +569,37 @@ class LcuWatcher(threading.Thread):
                 self.on_eog(eog)
             except Exception:
                 pass
+
+    def fetch_match(self):
+        """방금 끝난 판의 전적 상세를 받으면 on_match (게임 중에는 부르지 않는다). 올라올 때까지 MATCH_WAIT 초"""
+        gid, t0 = self._match_wait
+        if time.time() - t0 > MATCH_WAIT:
+            self._match_wait = None
+            return
+        try:
+            m = self.client.match(gid)
+        except Exception:
+            return
+        if not m.get("players") or not any(p.get("augments") for p in m["players"]):
+            return
+        self._match_wait = None
+        if self.measure_dir and getattr(self, "record", True):
+            self.measure_dir.mkdir(parents=True, exist_ok=True)
+            (self.measure_dir / f"match_{int(gid)}.json").write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
+        if self.on_match:
+            try:
+                self.on_match(m)
+            except Exception:
+                pass
+
+    def augment_ids(self):
+        """클라이언트 증강 번호표 {번호: 증강 id} (못 읽으면 {})"""
+        if self._aug_ids is None and self.client:
+            try:
+                self._aug_ids = self.client.augment_ids()
+            except Exception:
+                return {}
+        return self._aug_ids or {}
 
     def run(self):
         while True:
@@ -556,8 +623,11 @@ class LcuWatcher(threading.Thread):
             self.state = {"connected": True, "phase": phase, "championKey": champ}
             if phase in ("EndOfGame", "PreEndOfGame", "WaitingForStats"):
                 self.save_eog()
+            if self._match_wait and phase not in ("InProgress", "GameStart", "ChampSelect"):
+                self.fetch_match()
         except Exception as e:
             self.client = None  # 클라이언트를 껐다 켜면 포트·비밀번호가 바뀐다
+            self._aug_ids = None
             self.state = {"connected": False, "error": str(e)[:120]}
 
 
@@ -1419,7 +1489,12 @@ def main():
         if res:
             diag.write(f"경기 결과와 고른 증강 대조: {'모두 맞음' if res[0] else '다름'} · 그림 {res[1]}장 지움")
 
+    board_seen = {}  # 판이 끝날 때 점수판에서 읽어 둔 적 증강 (다음 판이 시작되면 읽기 도구는 비운다)
+
     def on_game_end():
+        if reader:
+            board_seen.clear()
+            board_seen.update({c: list(v) for c, v in reader.enemy_augs.items()})
         try:
             if reader:
                 # 한 판 동안 글자 인식·증강 칸 처리 시간 (평균·p95·최대): 실제 게임에서 느린 구간을 찾으려고
@@ -1453,16 +1528,43 @@ def main():
     except (OSError, ValueError, KeyError):
         aug_by_num = {}
 
+    try:
+        _d = json.loads((user_dir() / "web" / "data.json").read_text(encoding="utf-8"))
+        aug_id_by_num = {a["num"]: a["id"] for a in _d["augments"] if a.get("num")}
+        aug_name_by_id = {a["id"]: a["name"] for a in _d["augments"]}
+        champ_by_key = {int(c["key"]): c["id"] for c in _d["champions"] if str(c.get("key", "")).isdigit()}
+    except (OSError, ValueError, KeyError):
+        aug_id_by_num, aug_name_by_id, champ_by_key = {}, {}, {}
+
+    def name_of_num(n):
+        """증강 번호 → 이름. 받은 데이터가 늦어 모르는 번호면 클라이언트 번호표로 (설치된 버전 그대로)"""
+        if n in aug_by_num:
+            return aug_by_num[n]
+        return aug_name_by_id.get(lw.augment_ids().get(n))
+
     def on_eog(eog):
         if not aug_by_num:
             return
         st = ((eog.get("localPlayer") or {}).get("stats") or {})
-        names = [aug_by_num.get(st.get(f"playerAugment{i}")) for i in range(1, 7) if st.get(f"playerAugment{i}")]
-        if None in names:  # 모르는 번호 (데이터가 옛것) → 판정하지 않는다
+        names = [name_of_num(st.get(f"playerAugment{i}")) for i in range(1, 7) if st.get(f"playerAugment{i}")]
+        if None in names:  # 클라이언트 번호표에도 없는 번호 → 판정하지 않는다
             return
         eog_result(rec.end_of_game(names))  # 판 기록이 아직 안 끝났으면 끝날 때 맞춘다
 
     lw.on_eog = on_eog
+
+    def on_match(m):
+        """점수판에서 읽은 적 증강을 전적의 정답과 맞춰 진단 기록에 (점수판을 한 번도 안 읽은 판은 건너뛴다)"""
+        if not board_seen:
+            return
+        nums = {**{n: i for n, i in lw.augment_ids().items() if i in aug_name_by_id}, **aug_id_by_num}
+        res = board_check(board_seen, m, champ_by_key, nums)
+        if res:
+            wrong = ", ".join(f"{c} {aug_name_by_id.get(a, a)}" for c, a in res["wrong"][:5])
+            diag.write(f"점수판 적 증강 대조: 맞음 {res['right']} · 틀림 {len(res['wrong'])} · 못 읽음 {res['missed']} / 적 증강 {res['truth']}개"
+                       + (f" (틀림: {wrong})" if wrong else ""))
+
+    lw.on_match = on_match
     geo = settings.get("geometry") or {}
     window = webview.create_window(
         TITLE, url=str(web / "index.html"), js_api=api,

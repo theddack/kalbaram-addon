@@ -103,6 +103,25 @@ class Lcu:
         except Exception:
             return 0
 
+    def kiwi_games(self, count=20):
+        """내 최근 칼바람 증강 모드(KIWI) 판 id (전적에서 읽기만, 최근 것부터)"""
+        m = self.req("GET", f"/lol-match-history/v1/products/lol/current-summoner/matches?begIndex=0&endIndex={int(count)}")
+        games = ((m or {}).get("games") or {}).get("games") or []
+        return [g["gameId"] for g in games if g.get("gameMode") == "KIWI" and g.get("gameId")]
+
+    def match(self, game_id):
+        """한 판 상세 → redact_match (10명 증강·아이템·승패, 이름·계정 없이). 내 칸은 me=True"""
+        g = self.req("GET", f"/lol-match-history/v1/games/{int(game_id)}")
+        if not getattr(self, "_puuid", None):
+            self._puuid = (self.req("GET", "/lol-summoner/v1/current-summoner") or {}).get("puuid")
+        return redact_match(g, self._puuid)
+
+    def augment_ids(self):
+        """클라이언트의 증강 번호표 {번호: 증강 id} (설치된 버전 그대로라, 받은 데이터가 늦어 모르는 번호가 나올 때 쓴다)"""
+        rows = self.req("GET", "/lol-game-data/assets/v1/cherry-augments.json") or []
+        return {int(r["id"]): r["augmentNameId"] for r in rows
+                if isinstance(r, dict) and str(r.get("id", "")).isdigit() and r.get("augmentNameId")}
+
     def summoner_id(self):
         s = self.req("GET", "/lol-summoner/v1/current-summoner")
         return s.get("summonerId"), s.get("accountId")
@@ -189,3 +208,31 @@ def _clean_item_set(champion_key, title, blocks):
             raise ValueError("아이템 ID")
         out.append({"type": shop_text(b.get("type", "")), "items": items})
     return key, title, out
+
+
+MATCH_STATS = ("kills", "deaths", "assists", "champLevel", "goldEarned", "totalDamageDealtToChampions",
+               "physicalDamageDealtToChampions", "magicDamageDealtToChampions", "totalDamageTaken", "damageSelfMitigated",
+               "totalHeal", "timeCCingOthers")
+
+
+def redact_match(game, my_puuid=None):
+    """전적 한 판 → 이름·계정(participantIdentities)을 버리고 {gameId, mode, version, duration, created, players}.
+    players: [{team, champion(숫자 key), win, augments(증강 번호), items, stats, me}]"""
+    game = game if isinstance(game, dict) else {}
+    mine = None
+    for ident in game.get("participantIdentities") or []:
+        pl = (ident or {}).get("player") or {}
+        if my_puuid and pl.get("puuid") == my_puuid:
+            mine = ident.get("participantId")
+    players = []
+    for p in game.get("participants") or []:
+        st = p.get("stats") or {}
+        players.append({
+            "team": p.get("teamId"), "champion": p.get("championId"), "win": bool(st.get("win")),
+            "augments": [st[f"playerAugment{i}"] for i in range(1, 7) if st.get(f"playerAugment{i}")],
+            "items": [st[f"item{i}"] for i in range(7) if st.get(f"item{i}")],
+            "stats": {k: st[k] for k in MATCH_STATS if k in st},
+            "me": mine is not None and p.get("participantId") == mine,
+        })
+    return {"gameId": game.get("gameId"), "mode": game.get("gameMode"), "version": game.get("gameVersion"),
+            "duration": game.get("gameDuration"), "created": game.get("gameCreation"), "players": players}

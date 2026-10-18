@@ -970,7 +970,7 @@ class HudIcons(unittest.TestCase):
         r.wait_shop_keys(Key(), time.time() + 0.3)
         self.assertFalse(r._board_now, "적을 모르면 안 읽는다")
         live["enemies"] = ["Jinx"]
-        r.enemy_augs = {"Jinx": ["a", "b", "c", "d"]}
+        r.enemy_augs = {"Jinx": ["a", "b", "c", "d", "e", "f"]}
         self.assertFalse(r._board_ready(), "적 증강을 다 찾았으면 그만")
         r.enemy_augs = {}
         r.board = types.SimpleNamespace(reset=lambda: None)
@@ -1807,3 +1807,67 @@ class OfficialItems(unittest.TestCase):
         del b["{1}"]["mOverrides"][2]
         self.assertEqual(B.official_items(b)["mode"], "CLASSIC")
         self.assertIsNone(B.official_items({"{2}": {"__type": "SpellObject"}}))
+
+
+class MatchHistory(unittest.TestCase):
+    """클라이언트 전적: 이름·계정을 버리고 10명 증강·아이템·승패만, 점수판에서 읽은 적 증강과 정답 대조"""
+
+    GAME = {"gameId": 7, "gameMode": "KIWI", "gameVersion": "16.20", "gameDuration": 900, "gameCreation": 1,
+            "participantIdentities": [{"participantId": 1, "player": {"puuid": "me-puuid", "gameName": "나", "summonerName": "나"}},
+                                      {"participantId": 2, "player": {"puuid": "x", "gameName": "적", "summonerName": "적"}}],
+            "participants": [
+                {"participantId": 1, "teamId": 100, "championId": 222,
+                 "stats": {"win": True, "playerAugment1": 1205, "playerAugment2": 0, "item0": 3031, "item1": 0, "kills": 3}},
+                {"participantId": 2, "teamId": 200, "championId": 67,
+                 "stats": {"win": False, "playerAugment1": 1141, "playerAugment2": 1002, "playerAugment3": 1205, "item0": 3153}}]}
+
+    def test_redact_match_drops_identity(self):
+        m = lcu.redact_match(self.GAME, "me-puuid")
+        s = json.dumps(m, ensure_ascii=False)
+        for bad in ("puuid", "나", "적", "gameName", "summonerName"):
+            self.assertNotIn(bad, s)
+        self.assertEqual([p["me"] for p in m["players"]], [True, False])
+        self.assertEqual(m["players"][0]["augments"], [1205])
+        self.assertEqual(m["players"][0]["items"], [3031])
+        self.assertEqual(m["players"][1]["augments"], [1141, 1002, 1205])
+        self.assertFalse(any(p["me"] for p in lcu.redact_match(self.GAME, None)["players"]), "내 puuid 를 모르면 표시 안 함")
+
+    def test_board_check(self):
+        m = lcu.redact_match(self.GAME, "me-puuid")
+        nums = {1205: "ARAM_ADAPt", 1141: "ARAM_AllForYou", 1002: "ARAM_ApexInventor"}
+        res = desktop.board_check({"vayne": ["ARAM_AllForYou", "Wrong"]}, m, {222: "Jinx", 67: "Vayne"}, nums)
+        self.assertEqual(res, {"right": 1, "wrong": [["Vayne", "Wrong"]], "missed": 2, "truth": 3}, "적 팀만, 챔피언 id 대소문자 무시")
+        self.assertIsNone(desktop.board_check({}, lcu.redact_match(self.GAME, None), {}, nums), "내 칸을 모르면 판정 안 함")
+
+    def test_fetch_match_after_game(self):
+        # 경기 결과(eog)를 받은 판은 전적 상세를 기다렸다가 on_match. 기록이 꺼져 있으면 파일은 안 남긴다
+        d = pathlib.Path(tempfile.mkdtemp())
+        w = desktop.LcuWatcher(d)
+        w.record = False
+        got = []
+        w.on_match = got.append
+        game = self.GAME
+
+        class Fake:
+            calls = 0
+
+            def req(self, method, path, body=None):
+                return Measure.EOG
+
+            def match(self, gid):
+                Fake.calls += 1
+                if Fake.calls == 1:
+                    return {"players": []}  # 아직 안 올라옴
+                return lcu.redact_match(game, "me-puuid")
+        w.client = Fake()
+        w.save_eog()
+        self.assertEqual(w._match_wait[0], 123)
+        w.fetch_match()
+        self.assertEqual(got, [], "아직 안 올라왔으면 다음에 다시")
+        w.fetch_match()
+        self.assertEqual(len(got), 1)
+        self.assertIsNone(w._match_wait)
+        self.assertEqual(list(d.glob("*.json")), [], "기록이 꺼져 있으면 파일 없음")
+        w._match_wait = (5, time.time() - desktop.MATCH_WAIT - 1)
+        w.fetch_match()
+        self.assertIsNone(w._match_wait, "너무 오래 기다리면 그만")
