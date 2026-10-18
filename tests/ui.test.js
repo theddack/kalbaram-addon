@@ -637,6 +637,36 @@ test("Tab 점수판에서 읽은 적 증강도 확인된 적 증강으로 (소�
   assert.deepEqual(p.errors, []);
 });
 
+test("적 증강도 대응 규칙에: 회복→치유 감소, 체력·방어→탱커(관통), 군중 제어 2개→강인함, 근거 표시", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const tags = (a) => ((p.data.rules.augments || {})[a.id] || {}).tags || a.tags || {};
+  const pick = (f, n = 1) => p.data.augments.filter((a) => a.category !== "spell" && f(tags(a))).slice(0, n);
+  const heal = pick((t) => (t.HEALSHIELD || 0) >= 0.5 && !(t.CC >= 0.6), 2);
+  const tank = pick((t) => (t.HP || 0) >= 0.6 && !(t.CC >= 0.6) && !(t.HEALSHIELD >= 0.5), 2);
+  const cc = pick((t) => (t.CC || 0) >= 0.6 && !(t.HEALSHIELD >= 0.5) && !(t.HP >= 0.6) && !(t.ARMOR >= 0.6) && !(t.MR >= 0.6) && !(t.AS >= 0.6), 2);
+  assert.equal(heal.length + tank.length + cc.length, 6, "데이터에 증강 종류가 있어야");
+  const foes = ["Lux", "Ahri", "Xerath", "Ezreal", "Jinx"];  // 회복·탱커가 아닌 적들
+  const enemyAugs = { Lux: [heal[0].id], Ahri: [heal[1].id], Xerath: [tank[0].id, tank[1].id], Ezreal: [cc[0].id], Jinx: [cc[1].id] };
+  const live = (augs) => p.w.applyLive({ enabled: true, inGame: true, champion: "Garen", level: 12, items: [], enemies: foes,
+    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })), aug: { enemyAugs: augs } });
+  live({});
+  p.w.renderItemList();
+  p.w.sendOverlay();
+  let advice = sent.at(-1).enemy.advice.join("\n");
+  assert.doesNotMatch(advice, /적 회복 많음|적 군중 제어 증강/, "증강을 모르면 조언 없음");
+  live(enemyAugs);
+  p.w.renderItemList();
+  p.w.sendOverlay();
+  advice = sent.at(-1).enemy.advice.join("\n");
+  assert.ok(advice.includes(`적 회복 많음 (럭스·아리) (적 증강: 럭스 ${heal[0].name} · 아리 ${heal[1].name})`), advice);
+  assert.match(advice, /적 군중 제어 증강 \(이즈리얼 .* · 징크스 .*\) → 검토: 헤르메스의 발걸음/, advice);
+  assert.ok(p.w.enemyInfo().tanks.some((c) => c.id === "Xerath"), "체력·방어 증강 2개면 탱커로 센다 (관통 조언 기준)");
+  assert.doesNotMatch(advice, /제라스 탱커/, "적별 (산 아이템) 줄은 산 아이템만");
+  assert.deepEqual(p.errors, []);
+});
+
 test("추천 다시 계산 시간을 게임 화면 표시와 같이 보낸다 (기록용)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
@@ -860,6 +890,35 @@ test("게임 화면 상자는 다음 구매가 맨 위, 고른 증강은 맨 아
   assert.match(hud.at(-1), /^고른 증강: /);
   for (const id of ["reset-all", "update-data", "changelog-link", "sources-link", "verify-link"])
     assert.ok(p.w.document.querySelector(`#more-menu #${id}`), id);
+  assert.deepEqual(p.errors, []);
+});
+
+test("6칸이 다 찼어도 적 대응(치유 감소)이 필요하면 바꾸기로 (2026-10-19 킨드레드: 조언은 처형인, 위에는 '그대로 좋아요')", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const id = (n) => p.data.items.find((i) => i.name === n).id;
+  const six = ["크라켄 학살자", "광전사의 군화", "윤 탈 야생화살", "도미닉 경의 인사", "몰락한 왕의 검", "루난의 허리케인"].map(id);
+  const foes = ["Samira", "Caitlyn"];
+  const live = (items, builds) => p.w.applyLive({ enabled: true, inGame: true, champion: "Kindred", level: 18, items, enemies: foes,
+    enemyBuilds: foes.map((c) => ({ champion: c, level: 18, items: builds })) });
+  live(six, [id("피바라기")]);
+  p.w.renderItemList();
+  p.w.sendOverlay();
+  const sw = sent.at(-1).swap;
+  assert.ok(sw, "바꾸기 보냄");
+  assert.equal(sw.why, "치유 감소");
+  const buy = p.data.items.find((i) => i.id === sw.buy);
+  assert.ok(JSON.stringify([buy.desc, buy.passiveHtml]).includes("고통스러운 상처"), buy.name);
+  assert.ok(six.includes(sw.sell) && sw.sell !== id("광전사의 군화"), "완성 아이템을 판다 (신발은 안 판다)");
+  if (buy.limit) assert.ok(!six.filter((x) => x !== sw.sell).some((x) => p.data.items.find((i) => i.id === x).limit === buy.limit), "같은 계열이면 그걸 판다");
+  assert.match(p.text("#next-buy"), /적 대응으로 바꾸면 좋아요/);
+  assert.match(sent.at(-1).hud[0], /적 대응\(치유 감소\)/);
+  // 이미 치유 감소 아이템이 있으면 적 대응 바꾸기 없음
+  live([...six.slice(0, 5), buy.id], [id("피바라기")]);
+  p.w.renderItemList();
+  p.w.sendOverlay();
+  assert.notEqual((sent.at(-1).swap || {}).why, "치유 감소");
   assert.deepEqual(p.errors, []);
 });
 

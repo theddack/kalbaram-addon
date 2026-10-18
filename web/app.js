@@ -162,11 +162,13 @@ function enemyInfo() {
   const heals = (c) => (c.spells || []).filter((sp) => (sp.effects || []).some((x) => x && x.kind === "heal")).length
     + (((c.passive || {}).effects || []).some((x) => x && x.kind === "heal") ? 1 : 0);
   // 산 아이템도 본다: 흡혈 아이템을 산 적은 회복 많음, 방어 아이템 2개 이상이면 탱커
-  // 확인된 상대 증강도 본다 (소환사 주문 증강: 회복·보호막 증가 → 회복 많음)
-  const healAug = (c) => enemyAugs(c).some((a) => (augTags(a).HEALSHIELD || 0) >= 0.5);
-  const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem) || healAug(c));
-  const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length >= 2);
-  return { list, magic, healers, tanks, fromItems, fed };
+  // 확인된 상대 증강도 본다 (소환사 주문 칸 + Tab 점수판): 회복·흡혈 → 회복 많음, 체력·방어 → 탱커, 군중 제어 → 강인함
+  const healAug = (c) => augsWith(c, ["HEALSHIELD", "VAMP"], 0.5);
+  const tankAug = (c) => augsWith(c, ["HP", "ARMOR", "MR"]);
+  const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem) || healAug(c).length);
+  const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length + tankAug(c).length >= 2);
+  const ccAugs = list.flatMap((c) => augsWith(c, ["CC"]).map((a) => ({ c, a })));
+  return { list, magic, healers, tanks, fromItems, fed, ccAugs, healAug, tankAug };
 }
 
 // ---- 상대 아이템 반영 (2026-10-15): 적이 실제로 산 아이템(게임 안 Tab 점수판에 보이는 정보)으로
@@ -264,6 +266,13 @@ function spellAugment(token) {
 // 증강이 키우는 것 (규칙의 특성 우선)
 const augTags = (a) => ((state.data.rules.augments || {})[a.id] || {}).tags || a.tags || {};
 const enemyAugs = (c) => ((state.enemyBuilds || []).find((e) => e.champ.id === c.id) || {}).augments || [];
+// 그 적의 확인된 증강 중 효과 종류(keys 중 하나)가 min 이상인 것
+const augsWith = (c, keys, min = 0.6) => enemyAugs(c).filter((a) => keys.some((k) => (augTags(a)[k] || 0) >= min));
+// 조언 근거: 그 규칙에 걸린 적 증강 ' (적 증강: 사미라 ○○ · 케이틀린 △△)'
+const augNote = (list, by) => {
+  const parts = list.map((c) => [c, by(c)]).filter(([, a]) => a.length).map(([c, a]) => `${c.name} ${a.map((x) => x.name).join("·")}`);
+  return parts.length ? ` (적 증강: ${parts.join(" · ")})` : "";
+};
 const healItem = (i) => (i.tags && (i.tags.VAMP || 0) >= 0.5) || (i.stats && !Array.isArray(i.stats) && ("LS" in i.stats || "OMNIVAMP" in i.stats));
 const tankItem = (i) => i.tags && ((i.tags.HP || 0) >= 0.5 || (i.tags.ARMOR || 0) >= 0.5 || (i.tags.MR || 0) >= 0.5)
   && !((i.tags.AD || 0) >= 0.5 || (i.tags.AP || 0) >= 0.5);
@@ -313,6 +322,7 @@ function counterItems(avail, keep) {
 function enemyAdvice() {
   const e = enemyInfo();
   state.adviceWant = [];  // 조언이 권한 완성 아이템 {name, why} → 다음 구매 3번째 자리 후보 (renderNextBuy)
+  state.adviceNeed = [];  // 조언이 필요하다고 본 효과 {why, names(같은 계열을 가졌어도 후보), have(이미 갖춤)} → 6칸이 찼을 때 바꾸기 (swapAdvice)
   if (!e || !state.champ) return [];
   const out = [];
   const want = (names, why) => { for (const n of names) if (!state.adviceWant.some((w) => w.name === n)) state.adviceWant.push({ name: n, why }); };
@@ -324,8 +334,9 @@ function enemyAdvice() {
   const hasCrit = (i) => (i.tags.CRIT || 0) >= 0.5 || (i.stats && !Array.isArray(i.stats) && "CRIT" in i.stats);
   // 이미 산 아이템과 같은 계열 고유 효과면 못 산다 (도미닉을 가졌는데 치유 감소로 필멸자의 운명을 권하던 것)
   const ownedLimits = new Set(state.items.map((i) => i.limit).filter(Boolean));
-  const fits = (i) => !(i.limit && ownedLimits.has(i.limit)) && !state.items.some((o) => o.name === i.name)
-    && (mineType === "magic" ? (i.tags.AP || 0) >= 0.5 : (i.tags.AD || 0) >= 0.5 && (critOk || !hasCrit(i)));
+  const typeOk = (i) => (mineType === "magic" ? (i.tags.AP || 0) >= 0.5 : (i.tags.AD || 0) >= 0.5 && (critOk || !hasCrit(i)));
+  const fits = (i) => !(i.limit && ownedLimits.has(i.limit)) && !state.items.some((o) => o.name === i.name) && typeOk(i);
+  const need = (why, list, have) => state.adviceNeed.push({ why, names: byRank(list.filter(typeOk).map((i) => i.name)), have });
   // 후보 이름은 지금 다음 구매 순위 순서로 (조언에 먼저 쓴 아이템 = 다음 구매에 들어가는 아이템)
   const order = state.rankOrder || [];
   const byRank = (names) => names.slice().sort((a, b) => (order.indexOf(a) + 1 || 1e9) - (order.indexOf(b) + 1 || 1e9));
@@ -342,14 +353,16 @@ function enemyAdvice() {
     + (resWant ? ` → ${resLabel} 우선` + (resItems.length ? `: ${resItems.slice(0, 2).join(" 또는 ")}` : "") : ""));
   if (e.healers.length >= 2) {
     // 치유 감소(고통스러운 상처)가 설명에 있는 아이템 중 내 유형에 맞는 것
-    let gw = byRank(items.filter((i) => JSON.stringify([i.desc, i.passiveHtml]).includes("고통스러운 상처") && fits(i)).map((i) => i.name));
+    const grievous = (i) => JSON.stringify([i.desc, i.passiveHtml]).includes("고통스러운 상처");
+    need("치유 감소", items.filter(grievous), state.items.some(grievous));
+    let gw = byRank(items.filter((i) => grievous(i) && fits(i)).map((i) => i.name));
     // 맞는 완성 아이템이 없으면(치명타를 못 살리는 전사 등) 치유 감소 부품을 (처형인의 대검 · 망각의 구 · 덤불 조끼)
     if (!gw.length) {
       const want = mineType === "magic" ? ["망각의 구"] : ["처형인의 대검"];
       if (state.champ.tags.includes("Tank")) want.push("덤불 조끼");
       gw = Object.values(state.data.parts || {}).filter((pt) => want.includes(pt.name)).map((pt) => `${pt.name}(부품 ${pt.gold}G)`);
     }
-    out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
+    out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + augNote(e.healers, e.healAug) + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
     want(gw.filter((n) => !n.includes("(부품")), "치유 감소");
   }
   // 관통: 탱커가 많거나, 적이 산 아이템으로 내 피해 유형 쪽 방어가 평소보다 25% 이상 높으면
@@ -359,10 +372,11 @@ function enemyAdvice() {
   const resHigh = resN >= 3;
   const now = resHigh ? enemyNow() : null;
   if (e.tanks.length >= 2 || resHigh) {
-    const pen = byRank(items.filter((i) => fits(i) && (mineType === "magic" ? (i.tags.MPEN || 0) >= 0.5
-      : i.stats && !Array.isArray(i.stats) && "ARPEN" in i.stats)).map((i) => i.name));
+    const penItem = (i) => (mineType === "magic" ? (i.tags.MPEN || 0) >= 0.5 : !!(i.stats && !Array.isArray(i.stats) && "ARPEN" in i.stats));
+    need("관통", items.filter(penItem), state.items.some(penItem));
+    const pen = byRank(items.filter((i) => fits(i) && penItem(i)).map((i) => i.name));
     pen.splice(2);
-    const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})` : "",
+    const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})${augNote(e.tanks, e.tankAug)}` : "",
       resHigh ? `적이 ${resKey === "MR" ? "마법 저항" : "방어"} 아이템 ${resN}개 (지금 평균 ${resKey === "MR" ? "마법 저항력" : "방어력"} ${fmt(now[resKey])})` : ""].filter(Boolean).join(" · ");
     out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
     want(pen, "관통");
@@ -373,15 +387,29 @@ function enemyAdvice() {
   // 보호막: 보호막 아이템·증강이 3개 이상이면 보호막 감소 (물리 피해 챔피언만: 마법 쪽엔 해당 아이템이 없다)
   if (threats.shield >= 3) {
     const cut = items.filter((i) => i.name === "독사의 송곳니" && fits(i)).map((i) => i.name);
+    need("보호막 감소", items.filter((i) => i.name === "독사의 송곳니"), state.items.some((i) => i.name === "독사의 송곳니"));
     out.push(`적 보호막 많음 (보호막 아이템 ${threats.shield}개)` + (cut.length ? ` → 보호막 감소: ${cut.join("")}` : ""));
     want(cut, "보호막 감소");
   }
   // 공격 속도: 공격 속도 아이템을 2개 이상 산 적이 있고 내가 앞에서 맞는 챔피언이면 공격 속도 대응 방어 아이템
   const front = state.champ.tags.includes("Tank") || (state.champ.melee && !state.champ.tags.includes("Assassin"));
   if (threats.as.length && front) {
-    const def = items.filter((i) => ["얼어붙은 심장", "란두인의 예언", "가시 갑옷"].includes(i.name)).map((i) => i.name).slice(0, 2);
+    const asDef = (i) => ["얼어붙은 심장", "란두인의 예언", "가시 갑옷"].includes(i.name);
+    const def = items.filter(asDef).map((i) => i.name).slice(0, 2);
+    state.adviceNeed.push({ why: "공속 대응", names: def, have: state.items.some(asDef) });  // 방어 아이템이라 내 피해 유형과 상관없이
     out.push(`적 공격 속도 높음 (${threats.as.join("·")})` + (def.length ? ` → 검토: ${def.join(" 또는 ")}` : ""));
     want(def, "공속 대응");
+  }
+  // 군중 제어 증강이 2개 이상이면 강인함 신발·정화 (확인된 적 증강만: 소환사 주문 칸 + Tab 점수판)
+  if (e.ccAugs.length >= 2) {
+    const qss = items.filter((i) => i.name === "헤르메스의 시미터" && typeOk(i));
+    const boots = state.data.items.find((i) => i.name === "헤르메스의 발걸음");
+    const hasBoots = state.items.some((i) => i.name === "헤르메스의 발걸음");
+    const opts = [boots && !hasBoots ? boots.name : "", ...qss.filter((i) => !state.items.some((o) => o.name === i.name)).map((i) => i.name)].filter(Boolean);
+    out.push(`적 군중 제어 증강 (${e.ccAugs.map((x) => `${x.c.name} ${x.a.name}`).join(" · ")})` + (opts.length ? ` → 검토: ${opts.join(" 또는 ")}` : ""));
+    want(qss.filter(fits).map((i) => i.name), "군중 제어 대응");
+    state.adviceNeed.push({ why: "군중 제어 대응", names: qss.map((i) => i.name),
+      have: hasBoots || state.items.some((i) => i.name === "헤르메스의 시미터") });
   }
   // 상대 증강: 소환사 주문 칸에 보이는 것만 확인된 정보로 (나머지는 공식 데이터에 없어 추측하지 않는다)
   const seen = (state.enemyBuilds || []).filter((x) => x.augments.length).map((x) => `${x.champ.name} ${x.augments.map((a) => a.name).join("·")}`);
@@ -406,7 +434,8 @@ function enemyThreats() {
       as: its.filter((i) => ((i.tags || {}).AS || 0) >= 0.5).length,
       pen: its.filter((i) => ((i.tags || {}).LETHAL || 0) >= 0.5 || ((i.tags || {}).MPEN || 0) >= 0.5).length };
     shield += n.shield + e.augments.filter((a) => (augTags(a).HEALSHIELD || 0) >= 0.5).length;
-    if (n.as >= 2) as.push(e.champ.name);
+    const asAug = augsWith(e.champ, ["AS"]);
+    if (n.as >= 2 || asAug.length) as.push(e.champ.name + (asAug.length ? `(증강 ${asAug.map((a) => a.name).join("·")})` : ""));
     const what = [n.tank >= 2 ? `탱커 ${n.tank}` : "", n.heal ? "흡혈" : "", n.shield ? "보호막" : "", n.as >= 2 ? `공속 ${n.as}` : "",
       n.pen >= 2 ? `관통 ${n.pen}` : ""].filter(Boolean);
     if (what.length) rows.push({ w: n.tank + n.heal + n.shield + n.as + n.pen, text: `${e.champ.name} ${what.join("·")}` });
@@ -1151,7 +1180,7 @@ function itemVerdicts() {
   const must = new Set(S.augContext(state.chosen, d.rules).must.flat());
   const value = state.items.map((it) => {
     // 증강에 필요한 아이템(징수의 총 업그레이드 → 징수의 총)은 순위와 상관없이 맞는 것 (사미라 판: 사고 나니 🤔)
-    if (must.has(it.name)) return { item: it, mark: "✅", text: "고른 증강에 필요해요", swap: null };
+    if (must.has(it.name)) return { item: it, mark: "✅", text: "고른 증강에 필요해요", swap: null, rank: -1 };
     const others = state.items.filter((x) => x.id !== it.id);
     const rows = S.rankItems(d.items, state.weights, state.chosen, others, d.rules, state.champ, statOpts(), concept)
       .filter((r) => r.item.kind === it.kind);
@@ -1160,7 +1189,7 @@ function itemVerdicts() {
     // 같은 계열 고유 효과(limit)가 겹치는 것은 같이 못 가진다
     const best = rows.find((r) => !others.some((o) => o.id === r.item.id || (r.item.limit && o.limit === r.item.limit)));
     const swap = row && best && best.item.id !== it.id ? { best: best.item, gain: best.score - row.score, ratio: row.score > 0 ? best.score / row.score : Infinity } : null;
-    return { ...verdictOf(it, row, idx, best), swap };
+    return { ...verdictOf(it, row, idx, best), swap, rank: idx < 0 ? 1e9 : idx };
   });
   verdictCache = { key, value };
   return value;
@@ -1176,12 +1205,31 @@ function verdictOf(it, row, idx, best) {
 // 게임 화면에는 아이콘 두 개(판다 ✕ → 산다)로만 보여 준다. 증강에 필요한 아이템(🎯)은 팔라고 하지 않는다
 const SWAP_MARKS = new Set(["🤔", "⚠️"]);
 const SWAP_UP = 1.15;  // 바꿀 아이템 점수가 지금 아이템의 이 배 이상일 때만 (적 대응 COUNTER_AUG 와 같은 기준)
+// 적 대응 바꾸기 (2026-10-19 지적: 조언은 '치유 감소: 처형인의 대검'인데 위에는 '지금 빌드 그대로 좋아요').
+// 조언이 필요하다고 본 효과를 아직 안 갖췄으면: 같은 계열 아이템을 가졌으면 그것과, 아니면 고른 증강에 필요 없는 것 중
+// 가장 덜 맞는(순위가 낮은) 완성 아이템과 바꾼다. 조언 순서(치유 감소 → 관통 → 보호막 감소 → 공속 대응)대로 하나만
+function counterSwap(needed) {
+  const verdicts = itemVerdicts();
+  const legend = (n) => state.data.items.find((i) => i.name === n && i.kind === "legendary");
+  for (const nd of state.adviceNeed || []) {
+    if (nd.have) continue;
+    for (const name of nd.names) {
+      const buy = legend(name);
+      if (!buy || state.items.some((o) => o.name === buy.name)) continue;
+      const same = state.items.find((o) => buy.limit && o.limit === buy.limit);
+      const sellable = verdicts.filter((v) => v.item.kind === "legendary" && !needed(v.item));
+      const sell = same ? (needed(same) ? null : same) : (sellable.sort((a, b) => b.rank - a.rank)[0] || {}).item;
+      if (sell) return { sell, buy, gain: 0, why: nd.why };
+    }
+  }
+  return null;
+}
 function swapAdvice() {
   if (!state.champ || state.items.length < S.SLOTS) return null;
   const ctx = S.augContext(state.chosen, state.data.rules);
   const needed = (it) => ctx.must.some((g) => g.includes(it.name));
-  let pick = null;
-  for (const v of itemVerdicts()) {
+  let pick = counterSwap(needed);
+  for (const v of pick ? [] : itemVerdicts()) {
     // 산 아이템 평가가 🤔(순위 밖)·⚠️(반대 유형)인 것만 판다: 다 지은 아이템은 팔면 골드를 잃고,
     // 👍 이상을 팔라고 하면 '산 아이템' 평가와 엇갈린다 (2026-10-15 베인 판 최종 빌드: 무한의 대검 👍 → 히드라 제안은 납득이 어려웠다)
     if (!SWAP_MARKS.has(v.mark) || !v.swap || needed(v.item) || v.swap.gain <= 0 || v.swap.ratio < SWAP_UP) continue;
@@ -1252,7 +1300,8 @@ function sendOverlay(src) {
   if (full) {
     // 6칸이 다 차면 더 살 것 대신 '완성'과 바꿀 것만 (계속 다음 구매를 띄우면 '읭?' 2026-10-17 지적)
     const sw0 = swapAdvice();
-    hud.push(sw0 ? `✅ 6칸 완성 · 바꾸면 더 좋아요: ${sw0.sell.name} → ${sw0.buy.name}` : "✅ 6칸 완성 · 지금 빌드 그대로 좋아요");
+    hud.push(!sw0 ? "✅ 6칸 완성 · 지금 빌드 그대로 좋아요"
+      : `✅ 6칸 완성 · ${sw0.why ? `적 대응(${sw0.why})으로 바꾸면 좋아요` : "바꾸면 더 좋아요"}: ${sw0.sell.name} → ${sw0.buy.name}`);
   } else {
     if (next.length) hud.push("다음 구매: " + next.join(" > "));
     if (state.nextChange) hud.push(state.nextChange);
@@ -1261,7 +1310,8 @@ function sendOverlay(src) {
   // 게임 화면 상자는 짧게: 할 일(→)이 없는 정보 줄(적별 위협·확인된 적 증강)은 애드온 창에만
   const INFO_ONLY = /^(적별|적 증강)/;
   const adv = enemyAdvice();
-  hud.push(...adv.filter((l) => !INFO_ONLY.test(l)));
+  // 적 증강 근거 ' (적 증강: …)' 는 애드온 창에만 (게임 화면 상자는 짧게)
+  hud.push(...adv.filter((l) => !INFO_ONLY.test(l)).map((l) => l.replace(/ \(적 증강: [^)]*\)/, "")));
   const v = itemVerdicts();
   if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
   if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
@@ -1276,7 +1326,7 @@ function sendOverlay(src) {
     advice: adv,
   } : null;
   const sw = swapAdvice();
-  const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0 } : null;
+  const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0, why: sw.why || null } : null;
   api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null,
     calcMs: state.calcMs, calcSeq: state.calcSeq, statCheck: statCheck(),
     // 상점 창 안에서 자리를 찾아볼 아이템 (시험: 기록만). 다음 구매 위 3개 + 바꿀 때 살 것
@@ -1620,7 +1670,7 @@ function renderNextBuy(rows) {
 function swapHtml() {
   const sw = swapAdvice();
   if (!sw) return `<p class="small">✅ 6칸 완성이에요. 지금 빌드 그대로 좋아요.</p>`;
-  return `<p class="small">✅ 6칸 완성이에요. 바꾸면 더 좋아요:</p>
+  return `<p class="small">✅ 6칸 완성이에요. ${sw.why ? `적 대응으로 바꾸면 좋아요 <span class="chip adv">🛡️ ${esc(sw.why)}</span>` : "바꾸면 더 좋아요"}:</p>
     <div class="swap-row" title="${esc(sw.sell.name)} 팔고 ${esc(sw.buy.name)}"><b>🔁</b><img src="${icon("item", sw.sell.id)}" alt="" class="sell"><span>→</span><img src="${icon("item", sw.buy.id)}" alt="">
     <div><div><s>${esc(sw.sell.name)}</s> → ${esc(sw.buy.name)} <span class="gold">${fmt(Number(sw.buy.gold) || 0)}G</span></div>
     ${sw.cost == null ? "" : `<div class="small muted" title="판매가: 게임 데이터 값">팔면 ${fmt(sw.refund)}G 돌려받아 실제로 <b>${fmt(sw.cost)}G</b>`
