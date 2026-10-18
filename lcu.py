@@ -85,6 +85,19 @@ class Lcu:
                 return int(me["championId"])
         except Exception:
             pass
+        # 선택이 끝난 뒤(로딩·게임 중)엔 그 판의 챔피언 목록에서 내 것을. current-champion 은 대기석에서 바꾸기 전 챔피언으로
+        # 남아 있었다 (2026-10-18 아우렐리온 솔 판: 상점 추천이 제라스로 등록돼 상점에 아무것도 안 떴다)
+        try:
+            game = self.req("GET", "/lol-gameflow/v1/session").get("gameData") or {}
+            sels = game.get("playerChampionSelections") or []
+            if sels:
+                if not getattr(self, "_puuid", None):
+                    self._puuid = (self.req("GET", "/lol-summoner/v1/current-summoner") or {}).get("puuid")
+                mine = next((p for p in sels if self._puuid and p.get("puuid") == self._puuid), None)
+                if mine and mine.get("championId"):
+                    return int(mine["championId"])
+        except Exception:
+            pass
         try:
             return self.req("GET", "/lol-champ-select/v1/current-champion") or 0
         except Exception:

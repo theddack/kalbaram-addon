@@ -192,7 +192,13 @@ class Lcu(unittest.TestCase):
         c.req = lambda m, path, body=None: replies[path]
         self.assertEqual(c.current_champion(), 799)
         replies["/lol-champ-select/v1/session"] = {}
+        replies["/lol-gameflow/v1/session"] = {}
         self.assertEqual(c.current_champion(), 39)
+        # 선택이 끝난 뒤: 그 판 챔피언 목록의 내 챔피언 (current-champion 은 바꾸기 전 챔피언으로 남는다)
+        replies["/lol-gameflow/v1/session"] = {"gameData": {"playerChampionSelections": [
+            {"puuid": "other", "championId": 101}, {"puuid": "me", "championId": 136}]}}
+        replies["/lol-summoner/v1/current-summoner"] = {"puuid": "me"}
+        self.assertEqual(c.current_champion(), 136)
 
     def test_keeps_user_sets_and_backs_up(self):
         c = self._client({"itemSets": [{"uid": "mine", "title": "내 세트"}], "accountId": 456})

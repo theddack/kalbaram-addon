@@ -180,6 +180,7 @@ def live_url():
 LIVE_URL = live_url()
 LOG_KEEP = 30  # 게임 기록 파일은 최근 30개만 남긴다
 LIVE_INTERVAL = 3  # 초 (게임 중·챔피언 선택 중)
+CHAMP_SELECT_INTERVAL = 1  # 초 (롤 클라이언트: 챔피언 선택·로딩 중. 상점 추천은 이때 써야 상점에 보인다)
 STALL_EXTRA = 7  # 초. 게임 연동 한 바퀴가 이만큼 더 늦으면 '멈춤'으로 기록 (읽기 제한 2초 + 여유)
 RES_EVERY = 30  # 초. 게임 중 자원 기록 간격
 IDLE_INTERVAL = 10  # 초 (게임 밖·롤 클라이언트 꺼짐: 자주 볼 필요가 없어서 줄인다)
@@ -534,9 +535,10 @@ class LcuWatcher(threading.Thread):
         while True:
             self.beat = time.time()
             self.poll()
-            # 챔피언 선택 중에만 3초마다 (상점 추천 등록 시점), 그 밖에는 10초마다
-            busy = self.state.get("connected") and self.state.get("phase") in ("ChampSelect", "GameStart", "PreEndOfGame", "WaitingForStats")
-            time.sleep(LIVE_INTERVAL if busy else IDLE_INTERVAL)
+            # 챔피언 선택·로딩 중엔 1초마다 (대기석에서 끝나기 직전에 바꿔도 상점 추천을 다시 쓰게), 경기 결과 기다릴 땐 3초, 그 밖에는 10초
+            phase = self.state.get("phase") if self.state.get("connected") else None
+            time.sleep(CHAMP_SELECT_INTERVAL if phase in ("ChampSelect", "GameStart")
+                       else LIVE_INTERVAL if phase in ("PreEndOfGame", "WaitingForStats") else IDLE_INTERVAL)
 
     def poll(self):
         try:

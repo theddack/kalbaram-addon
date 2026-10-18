@@ -1930,12 +1930,16 @@ window.addEventListener("pywebviewready", async () => {
   $("#itemset-toggle").checked = st.itemSets;
   $("#itemset-toggle").addEventListener("change", (e) => { api.set_item_sets(e.target.checked); itemSetDone = null; });
   // 롤 클라이언트: 게임 중엔 챔피언 선택·상점 추천 등록이 끝났으니 15초마다만 (게임 중 CPU)
-  let lcuAt = 0;
+  // 챔피언 선택·로딩 중엔 1초마다: 3초 간격이면 끝나기 직전에 대기석에서 바꾼 챔피언을 놓쳤다 (2026-10-18 아우렐리온 솔 판)
+  let lcuAt = 0, lcuPhase = "";
   setInterval(async () => {
-    if (document.body.classList.contains("ingame") && Date.now() - lcuAt < 15000) return;
+    const gap = Date.now() - lcuAt;
+    if (document.body.classList.contains("ingame") ? gap < 15000 : !["ChampSelect", "GameStart"].includes(lcuPhase) && gap < 3000) return;
     lcuAt = Date.now();
-    applyLcu(api, await api.get_lcu());
-  }, 3000);
+    const L = await api.get_lcu();
+    lcuPhase = (L && L.phase) || "";
+    applyLcu(api, L);
+  }, 1000);
   // 모드는 하나 (저사양 PC 도): 계산 기억은 작게, 챔피언 목록은 검색할 때만. 쉽게/자세히 보기는 고를 수 있다
   document.body.classList.add("light");
   S.setMemoMax(8);
