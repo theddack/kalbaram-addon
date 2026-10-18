@@ -21,6 +21,7 @@ const KEY_MIN = 0.6;  // 주된 효과로 볼 강도
 const ITEM_MIN = 0.5; // 아이템이 그 효과를 가졌다고 볼 강도
 
 function check(d, champIds = REPS, augIds = null) {
+  S.attachSimilar(d.champions, null, d.items);  // 화면과 같게: 공식 추천이 없는 챔피언은 비슷한 챔피언 추천
   const champs = champIds.map((id) => d.champions.find((c) => c.id === id)).filter(Boolean);
   const legendary = d.items.filter((i) => i.kind === "legendary");
   // 아이템으로 살 수 있는 효과 종류 (궁극기·고정 피해처럼 아이템이 거의 없는 건 '살림' 판정에서 뺀다)

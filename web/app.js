@@ -487,6 +487,7 @@ async function init() {
   const res = await fetch("data.json");
   state.data = sanitizeData(await res.json());
   const d = state.data;
+  S.attachSimilar(d.champions, null, d.items);  // 공식 칼바람 추천이 없는 챔피언: 비슷한 챔피언 3명의 공식 추천 (추천 가산점)
   $("#meta").textContent = `패치 ${d.version} · 증강 ${d.augments.length}개 (비활성 ${d.disabled.length}개 제외) · 아이템 ${d.items.length}개 (칼바람 증강 모드 상점 기준)`;
   $("#meta").title = `게임 데이터 ${d.dataVersion}\n제외한 비활성 증강: ${d.disabled.join(", ")}`;
   $("#champ-search").addEventListener("input", renderChamps);
@@ -1645,7 +1646,8 @@ function renderNextBuy(rows) {
   const changed = !prev || now.names.join() !== prev.names.join();
   if (changed) state.nextSnap = now;
   if (prev && changed && now.names.length) {
-    const newAug = now.augs.find((n) => !prev.augs.includes(n));
+    // 마지막으로 바뀐 뒤 새로 고른 증강이 여럿이면 가장 최근 것 (먼저 고른 것으로는 안 바뀌었으니)
+    const newAug = now.augs.filter((n) => !prev.augs.includes(n)).at(-1);
     const why = (r) => r.advice ? (adv.find((l) => l.includes(r.item.name)) || adv.find((l) => l.includes(r.advice)) || r.advice).split(" → ")[0]
       : r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
       : now.enemy !== prev.enemy && now.enemy ? `${now.enemy}에 맞춰` : null;
