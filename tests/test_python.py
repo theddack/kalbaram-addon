@@ -1871,3 +1871,30 @@ class MatchHistory(unittest.TestCase):
         w._match_wait = (5, time.time() - desktop.MATCH_WAIT - 1)
         w.fetch_match()
         self.assertIsNone(w._match_wait, "너무 오래 기다리면 그만")
+
+
+class ItemAttackCount(unittest.TestCase):
+    """크라켄 학살자: '세 번째 기본 공격마다'(한글 숫자)를 평타마다로, 최대값을 평소 값으로 쓰던 것 (게임 데이터 근거로만 고친다)"""
+
+    SPELL = {"mSpellCalculations": {"MaximumDamage": {"mMultiplier": {"mDataValue": "MaxAmpNumber"}, "mModifiedGameCalculation": "DamageAmount"}}}
+
+    def test_kraken(self):
+        e = {"kind": "physical", "name": "MaximumDamage", "base": [0], "lvl": [262.5, 350], "trigger": {"type": "onhit", "from": "적중 시"}}
+        B.fix_attack_count(e, self.SPELL, {"AttackCount": 3.0, "MaxAmpNumber": 1.75})
+        self.assertEqual(e["trigger"]["type"], "attacks")
+        self.assertEqual(e["trigger"]["n"], 3)
+        self.assertEqual(e["lvl"], [150.0, 200.0])
+        self.assertEqual(e["name"], "DamageAmount")
+        self.assertIn("1.75", e["assume"])
+
+    def test_untouched_without_data(self):
+        # 구인수의 격노검처럼 AttackCount 가 없으면 적중 시 그대로 (설명에 '세 번째'가 있어도)
+        e = {"kind": "magic", "name": "OnHitDamage", "base": [30], "trigger": {"type": "onhit"}}
+        B.fix_attack_count(e, {"mSpellCalculations": {}}, {"OnHitDamage": 30})
+        self.assertEqual(e, {"kind": "magic", "name": "OnHitDamage", "base": [30], "trigger": {"type": "onhit"}})
+
+    def test_data_json_kraken(self):
+        d = json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))
+        it = next(i for i in d["items"] if i["id"] == "6672")
+        tr = it["effects"][0]["trigger"]
+        self.assertEqual((tr["type"], tr.get("n")), ("attacks", 3), "받은 데이터에도 반영")
