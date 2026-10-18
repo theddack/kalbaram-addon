@@ -48,13 +48,42 @@ const nowItems = () => [...state.items.map((it) => {
   return up && it.passiveStats ? { ...it, passiveStats: dropKeys(it.passiveStats, up) } : it;
 }), ...partItems()];
 
+// 중첩형 패시브(세나 안개·베이가 극악·쓰레쉬 영혼 …)는 계산에 게임 중반 평균 중첩으로 들어간다. 게임 중 '지금 능력치'는
+// 게임이 알려 준 실제 값으로 지금 중첩을 거꾸로 맞춘다 (2026-10-18 세나 판: 평균 40개로 고정해 3레벨 공격력 80 vs 실제 50, 18레벨 299 vs 345).
+// 규칙 stats 의 첫 능력치(세나 공격력)로 배율을 찾고 나머지(치명타)도 같은 배율로. stackStep 은 계단식(세나 치명타 20개마다 10%).
+// 추천 점수(18레벨 완성)는 평균 중첩 그대로 둔다. 킨드레드 공속은 화살 세례 뒤에만 붙어 지금 값으로 못 맞춘다
+const STACK_MAX = 5;  // 평균의 5배까지만 (다른 이유의 차이를 중첩으로 몰아넣지 않게)
+function nowChamp() {
+  const c = state.champ && S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
+  const s = state.liveStats, ss = c && c.stackStats;
+  if (!liveOn || !s || !ss || !Number(s.moveSpeed)) return c;
+  if (state.liveLevel != null && state.liveLevel !== state.level) return c;
+  const key = Object.keys(ss).find((k) => LIVE_STAT[k] && k !== "AS" && typeof ss[k] === "number" && ss[k] > 0);
+  const real = key && Number(s[LIVE_STAT[key]]);
+  if (!key || !Number.isFinite(real)) return c;
+  const step = ((state.data.rules.champions || {})[state.champ.id] || {}).stackStep || {};
+  const at = (k) => ({ ...c, stackStats: Object.fromEntries(Object.entries(ss).map(([n, v]) => {
+    if (typeof v !== "number") return [n, v];
+    const x = v * k;
+    return [n, step[n] ? Math.floor(x / step[n] + 1e-9) * step[n] : x];
+  })) });
+  const val = (k) => St.computeStats(at(k), state.level, nowItems(), nowAugStats(), statOpts()).total[key] || 0;
+  // 배율 → 기준 능력치는 거의 직선 (라바돈처럼 % 증가가 있어도). 치명타 초과분 전환 같은 꺾임은 두 번 더 고친다
+  const v0 = val(0), slope = val(1) - v0;
+  if (!(slope > 0)) return c;
+  let k = (real - v0) / slope;
+  for (let i = 0; i < 2; i++) k += (real - val(Math.max(0, Math.min(STACK_MAX, k)))) / slope;
+  k = Math.max(0, Math.min(STACK_MAX, k));
+  return { ...at(k), stackNow: k };
+}
+
 function statCheck() {
   const s = state.liveStats;
   if (!liveOn || !s || !state.champ || !state.data) return null;
   if (!Number(s.moveSpeed)) return null;  // 불러오는 중 (게임 능력치가 전부 0)
   // 게임 레벨을 아직 반영하기 전(쿨타임 다시 그리기가 먼저 보낸다)이면 비교하지 않는다 (2026-10-17 카이사 판: 첫 기록이 18레벨 vs 실제 3레벨)
   if (state.liveLevel != null && state.liveLevel !== state.level) return null;
-  const c = S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
+  const c = nowChamp();
   const t = St.computeStats(c, state.level, nowItems(), nowAugStats(), statOpts()).total;
   const r2 = (v) => Math.round(v * 100) / 100;
   const rows = {};
@@ -546,7 +575,7 @@ function renderStats() {
   if (now) $("#metrics").insertAdjacentHTML("beforeend", `<p class="muted small">상대: 지금 적 평균 ${fmt(now.level, Number.isInteger(now.level) ? 0 : 1)}레벨·산 아이템 기준 (방어력 ${fmt(now.ARMOR)} · 마법 저항력 ${fmt(now.MR)})</p>`);
 }
 function renderStatsNow() {
-  const c = state.champ && S.withChosenFeatures(state.champ, state.chosen, state.data.rules);  // 검을 뽑아라 → 근접
+  const c = state.champ && nowChamp();  // 검을 뽑아라 → 근접, 중첩형은 지금 중첩
   if (!c) { $("#metrics").innerHTML = ""; $("#stat-table").innerHTML = ""; $("#skills").innerHTML = ""; return; }
   const L = state.level, o = statOpts(), have = nowItems();
   const e0 = St.computeStats(c, L, [], [], o).total;
@@ -582,7 +611,8 @@ function renderStatsNow() {
   };
   $("#stat-table").innerHTML = `<tr><th>능력치</th><th>기본 (${L}레벨)</th><th>아이템</th><th>증강</th><th>합계</th>${real ? "<th>게임 실제</th>" : ""}</tr>`
     + rows.map(([k, name, d, pct]) => `<tr><td>${name}</td>${cell(e0[k] || 0, k, d, pct)}${cell((e1[k] || 0) - (e0[k] || 0), k, d, pct, true)}${cell((e2[k] || 0) - (e1[k] || 0), k, d, pct, true)}<td><b>${pct ? fmt((e2[k] || 0) * 100) + "%" : fmt(e2[k] || 0, d)}</b></td>${realCell(k, d, pct)}</tr>`).join("")
-    + (real ? `<tr><td colspan="6" class="muted small">게임 실제: 게임이 알려 준 지금 값이에요. 합계엔 한타 평균 중첩이 들어 있어 싸움 밖에선 더 클 수 있어요. ⚠️는 5% 넘게 다른 칸이에요.</td></tr>` : "");
+    + (real ? `<tr><td colspan="6" class="muted small">게임 실제: 게임이 알려 준 지금 값이에요. 합계엔 한타 평균 중첩이 들어 있어 싸움 밖에선 더 클 수 있어요. ⚠️는 5% 넘게 다른 칸이에요.</td></tr>` : "")
+    + (c.stackNow != null ? `<tr><td colspan="6" class="muted small">${esc(c.name)}의 쌓는 능력치는 게임 실제 값으로 지금 쌓인 만큼 맞췄어요 (게임 중반 평균의 ${fmt(c.stackNow * 100)}%). 추천 점수는 평균 그대로예요.</td></tr>` : "");
   const effRows = m.effects.map((e) => `<tr><td>${esc(e.src)}</td><td><span class="chip k-${esc(e.kind)}">${esc(KIND_LABEL[e.kind] || e.kind)}</span></td>
       <td>${fmt(e.value)}</td><td>${e.hit != null ? fmt(e.hit) : "-"}</td><td class="muted">${esc(TRIGGER_LABEL[e.trigger] || e.trigger)}</td></tr>`).join("");
   $("#skills").innerHTML = (effRows ? `<table class="eff-table"><tr><th>패시브·아이템·증강 효과</th><th>종류</th><th>1회</th><th>방어 적용</th><th>발동</th></tr>${effRows}</table>

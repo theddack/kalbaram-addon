@@ -780,6 +780,31 @@ test("트리스타나 판: 지금 능력치의 무한 반복 가속은 처치 �
   assert.deepEqual(p.errors, []);
 });
 
+test("세나 판: 쌓는 능력치(안개)는 게임 실제 값으로 지금 쌓인 만큼 맞춘다 (치명타는 20개마다 10% 계단)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  // 2026-10-18 세나 판 실제 값: 3레벨 시작 (안개 0개) → 계산 공격력 80 · 치명타 20% 였다
+  const base = { armor: 30.9, magicResist: 34.62, moveSpeed: 330, maxHealth: 725.98, attackSpeed: 0.64 };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Senna", level: 3, items: [], stats: { ...base, attackDamage: 50, critChance: 0 } });
+  p.w.sendOverlay();
+  let rows = sent.at(-1).statCheck.rows;
+  assert.deepEqual([...rows.AD], [50, 50]);
+  assert.deepEqual([...rows.CRIT], [0, 0]);
+  // 12레벨 · 거대한 히드라·광전사의 군화: 안개 0개일 때와 70개(공격력 +52.5)일 때 → 치명타는 3계단(30%)만 오른다 (35% 가 아니라)
+  const st12 = { armor: 64.38, magicResist: 43.83, moveSpeed: 390, maxHealth: 2272.09, attackSpeed: 0.98, critChance: 0 };
+  const at = (ad) => {
+    p.w.applyLive({ enabled: true, inGame: true, champion: "Senna", level: 12, items: ["3748", "3006"], stats: { ...st12, attackDamage: ad } });
+    p.w.sendOverlay();
+    return sent.at(-1).statCheck.rows;
+  };
+  const zero = at(1).AD[0];  // 실제가 맨몸보다 낮으면 0개로 본다
+  rows = at(zero + 52.5);
+  assert.ok(Math.abs(rows.AD[0] - (zero + 52.5)) < 0.01, `공격력 ${rows.AD[0]}`);
+  assert.equal(Math.round((rows.CRIT[0] - at(zero).CRIT[0]) * 100), 30);
+  assert.deepEqual(p.errors, []);
+});
+
 test("게임 화면 상자는 다음 구매가 맨 위, 고른 증강은 맨 아래 · 자주 안 쓰는 버튼은 더보기 메뉴 안", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
