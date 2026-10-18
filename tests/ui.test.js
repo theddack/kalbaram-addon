@@ -805,6 +805,29 @@ test("세나 판: 쌓는 능력치(안개)는 게임 실제 값으로 지금 쌓
   assert.deepEqual(p.errors, []);
 });
 
+test("아우렐리온 솔(도박꾼) 판: 계산과 실제 차이가 30초 넘게 남으면 모루 능력치로 더한다 · 모루가 없는 판은 안 더한다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  let now = 1000;
+  p.w.anvilNow = () => now;
+  // 2026-10-18 실제 값 9레벨 · 리치베인·마법사의 신발: 스킬 가속 계산 10 · 실제 32 (모루), 공격 속도는 잠깐 켜진 값이라 안 본다
+  const stats = { maxHealth: 1405.42, attackDamage: 79.57, abilityPower: 100, attackSpeed: 1.2, armor: 48.96, magicResist: 38.76, abilityHaste: 32, moveSpeed: 408.1 };
+  const live = () => { p.w.applyLive({ enabled: true, inGame: true, champion: "AurelionSol", level: 9, items: ["3100", "3020"], stats }); p.w.sendOverlay(); return sent.at(-1).statCheck; };
+  live();
+  assert.equal(live().rows.HASTE[0], 10, "모루 증강 전엔 그대로");
+  p.w.applyAug({ offers: null, seq: 1, picked: "도박꾼", pickSeq: 1 });
+  live();
+  now += 10;
+  assert.equal(live().rows.HASTE[0], 10, "30초 전엔 아직");
+  now += 25;
+  const sc = live();
+  assert.equal(sc.rows.HASTE[0], 32);
+  assert.deepEqual({ ...sc.anvil }, { HASTE: 22 });
+  assert.notEqual(sc.rows.AS[0], 1.2, "공격 속도는 모루로 보지 않는다");
+  assert.deepEqual(p.errors, []);
+});
+
 test("게임 화면 상자는 다음 구매가 맨 위, 고른 증강은 맨 아래 · 자주 안 쓰는 버튼은 더보기 메뉴 안", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];

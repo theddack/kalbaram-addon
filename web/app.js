@@ -22,14 +22,51 @@ const dropKeys = (st, keys) => { const o = { ...st }; for (const k of keys || []
 const nowAugStats = () => {
   const list = augStats();
   if (!liveOn) return list;
-  return list.map((s, i) => {
+  const anvil = Object.keys(state.anvil || {}).length ? [{ ...state.anvil }] : [];
+  return [...list.map((s, i) => {
     if (!s) return s;
     const rule = S.ruleOf(state.data.rules, state.chosen[i]);
     const o = dropKeys(s.goldValue ? { ...s, goldValue: 0 } : s, rule.uptime);
     for (const [k, v] of Object.entries(rule.perTakedown || {})) o[k] = (o[k] || 0) + v * (state.takedowns || 0);
     return o;
-  });
+  }), ...anvil];
 };
+
+// ---- 모루 능력치 (게임 중): 모루에서 고른 능력치는 무작위라 게임이 알려 주지 않는다. 모루를 주는 증강(도박꾼·능력치! 등)을
+// 골랐거나 모루 아이템을 본 판에서만, 계산과 게임 실제 값의 차이가 ANVIL_HOLD 초 넘게 그대로 남으면 모루 능력치로 더한다.
+// 2026-10-18 아우렐리온 솔(도박꾼) 판: 스킬 가속 +22·방어력 +30·마법 저항력 +30 이 끝까지 남았다.
+// 잠깐 켜지는 효과(바드 판 공격 속도 +0.33 은 중간에 사라졌다)를 더하지 않게: 공격 속도·이동 속도·치명타는 보지 않는다
+const ANVIL_KEYS = ["AD", "AP", "ARMOR", "MR", "HASTE", "HP"];
+const ANVIL_ITEMS = new Set(["220000", "220008", "220009", "220010", "220011"]);  // 추가 능력치·모루 교환권 (cdragon items.json)
+const ANVIL_HOLD = 30;  // 초
+let anvilCand = {};
+function anvilNow() { return Date.now() / 1000; }
+const anvilSource = () => state.anvilSeen
+  || (state.inventory || []).some((id) => ANVIL_ITEMS.has(id))
+  || state.chosen.some((a) => /능력치 모루/.test(String(a.desc || "").replace(/<[^>]+>/g, "")));
+function resetAnvil() { state.anvil = {}; state.anvilSeen = false; anvilCand = {}; }
+function trackAnvil(rows, skip) {
+  if (!anvilSource()) { anvilCand = {}; return false; }
+  state.anvilSeen = true;
+  const now = anvilNow();
+  let changed = false;
+  for (const k of ANVIL_KEYS) {
+    if (!rows[k] || k === skip) continue;
+    const diff = rows[k][1] - rows[k][0];
+    const tol = Math.max(k === "HP" ? 10 : 1, Math.abs(rows[k][1]) * 0.02);
+    const c = anvilCand[k];
+    if (Math.abs(diff) <= tol) { delete anvilCand[k]; continue; }
+    if (!c || Math.abs(c.v - diff) > tol) { anvilCand[k] = { v: diff, since: now }; continue; }
+    if (now - c.since >= ANVIL_HOLD) {
+      const v = Math.round(((state.anvil || {})[k] || 0) + diff);  // % 증가(라바돈 등)가 있으면 다음 바퀴에 마저 맞춘다
+      state.anvil = { ...(state.anvil || {}), [k]: Math.max(0, v) };
+      delete anvilCand[k];
+      changed = true;
+    }
+  }
+  return changed;
+}
+
 
 // ---- 계산 vs 게임 실제 능력치 (게임 연동 championStats). 계산이 틀린 곳(데이터·룬·중첩)을 찾는 근거.
 // 계산값엔 한타 평균 중첩(치명적 리듬 등)이 들어가 있어 싸움 밖에선 실제보다 클 수 있다
@@ -93,7 +130,11 @@ function statCheck() {
     if ((k === "CRIT" || k === "LS") && real > 1) real /= 100;  // 게임은 0~1 또는 0~100 (형식 미확인 → 둘 다)
     rows[k] = [r2(t[k] || 0), r2(real)];
   }
-  return { level: state.level, items: state.items.map((i) => i.id), augs: state.chosen.map((a) => a.id), rows };
+  // 모루 능력치를 새로 정했으면 한 번 더 계산 (다음 비교부터 차이가 없어진다)
+  const sk = c && c.stackNow != null ? Object.keys(c.stackStats || {})[0] : null;
+  if (trackAnvil(rows, sk)) return statCheck();
+  return { level: state.level, items: state.items.map((i) => i.id), augs: state.chosen.map((a) => a.id), rows,
+    anvil: Object.keys(state.anvil || {}).length ? { ...state.anvil } : undefined };
 }
 // 5% 넘게 다르면 (아주 작은 값은 반올림 차이를 빼려고 최소 폭: 비율·공속 0.02, 나머지 1)
 const statOff = ([calc, real], k) => Math.abs(calc - real) > Math.max(Math.abs(real) * STAT_OFF, ["AS", "CRIT", "LS"].includes(k) ? 0.02 : 1);
@@ -612,6 +653,7 @@ function renderStatsNow() {
   $("#stat-table").innerHTML = `<tr><th>능력치</th><th>기본 (${L}레벨)</th><th>아이템</th><th>증강</th><th>합계</th>${real ? "<th>게임 실제</th>" : ""}</tr>`
     + rows.map(([k, name, d, pct]) => `<tr><td>${name}</td>${cell(e0[k] || 0, k, d, pct)}${cell((e1[k] || 0) - (e0[k] || 0), k, d, pct, true)}${cell((e2[k] || 0) - (e1[k] || 0), k, d, pct, true)}<td><b>${pct ? fmt((e2[k] || 0) * 100) + "%" : fmt(e2[k] || 0, d)}</b></td>${realCell(k, d, pct)}</tr>`).join("")
     + (real ? `<tr><td colspan="6" class="muted small">게임 실제: 게임이 알려 준 지금 값이에요. 합계엔 한타 평균 중첩이 들어 있어 싸움 밖에선 더 클 수 있어요. ⚠️는 5% 넘게 다른 칸이에요.</td></tr>` : "")
+    + (Object.keys(state.anvil || {}).length && liveOn ? `<tr><td colspan="6" class="muted small">🔨 모루 능력치 (게임 실제 값으로 맞춤, 증강 칸에 들어 있어요): ${Object.entries(state.anvil).filter(([, v]) => v).map(([k, v]) => `${esc((St.ROWS.find((r) => r[0] === k) || [k, k])[1])} +${fmt(v)}`).join(" · ")}</td></tr>` : "")
     + (c.stackNow != null ? `<tr><td colspan="6" class="muted small">${esc(c.name)}의 쌓는 능력치는 게임 실제 값으로 지금 쌓인 만큼 맞췄어요 (게임 중반 평균의 ${fmt(c.stackNow * 100)}%). 추천 점수는 평균 그대로예요.</td></tr>` : "");
   const effRows = m.effects.map((e) => `<tr><td>${esc(e.src)}</td><td><span class="chip k-${esc(e.kind)}">${esc(KIND_LABEL[e.kind] || e.kind)}</span></td>
       <td>${fmt(e.value)}</td><td>${e.hit != null ? fmt(e.hit) : "-"}</td><td class="muted">${esc(TRIGGER_LABEL[e.trigger] || e.trigger)}</td></tr>`).join("");
@@ -1748,6 +1790,7 @@ function applyLive(L) {
     liveEnded = false;
     augTimers = {};
     state.chosen = [];
+    resetAnvil();
     state.tierMode = "auto";
     clearOffers();
   }
@@ -1823,6 +1866,7 @@ function applyLive(L) {
     state.champ = champ;
     state.weights = S.profile(champ, d.tags);
     state.chosen = [];
+    resetAnvil();
     clearOffers();
     renderChamps();
   }
