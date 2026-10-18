@@ -11,6 +11,7 @@
 import difflib
 import re
 import sys
+import collections
 import threading
 import time
 
@@ -494,6 +495,28 @@ class _Mouse:
         return hit
 
 
+class _ClickWatch(threading.Thread):
+    """선택 화면이 떠 있는 동안만 왼쪽 클릭을 따로 지켜본다 (읽기 스레드는 글자 읽기 0.1~1.5초 동안 클릭을 못 봤다).
+    2026-10-18 아우렐리온 솔 판: 가운데 카드(환영 무기)를 누른 클릭이 읽는 중에 빠지고, 닫히는 중 누른 오른쪽 카드가 고른 것으로 잡혔다"""
+
+    def __init__(self, armed):
+        super().__init__(daemon=True, name="클릭 지켜보기")
+        self.armed = armed  # 선택 화면이 떠 있나 (함수)
+        self.clicks = collections.deque(maxlen=20)  # (화면 x, y)
+
+    def run(self):
+        mouse = _Mouse()
+        while True:
+            if self.armed():
+                hit = mouse.clicked()
+                if hit:
+                    self.clicks.append(hit)
+                time.sleep(CLICK_POLL)
+            else:
+                mouse.down = True  # 화면이 뜨기 전부터 누르고 있던 버튼은 새 클릭으로 세지 않는다
+                time.sleep(0.2)
+
+
 class Reader(threading.Thread):
     """게임 창이 맨 앞일 때 1초마다 카드 이름 줄을 읽는다. game_rect() → ((x, y, w, h) | None, 맨 앞 여부)"""
 
@@ -691,6 +714,8 @@ class Reader(threading.Thread):
             self.status = f"글자 인식을 쓸 수 없음: {str(e)[:120]}"
             return
         self.lang = ocr.lang
+        self._clickw = _ClickWatch(lambda: self.tracker.showing)
+        self._clickw.start()
         matcher, names = None, None
         while True:
             self.beat = time.time()
@@ -707,6 +732,7 @@ class Reader(threading.Thread):
                 cur = self.names_fn()
                 if cur is not names:
                     names, matcher = cur, Matcher(cur)
+                self._drain_clicks(rect)  # 읽기 전에: 화면이 닫힌 걸 보기 전에 그 전 클릭부터 넣는다
                 t0 = time.time()
                 self.scan(cap, ocr, matcher, rect)
                 self.last_ms = int((time.time() - t0) * 1000)
@@ -785,15 +811,26 @@ class Reader(threading.Thread):
             recent = time.time() - getattr(self.tracker, "_full_at", 0) < 10
             self.wait_shop_keys(mouse, time.time() + (INTERVAL if recent else IDLE_INTERVAL), bool(rect))
             return
-        gx, gy, gw, gh = rect
         while time.time() < end:
-            hit = mouse.clicked()
-            if hit:
-                rx, ry = (hit[0] - gx) / gw, (hit[1] - gy) / gh
-                slot = card_at(self.tracker.state.get("pos"), rx, ry)
-                self.tracker.click(slot)
-                self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot})
+            if getattr(self, "_clickw", None) is None:  # 클릭 지켜보기 스레드가 없으면 (시험) 여기서 직접
+                hit = mouse.clicked()
+                if hit:
+                    self._click_at(rect, hit)
+            self._drain_clicks(rect)
             time.sleep(CLICK_POLL)
+
+    def _drain_clicks(self, rect):
+        """클릭 지켜보기 스레드가 모은 클릭을 누른 차례대로 넣는다"""
+        cw = getattr(self, "_clickw", None)
+        while cw is not None and cw.clicks and rect:
+            self._click_at(rect, cw.clicks.popleft())
+
+    def _click_at(self, rect, hit):
+        gx, gy, gw, gh = rect
+        rx, ry = (hit[0] - gx) / gw, (hit[1] - gy) / gh
+        slot = card_at(self.tracker.state.get("pos"), rx, ry)
+        self.tracker.click(slot)
+        self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot})
 
     def wait_shop_keys(self, mouse, end, active=True):
         """end 까지 쉬되, 상점 여닫기(P·ESC·왼쪽 클릭)를 보면 SHOP_KEY_DELAY 뒤 바로 돌아가 상점 창을 읽게 한다"""

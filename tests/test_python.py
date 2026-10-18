@@ -756,6 +756,22 @@ class AugOcr(unittest.TestCase):
         t.feed(["검을 뽑아라", "판도라의 상자", "보석 건틀릿"])
         self.assertEqual((t.state["picked"], t.state["pickSeq"], t.state["pickedFrom"]), (None, 2, ["궁극기 봇", "한 발에 두 놈", "열의"]))
 
+    def test_clicks_during_read_are_kept(self):
+        # 2026-10-18 아우렐리온 솔 판: 글자를 읽는 동안 누른 가운데 카드 클릭이 빠지고, 닫히는 중 누른 오른쪽 카드가 고른 것이 됐다
+        # → 클릭은 따로 모아 두었다가 누른 차례대로 넣는다 (먼저 누른 카드 = 고른 증강)
+        import collections
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r._rec = lambda *a, **k: None
+        r.tracker.feed(["마법 미사일", "환영 무기", "최첨단 발명가"])
+        r.tracker.state["pos"] = {"xs": [0.2906, 0.5035, 0.717], "nameY": 0.4019}
+        r._clickw = type("W", (), {"clicks": collections.deque([(504, 324), (686, 324)])})()
+        r._drain_clicks((0, 0, 1000, 1000))
+        r.tracker.feed(None)
+        r.tracker.feed(None)
+        self.assertEqual(r.tracker.state["picked"], "환영 무기")
+
+
 class UpdateData(unittest.TestCase):
     """데이터 받기는 별도 프로그램에서 (창이 '응답 없음'이 되지 않게), 진행은 기록 파일로 본다"""
 
