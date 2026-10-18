@@ -618,6 +618,24 @@ test("적별 위협·보호막·공격 속도·확인된 적 증강 (산 아이�
   assert.deepEqual(p.errors, []);
 });
 
+test("Tab 점수판에서 읽은 적 증강도 확인된 적 증강으로 (소환사 주문 칸과 합침, 겹치면 한 번)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const aug = p.data.augments.find((a) => a.category !== "spell");
+  const grow = p.data.augments.find((a) => a.id === "GrowthSpurt");
+  const foes = ["Mordekaiser", "Lux"];
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Garen", level: 12, items: [], enemies: foes,
+    enemyBuilds: foes.map((c, k) => ({ champion: c, level: 12, items: [], augments: k === 0 ? ["GrowthSpurt"] : [] })),
+    aug: { enemyAugs: { mordekaiser: ["GrowthSpurt"], Lux: [aug.id, "없는증강"] } } });
+  p.w.sendOverlay();
+  const e = sent.at(-1).enemy;
+  assert.deepEqual(e.builds.find((b) => b.champ === "Mordekaiser").augments, [grow.name], "같은 증강은 한 번");
+  assert.deepEqual(e.builds.find((b) => b.champ === "Lux").augments, [aug.name], "모르는 id 는 버린다");
+  assert.ok(e.advice.some((l) => l.startsWith("적 증강 (확인됨)") && l.includes(`럭스 ${aug.name}`)), e.advice.join("\n"));
+  assert.deepEqual(p.errors, []);
+});
+
 test("추천 다시 계산 시간을 게임 화면 표시와 같이 보낸다 (기록용)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];

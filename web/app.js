@@ -244,9 +244,15 @@ function showTarget() {
   $("#target-info").textContent = `${enemy ? enemy.name + " 18레벨 추천 빌드 기준" : n ? `아이템·증강 비교: 이번 판 적 ${n}명 18레벨 예상 (산 아이템 + 안 산 칸은 평균 빌드)` : "기준 상대 (전 챔피언 중앙값)"}: 체력 ${fmt(T.HP)} · 방어력 ${fmt(T.ARMOR)} · 마법 저항력 ${fmt(T.MR)}`
     + (now ? ` / 지금 적 (평균 ${fmt(now.level, Number.isInteger(now.level) ? 0 : 1)}레벨, 산 아이템만): 체력 ${fmt(now.HP)} · 방어력 ${fmt(now.ARMOR)} · 마법 저항력 ${fmt(now.MR)}` : "");
 }
-// 소환사 주문 칸에 보이는 증강 이름표(GrowthSpurt, ARAM_FlashySpell) → 증강. 공식 데이터에서 상대 증강이 보이는 유일한 곳이라
-// 이것만 '확인됨'으로 쓴다 (다른 증강은 추측하지 않는다). 이름표와 증강 id 가 조금 다르다 (ARAM_FlashySpell ↔ ARAM_Flashy)
+// 소환사 주문 칸에 보이는 증강 이름표(GrowthSpurt, ARAM_FlashySpell) → 증강. 공식 데이터에서 상대 증강이 보이는 곳이라
+// '확인됨'으로 쓴다 (다른 증강은 추측하지 않는다). 이름표와 증강 id 가 조금 다르다 (ARAM_FlashySpell ↔ ARAM_Flashy).
+// 프로그램은 Tab 점수판 아이콘으로 읽은 적 증강(aug.enemyAugs, 증강 id)도 보낸다 → 같은 '확인됨'에 합친다
 const normId = (v) => String(v).toLowerCase().replace(/_active$/, "").replace(/[^a-z0-9]/g, "");
+const boardAugs = (L, champ) => {
+  const m = (L.aug && L.aug.enemyAugs) || {};
+  const k = Object.keys(m).find((c) => c.toLowerCase() === String(champ).toLowerCase());
+  return k ? m[k].map((id) => state.data.augments.find((a) => a.id === id)).filter(Boolean) : [];
+};
 function spellAugment(token) {
   const t = normId(token);
   if (!t) return null;
@@ -1836,7 +1842,8 @@ function applyLive(L) {
     kills: x.kills || 0,
     items: (x.items || []).map((id) => d.items.find((i) => i.id === String(id))).filter((i) => i && (i.kind === "legendary" || i.kind === "boots"))
       .filter((it, i, arr) => arr.findIndex((y) => y.name === it.name) === i).slice(0, S.SLOTS),
-    augments: (x.augments || []).map(spellAugment).filter(Boolean),
+    augments: (x.augments || []).map(spellAugment).concat(boardAugs(L, x.champion))
+      .filter((a, i, arr) => a && arr.findIndex((y) => y && y.id === a.id) === i),
   })).filter((x) => x.champ);
   const ebKey = JSON.stringify(eb.map((x) => [x.champ.id, x.items.map((i) => i.id).sort(), x.augments.map((a) => a.id)]));
   if (ebKey !== enemyBuildKey) { enemyBuildKey = ebKey; state.enemyBuilds = eb; applyEnemyTarget(); }

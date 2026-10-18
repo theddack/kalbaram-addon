@@ -898,6 +898,85 @@ class HudIcons(unittest.TestCase):
         ids, unsure = augocr.resolve_groups(groups, self.names, set())
         self.assertEqual(unsure, [["돌진", "앙파상"]], "선택지를 못 봤으면 못 정함")
 
+    def board_image(self, layout):
+        """가짜 Tab 점수판: {챔피언: (x, y, [증강 id])} → (점수판 부분 rgb, 게임 창 높이). 초상화 44px · 증강 26px (1680x1050)"""
+        import numpy as np
+        from PIL import Image
+        canvas = Image.new("RGB", (1680, 1050), (12, 14, 20))
+
+        def put(path, x, y, s):
+            im = Image.open(path).convert("RGBA").resize((s, s))
+            bg = Image.new("RGBA", (s, s), (0, 0, 0, 255))
+            bg.alpha_composite(im)
+            canvas.paste(bg.convert("RGB"), (x, y))
+        for c, (x, y, augs) in layout.items():
+            put(ROOT / "web" / "icons" / "champion" / f"{c}.webp", x, y, 44)
+            for k, a in enumerate(augs):
+                put(ROOT / "web" / "icons" / "augment" / f"{a}.webp", x + 300 + k * 32, y + 9, 26)
+        l, t, r, b = self.h.BOARD_REGION
+        return np.asarray(canvas)[int(1050 * t):int(1050 * b), int(1680 * l):int(1680 * r)], 1050
+
+    def test_board_reads_enemy_augments_by_row(self):
+        # Tab 점수판: 적 줄의 증강만, 그 줄 챔피언 것으로. 아군 줄 증강은 빼고, 여러 사람이 같은 증강을 골라도 각자
+        single = [g[0] for g in self.tpl.groups if len(g) == 1]
+        a, b, c, d = single[3], single[40], single[77], single[100]
+        img, H = self.board_image({"Jinx": (200, 250, [a, b]), "Vayne": (200, 310, [c]),
+                                   "Ahri": (900, 250, [d]), "Garen": (900, 310, [a])})
+        br = self.h.BoardReader(self.tpl, str(ROOT / "web" / "icons" / "champion"))
+        br.champ_size, br.aug_size = 44 / 1050, 26 / 1050  # 크기 찾기는 무거워서 (실제로는 첫 읽기에서 찾는다)
+        br.scan(img, H, ["Jinx", "Vayne"], ["Ahri", "Garen"])
+        got = br.scan(img, H, ["Jinx", "Vayne"], ["Ahri", "Garen"])
+        self.assertEqual({k: sorted(g[0] for g in v) for k, v in got.items()}, {"Jinx": sorted([a, b]), "Vayne": [c]})
+        br.reset()
+        self.assertEqual(br.picked, {})
+        self.assertEqual(br.champ_size, 44 / 1050, "새 게임이어도 찾은 크기는 그대로")
+        empty = self.board_image({})[0]
+        br.scan(empty, H, ["Jinx"], [])
+        self.assertIsNone(br.champ_size, "초상화를 못 찾으면 다음엔 여러 크기로")
+
+    def test_tab_triggers_board_read(self):
+        # Tab 을 누르고 있으면 점수판을 읽는다. 적을 모르거나 직전에 읽었거나, 잠깐만 눌렀으면 안 읽는다
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.icon_dir = "x"
+        live = {"inGame": True, "enemies": ["Jinx"]}
+        r.live_fn = lambda: live
+
+        class Key:
+            def __init__(self, held=True):
+                self.keys, self.down = [augocr.BOARD_KEY], held
+
+            def pressed(self, vk):
+                if vk in self.keys:
+                    self.keys.remove(vk)
+                    return True
+                return False
+
+            def held(self, vk):
+                return self.down
+
+            def clicked(self):
+                return None
+        r.wait_shop_keys(Key(), time.time() + 1)
+        self.assertTrue(r._board_now)
+        r._board_now = False
+        r.wait_shop_keys(Key(held=False), time.time() + 0.4)
+        self.assertFalse(r._board_now, "잠깐 누른 Tab 은 무시")
+        r._board_at = time.time()
+        r.wait_shop_keys(Key(), time.time() + 0.3)
+        self.assertFalse(r._board_now, "BOARD_GAP 안에는 다시 안 읽는다")
+        r._board_at = 0.0
+        live["enemies"] = []
+        r.wait_shop_keys(Key(), time.time() + 0.3)
+        self.assertFalse(r._board_now, "적을 모르면 안 읽는다")
+        live["enemies"] = ["Jinx"]
+        r.enemy_augs = {"Jinx": ["a", "b", "c", "d"]}
+        self.assertFalse(r._board_ready(), "적 증강을 다 찾았으면 그만")
+        r.enemy_augs = {}
+        r.board = types.SimpleNamespace(reset=lambda: None)
+        r.new_game()
+        self.assertEqual(r.state["enemyAugs"], {})
+
     def test_recover_when_offers_misread(self):
         # 선택지 이름을 잘못(덜) 읽어 고른 증강(골드 강탈)이 비교 대상에 없었다 → 넓혀 찾기로 채운다
         old = self.h.REGION
