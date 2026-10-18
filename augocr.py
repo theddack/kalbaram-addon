@@ -61,6 +61,7 @@ SHOP_KEY_DELAY = 0.25  # 초. 키를 누른 뒤 상점 창이 그려질 때까�
 BOARD_KEY = 0x09  # VK_TAB
 BOARD_DELAY = 0.2  # 초. Tab 을 누른 뒤 점수판이 그려질 때까지 (그때도 누르고 있어야 읽는다)
 BOARD_GAP = 6.0  # 초. 점수판 읽기 최소 간격 (Tab 을 자주 눌러도)
+BOARD_MAX = 6  # 한 사람 증강 칸 수 (전적 playerAugment1~6. 2026-10-18 전적 39판에 5개 고른 사람이 있었다)
 SHOP_CLICK_GAP = 2.0  # 초. 상점이 열려 있을 때 왼쪽 클릭(닫기 ✕)으로 바로 읽기는 이 간격에 한 번만
 
 
@@ -1052,7 +1053,7 @@ class Reader(threading.Thread):
         enemies = live.get("enemies") or []
         if not live.get("inGame") or not enemies:
             return False
-        return any(len(self.enemy_augs.get(c, [])) < MAX_AUGMENTS for c in enemies)
+        return any(len(self.enemy_augs.get(c, [])) < BOARD_MAX for c in enemies)
 
     def _board_grab(self, cap, rect):
         """Tab 을 누르고 있는 동안 점수판 부분을 잡아 두고, 아이콘 비교는 따로 낮은 우선순위로"""
