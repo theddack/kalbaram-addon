@@ -220,6 +220,8 @@ def parse_live(raw):
     # 적 챔피언: 팀이 다른 사람 (적 구성에 맞춘 추천용. 연습 모드처럼 혼자면 빈 목록)
     foes = [p for p in players if mine and p.get("team") and p.get("team") != mine.get("team") and cid(p)]
     enemies = [cid(p) for p in foes]
+    # 아군 챔피언 (나 포함): Tab 점수판에서 증강 아이콘을 어느 줄 사람 것인지 가릴 때 (한 줄에 두 팀이 나란한 배치)
+    allies = [cid(p) for p in players if mine and p.get("team") == mine.get("team") and cid(p)]
     # 적이 산 아이템·레벨 (게임 안 Tab 점수판에 보이는 정보): 상대 능력치·관통·치유 감소 판단에 쓴다
     enemy_builds = [{"champion": cid(p), "level": p.get("level"), "kills": (p.get("scores") or {}).get("kills") or 0,
                      "items": [str(i.get("itemID")) for i in p.get("items") or [] if i.get("itemID")],
@@ -239,6 +241,7 @@ def parse_live(raw):
         "gameMode": gd.get("gameMode"), "gameTime": gd.get("gameTime"),
         "augmentFields": find_keys(raw, r"augment"),
         "enemies": enemies,
+        "allies": allies,
         "enemyBuilds": enemy_builds,
         "spellAugments": spell_augments(mine) if mine else [],
     }

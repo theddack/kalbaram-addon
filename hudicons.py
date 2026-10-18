@@ -117,9 +117,10 @@ def _windows(np, lum):
     return v.reshape(ys * xs, GRID * GRID), (ys, xs)
 
 
-def find_icons(tpl, rgb, size_px):
+def find_icons(tpl, rgb, size_px, max_cands=5, min_score=MIN_SCORE, unique=True):
     """rgb: (H, W, 3) 0~255 화면 조각, size_px: 아이콘 한 변 픽셀 → [(증강 id, 점수, x, y)] (조각 기준 좌표)
-    1) 흑백 12x12 로 아이콘이 있을 만한 자리 후보 → 2) 그 자리를 컬러 24x24 로 몇 픽셀·크기 흔들어 가며 어떤 증강인지"""
+    1) 흑백 12x12 로 아이콘이 있을 만한 자리 후보 → 2) 그 자리를 컬러 24x24 로 몇 픽셀·크기 흔들어 가며 어떤 증강인지.
+    max_cands: 후보 자리 수 (증강 칸은 4~6칸이라 5), unique: 같은 그림은 한 번만 (점수판은 여러 사람이 같은 증강을 고를 수 있어 False)"""
     np = tpl.np
     from PIL import Image
     f = GRID / size_px
@@ -141,14 +142,14 @@ def find_icons(tpl, rgb, size_px):
         top[y0 * xs: y0 * xs + len(block)] = tpl.scores(block).max(1)
         time.sleep(PAUSE)
     cands = []
-    for i in np.argsort(-top)[:200]:
+    for i in np.argsort(-top)[:max(200, 40 * max_cands)]:
         if top[i] < FIND_SCORE:
             break
         y, x = divmod(int(i), xs)
         if any(abs(x - cx) < GRID * 0.7 and abs(y - cy) < GRID * 0.7 for cx, cy in cands):
             continue
         cands.append((x, y))
-        if len(cands) >= 5:  # 증강 칸은 최대 4~6칸 (후보를 줄여 가볍게)
+        if len(cands) >= max_cands:  # 증강 칸은 최대 4~6칸 (후보를 줄여 가볍게)
             break
     hits = []
     step = max(1, round(size_px / 24))  # 위치를 아이콘 크기의 1/24 씩 (1/12 씩이면 몇 픽셀 엇나가 점수가 확 떨어졌다)
@@ -175,10 +176,10 @@ def find_icons(tpl, rgb, size_px):
         sc = float(S[j])
         row = S[j[0]].copy()
         row[j[1]] = -1
-        if sc >= MIN_SCORE and sc - float(row.max()) >= MARGIN:
+        if sc >= min_score and sc - float(row.max()) >= MARGIN:
             x0, y0 = where[j[0]]
             aid = tpl.ids[j[1]]
-            if not any(h[0] == aid for h in hits):
+            if not (unique and any(h[0] == aid for h in hits)):
                 hits.append((aid, sc, x0, y0))
     return hits
 
@@ -244,6 +245,105 @@ class HudReader:
         self.size = None
         self.picked = []
         self._seen = {}
+
+
+# ---------------------------------------------------------------- Tab 점수판: 적이 고른 증강 (시험: 실제 점수판 그림으로 크기·문턱을 맞출 것)
+# 점수판 줄마다 챔피언 초상화와 그 사람이 고른 증강 아이콘이 보인다 (진 판 캡처: '취약' 아이콘, 1680x1050 에서 약 26px).
+# 점수판 배치를 가정하지 않는다: 이번 판 챔피언 초상화를 먼저 찾고, 같은 줄에서 가장 가까운 초상화의 증강으로 붙인다.
+BOARD_REGION = (0.04, 0.06, 0.96, 0.94)  # 찾는 범위 (게임 창 비율: 왼쪽, 위, 오른쪽, 아래)
+BOARD_CHAMP_SIZES = tuple(round(0.026 * 1.1 ** i, 4) for i in range(9))  # 초상화 한 변 / 게임 창 높이 후보 (0.026~0.056)
+BOARD_AUG_SIZES = tuple(round(0.019 * 1.08 ** i, 4) for i in range(7))  # 증강 아이콘 후보 (0.019~0.030)
+BOARD_CHAMP_SCORE = 0.80  # 초상화는 이번 판 챔피언 10명하고만 비교해서 문턱을 낮춘다 (둥근 테두리·어둡게 칠한 경우)
+BOARD_SURE = 0.95  # 한 번만 봐도 인정하는 점수 (아니면 두 번 보여야)
+
+
+class BoardReader:
+    """scan(점수판 그림, 게임 창 높이, 적 챔피언, 아군 챔피언) → picked {적 챔피언 id: [증강 그림 묶음]}"""
+
+    CONFIRM = 2
+
+    def __init__(self, aug_tpl, champ_dir):
+        self.aug_tpl = aug_tpl
+        self.champ_dir = champ_dir  # icons/champion (파일 이름이 챔피언 id)
+        self._champ_tpl, self._champ_key = None, None
+        self.champ_size = None  # 찾은 초상화 크기 (게임 창 높이 비율)
+        self.aug_size = None
+        self.picked = {}
+        self._seen = {}
+        self.last = {"champs": [], "augs": []}
+
+    def _champs(self, champs):
+        key = tuple(sorted(champs))
+        if key != self._champ_key:
+            self._champ_tpl = Templates(self.champ_dir, {c: c for c in champs})
+            self._champ_key = key
+        return self._champ_tpl
+
+    @staticmethod
+    def _best(tpl, rgb, H, sizes, **kw):
+        """여러 크기로 찾아 평균 점수가 가장 높은 크기 → (찾은 것, 크기)"""
+        best, best_size, best_mean = [], None, 0.0
+        for s in sizes:
+            hits = find_icons(tpl, rgb, max(GRID, s * H), **kw)
+            m = sum(h[1] for h in hits) / len(hits) if hits else 0.0
+            if m > best_mean:
+                best, best_size, best_mean = hits, s, m
+        return best, best_size
+
+    def scan(self, rgb, H, enemies, allies=()):
+        """rgb: 점수판 부분 (h, w, 3), H: 게임 창 높이. 좌표는 rgb 기준"""
+        champs = [c for c in dict.fromkeys(list(enemies) + list(allies)) if c]
+        tpl = self._champs(champs)
+        if not tpl.groups:
+            return self.picked
+        sizes = [self.champ_size] if self.champ_size else BOARD_CHAMP_SIZES
+        found, size = self._best(tpl, rgb, H, sizes, max_cands=len(champs) + 4, min_score=BOARD_CHAMP_SCORE)
+        if not found:
+            self.last = {"champs": [], "augs": []}
+            self.champ_size = self.aug_size = None  # 고정한 크기로 못 찾았으면 (창 크기를 바꿈) 다음엔 여러 크기로
+            return self.picked
+        self.champ_size = self.champ_size or size
+        ps = self.champ_size * H
+        portraits = [(g[0], sc, x, y) for g, sc, x, y in found]  # 묶음 → 챔피언 id (같은 그림 챔피언은 없다)
+        h, w = rgb.shape[:2]
+        augs = []
+        enemy_set = set(enemies)
+        for cid, _, px, py in portraits:
+            if cid not in enemy_set:
+                continue
+            # 그 초상화 줄만 잘라 증강을 찾는다 (점수판 전체보다 훨씬 가볍다)
+            y0, y1 = max(0, int(py - 0.2 * ps)), min(h, int(py + 1.2 * ps))
+            band = rgb[y0:y1]
+            asz = [self.aug_size] if self.aug_size else BOARD_AUG_SIZES
+            hits, s = self._best(self.aug_tpl, band, H, asz, max_cands=12, unique=False)
+            if hits and not self.aug_size:
+                self.aug_size = s
+            augs += [(g, sc, x, y + y0) for g, sc, x, y in hits]
+        # 증강마다 같은 줄(세로 중심이 초상화 높이 안)에서 가장 가까운 초상화의 것 (아군 초상화도 후보: 한 줄에 두 팀이 나란한 배치)
+        a_half = (self.aug_size or 0.025) * H / 2
+        now = {}
+        for g, sc, x, y in augs:
+            cy = y + a_half
+            row = [(abs(x + a_half - (px + ps / 2)), cid) for cid, _, px, py in portraits if py - 0.1 * ps <= cy <= py + 1.1 * ps]
+            if not row:
+                continue
+            cid = min(row)[1]
+            if cid in enemy_set:
+                now.setdefault(cid, {})
+                now[cid][g] = max(sc, now[cid].get(g, 0.0))
+        self.last = {"champs": portraits, "augs": augs, "size": [self.champ_size, self.aug_size]}
+        for cid, gs in now.items():
+            for g, sc in gs.items():
+                k = (cid, g)
+                self._seen[k] = self._seen.get(k, 0) + 1
+                if (self._seen[k] >= self.CONFIRM or sc >= BOARD_SURE) and g not in self.picked.setdefault(cid, []):
+                    self.picked[cid].append(g)
+        return self.picked
+
+    def reset(self):
+        """새 게임: 읽은 증강만 비운다 (찾은 크기는 같은 창 크기면 그대로 쓴다)"""
+        self.picked, self._seen = {}, {}
+        self.last = {"champs": [], "augs": []}
 
 
 # ---------------------------------------------------------------- 상점 창 안 아이템 위치 (시험: 기록만, 화면 표시는 실제 그림으로 확인한 뒤)

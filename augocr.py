@@ -9,6 +9,7 @@
 화면 비율 (실제 화면 2026-10-14): 카드 위 테두리 ≈ 0.20, 이름 줄 ≈ 0.46, 새로고침 버튼 ≈ 0.70 (게임 창 높이 비율)
 """
 import difflib
+import os
 import re
 import sys
 import collections
@@ -56,6 +57,10 @@ CLICK_POLL = 0.03  # 초 (선택 화면이 떠 있을 때만 마우스 버튼 �
 SHOP_TEXT = re.compile(r"작할 아이템|아이템 선|^\d{3,5}$|^(공격력|공격 속도|치명타|확률|활률) ?\d")
 SHOP_KEYS = (0x50, 0x1B)  # P(상점 기본 키) · ESC(닫기)
 SHOP_KEY_DELAY = 0.25  # 초. 키를 누른 뒤 상점 창이 그려질 때까지
+# Tab(점수판)을 누르고 있으면 점수판에서 적이 고른 증강 아이콘을 읽는다 (hudicons.BoardReader). 키 상태만 읽는다
+BOARD_KEY = 0x09  # VK_TAB
+BOARD_DELAY = 0.2  # 초. Tab 을 누른 뒤 점수판이 그려질 때까지 (그때도 누르고 있어야 읽는다)
+BOARD_GAP = 6.0  # 초. 점수판 읽기 최소 간격 (Tab 을 자주 눌러도)
 SHOP_CLICK_GAP = 2.0  # 초. 상점이 열려 있을 때 왼쪽 클릭(닫기 ✕)으로 바로 읽기는 이 간격에 한 번만
 
 
@@ -484,6 +489,10 @@ class _Mouse:
         downs[vk] = down
         return hit
 
+    def held(self, vk):
+        """지금 누르고 있나"""
+        return bool(self.u.GetAsyncKeyState(vk) & 0x8000)
+
     def clicked(self):
         down = bool(self.u.GetAsyncKeyState(0x01) & 0x8000)  # VK_LBUTTON
         hit = None
@@ -572,11 +581,19 @@ class Reader(threading.Thread):
         self._load = []  # 최근 글자 읽기 한 바퀴 시간(ms)
         self._counts = {}  # 한 판 동안 센 것: 상점 읽기·알아봄, 보호 켬 등 (기록 요약)
         self._bottom_ok = set()  # 상점 아래 버튼 줄로 상점을 알아본 적이 있는 게임 창 크기 (그러면 위쪽 띠는 안 읽는다)
+        self.board = None  # Tab 점수판 읽기 (hudicons.BoardReader)
+        self.enemy_augs = {}  # 점수판에서 읽은 적 증강 {챔피언 id: [증강 id]}
+        self.board_unsure = {}  # 그림이 같은 증강이라 못 정한 것 {챔피언 id: [[이름 목록]]}
+        self._board_now = False
+        self._board_busy = False
+        self._board_at = 0.0
 
     @property
     def state(self):
         return {**self.tracker.state, "status": self.status, "ms": self.last_ms, "near": self.near, "shop": self.shop,
-                "hudPicked": list(self.hud_ids), "hudUnsure": [list(g) for g in self.hud_unsure]}
+                "hudPicked": list(self.hud_ids), "hudUnsure": [list(g) for g in self.hud_unsure],
+                "enemyAugs": {c: list(v) for c, v in self.enemy_augs.items()},
+                "boardUnsure": {c: [list(g) for g in v] for c, v in self.board_unsure.items()}}
 
     def scan_hud(self, cap, rect, game_n=None):
         import numpy as np
@@ -798,6 +815,10 @@ class Reader(threading.Thread):
         self.hud_ids = []
         self.hud_unsure = []
         self.offered = set()
+        if self.board:
+            self.board.reset()
+        self.enemy_augs, self.board_unsure = {}, {}
+        self._board_at = 0.0
 
     def id_names(self):
         """{증강 id: 이름} (아이콘 파일 이름이 id)"""
@@ -835,6 +856,11 @@ class Reader(threading.Thread):
     def wait_shop_keys(self, mouse, end, active=True):
         """end 까지 쉬되, 상점 여닫기(P·ESC·왼쪽 클릭)를 보면 SHOP_KEY_DELAY 뒤 바로 돌아가 상점 창을 읽게 한다"""
         while time.time() < end:
+            if active and mouse is not None and self._board_ready() and mouse.pressed(BOARD_KEY):
+                time.sleep(BOARD_DELAY)
+                if getattr(mouse, "held", lambda vk: True)(BOARD_KEY):  # 잠깐 누른 건 점수판이 안 그려졌을 수 있다
+                    self._board_now = True
+                    return
             if active and mouse is not None:
                 key = any(mouse.pressed(vk) for vk in SHOP_KEYS)
                 # 클릭은 상점이 열려 있을 때만 (✕·바깥 클릭으로 닫기). 닫혀 있을 때 클릭마다 읽었더니 한 판 215번 (사미라 판, 싸울 때 클릭)
@@ -876,6 +902,8 @@ class Reader(threading.Thread):
 
     def scan(self, cap, ocr, matcher, rect):
         gx, gy, gw, gh = rect
+        if self._board_now:
+            self._board_grab(cap, rect)
         self.apply_fix()
         # 상점이 열려 있으면 증강 선택 화면은 아니다 → 이름 줄은 3번에 한 번만 (상점 아이템 이름을 증강 일부로 읽고 CPU 도 아끼게)
         self._name_n = getattr(self, "_name_n", 0) + 1
@@ -1013,6 +1041,76 @@ class Reader(threading.Thread):
                     # 확인 중이면 2초 뒤 한 번 더 (연속 2번 보여야 인정)
                     self._hud_at = time.time() + self._hud_wait(soon)
                 self._hud_busy = False
+
+    def _board_ready(self):
+        """Tab 점수판을 읽을 때인가: 게임 중이고 적을 알고, 직전 읽기에서 BOARD_GAP 이 지났고, 적 증강을 아직 다 못 찾았을 때"""
+        if not self.icon_dir or self._board_busy or getattr(self, "board_error", None) or self.protect:
+            return False
+        if time.time() - self._board_at < BOARD_GAP:
+            return False
+        live = (self.live_fn() or {}) if self.live_fn else {}
+        enemies = live.get("enemies") or []
+        if not live.get("inGame") or not enemies:
+            return False
+        return any(len(self.enemy_augs.get(c, [])) < MAX_AUGMENTS for c in enemies)
+
+    def _board_grab(self, cap, rect):
+        """Tab 을 누르고 있는 동안 점수판 부분을 잡아 두고, 아이콘 비교는 따로 낮은 우선순위로"""
+        self._board_now = False
+        try:
+            import numpy as np
+            import hudicons
+        except ImportError as e:
+            self.board_error = str(e)[:120]
+            return
+        live = (self.live_fn() or {}) if self.live_fn else {}
+        gx, gy, gw, gh = rect
+        l, t, r, b = hudicons.BOARD_REGION
+        x0, y0, x1, y1 = int(gw * l), int(gh * t), int(gw * r), int(gh * b)
+        raw = cap.grab(gx + x0, gy + y0, x1 - x0, y1 - y0)
+        rgb = np.frombuffer(raw, dtype=np.uint8).reshape(y1 - y0, x1 - x0, 4)[..., [2, 1, 0]].copy()
+        self._board_busy, self._board_at = True, time.time()
+        args = (rgb, rect, (x0, y0), list(live.get("enemies") or []), list(live.get("allies") or []), getattr(self, "_game_n", 0))
+        threading.Thread(target=self._board_job, args=args, daemon=True, name="점수판 읽기").start()
+
+    def _board_job(self, rgb, rect, offset, enemies, allies, game_n):
+        try:
+            lower_thread()
+            import hudicons
+            names = self.id_names()
+            key = tuple(sorted(names))
+            if self.board is None or getattr(self, "_board_key", None) != key:
+                champ_dir = os.path.join(os.path.dirname(self.icon_dir), "champion")
+                self.board = hudicons.BoardReader(hudicons.Templates(self.icon_dir, names), champ_dir)
+                self._board_key = key
+            t0 = time.time()
+            picked = self.board.scan(rgb, rect[3], enemies, allies)
+            self._time("점수판", t0)
+            self._count("점수판")
+            # 그림이 같은 증강(돌진=앙파상)은 적이 무엇을 골랐는지 모르니 하나로 정하지 않는다
+            ids = {c: [g[0] for g in gs if len(g) == 1] for c, gs in picked.items()}
+            unsure = {c: [[names.get(a, a) for a in g] for g in gs if len(g) > 1] for c, gs in picked.items()}
+            with self._lock:
+                if game_n != getattr(self, "_game_n", 0):
+                    return  # 읽는 동안 새 게임
+                changed = ids != self.enemy_augs
+                self.enemy_augs, self.board_unsure = ids, unsure
+            gw, gh = rect[2], rect[3]
+            ox, oy = offset
+            last = self.board.last
+            self._rec("board", {"enemies": {c: [names.get(i, i) for i in v] for c, v in ids.items()}, "unsure": unsure,
+                                "size": last.get("size"), "window": [gw, gh],
+                                "champs": [[c, round(sc, 3), round((x + ox) / gw, 3), round((y + oy) / gh, 3)] for c, sc, x, y in last["champs"]],
+                                "seen": [[list(g)[:3], round(sc, 3), round((x + ox) / gw, 3), round((y + oy) / gh, 3)] for g, sc, x, y in last["augs"]]},
+                      dedupe=True)
+            if changed:
+                self._changed()
+        except ImportError as e:
+            self.board_error = str(e)[:120]
+        except Exception as e:
+            self._rec("error", {"error": "점수판: " + str(e)[:200]}, dedupe=True)
+        finally:
+            self._board_busy = False
 
     def _watch_load(self, ms):
         """자동 보호: 최근 SLOW_N 바퀴 평균이 SLOW_MS 를 넘으면 protect 를 켠다 (진단용 그림·상점 위쪽 띠를 건너뛴다).
