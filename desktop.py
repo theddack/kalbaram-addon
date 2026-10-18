@@ -1389,6 +1389,10 @@ def main():
 
     watcher.on_new_game = on_new_game
 
+    def eog_result(res):
+        if res:
+            diag.write(f"경기 결과와 고른 증강 대조: {'모두 맞음' if res[0] else '다름'} · 그림 {res[1]}장 지움")
+
     def on_game_end():
         try:
             if reader:
@@ -1405,7 +1409,7 @@ def main():
                     diag.write(perf_line(perf))
         except Exception as e:  # 기록이 실패해도 마무리(zip·CPU 상한 되돌리기)는 한다
             diag.write(f"한 판 처리 시간 기록 실패: {str(e)[:100]}")
-        rec.finish()
+        eog_result(rec.finish())  # 경기 결과가 판 끝 처리보다 먼저 왔으면 여기서 맞춘다
         webmem.set(in_game=False)
         if capped:
             cap_cpu(CPU_CAP["idle"])
@@ -1424,16 +1428,13 @@ def main():
         aug_by_num = {}
 
     def on_eog(eog):
-        if not rec.last_dir or time.time() - rec.last_end > 30 * 60 or not aug_by_num:
+        if not aug_by_num:
             return
         st = ((eog.get("localPlayer") or {}).get("stats") or {})
         names = [aug_by_num.get(st.get(f"playerAugment{i}")) for i in range(1, 7) if st.get(f"playerAugment{i}")]
         if None in names:  # 모르는 번호 (데이터가 옛것) → 판정하지 않는다
             return
-        res = gamelog.tidy(rec.last_dir, names)
-        rec.last_dir = None
-        if res:
-            diag.write(f"경기 결과와 고른 증강 대조: {'모두 맞음' if res[0] else '다름'} · 그림 {res[1]}장 지움")
+        eog_result(rec.end_of_game(names))  # 판 기록이 아직 안 끝났으면 끝날 때 맞춘다
 
     lw.on_eog = on_eog
     geo = settings.get("geometry") or {}

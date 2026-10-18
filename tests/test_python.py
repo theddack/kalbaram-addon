@@ -1519,6 +1519,25 @@ class GameLog(unittest.TestCase):
             self.assertEqual(f"{folder.name}/card_01.png" in names, not match)
         self.assertIsNone(gamelog.tidy(base / "없음", ["취약"]))
 
+    def test_eog_before_game_end(self):
+        # 경기 결과가 판 끝 처리보다 먼저 와도 (2026-10-18 세나 판: 4초 먼저) 판을 끝낼 때 맞춰 본다
+        import gamelog
+        base = pathlib.Path(tempfile.mkdtemp())
+        rec = gamelog.GameRecorder(base)
+        rec.start("Senna")
+        rec.event("picked", {"picked": "양손잡이"})
+        folder = rec.dir
+        (folder / "card_01.png").write_bytes(b"x")
+        self.assertIsNone(rec.end_of_game(["양손잡이"]), "아직 기록 중")
+        self.assertEqual(rec.finish(), (True, 1))
+        self.assertEqual(list(folder.glob("card_*.png")), [])
+        self.assertIsNone(rec.end_of_game(["양손잡이"]), "한 판에 한 번만")
+        # 보통 순서 (판 끝 → 결과)
+        rec.start("Senna")
+        rec.event("picked", {"picked": "취약"})
+        self.assertIsNone(rec.finish())
+        self.assertEqual(rec.end_of_game(["부식"]), (False, 0))
+
     def test_eog_numbers_in_data(self):
         # 경기 결과의 증강 번호 → 이름 (2026-10-17 트리스타나 판 eog: 1388·1092·2016·1046)
         augs = json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))["augments"]
