@@ -70,6 +70,9 @@
     w.HP += defense / 20;
     w.ARMOR += defense / 25;
     w.MR += defense / 25;
+    // 공격 속도가 고정인 챔피언(진): 추가 공격 속도는 공격력으로 조금(1%당 0.3%)만 바뀌고 공격 횟수는 늘지 않는다
+    // → 공격 속도·적중 시 효과 비중을 낮추고 물리 관통을 올린다 (2026-10-18 진 판: 판 내내 윤 탈·루난·유령 무희를 권했다)
+    if (champ.asFixed) { w.AS *= 0.3; w.ONHIT *= 0.3; w.LETHAL = Math.max(w.LETHAL, 0.7); }
     for (const [t, v] of Object.entries(champ.traits || {})) if (t in w) w[t] += TRAIT_BOOST * v;
     if (champ.partype !== "마나") w.MANA = 0;
     for (const t of tags) w[t] = Math.min(1.5, round(w[t]));

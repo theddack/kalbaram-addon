@@ -375,3 +375,13 @@ test("관통력 %는 곱해서 합친다 (35% + 35% = 57.75%, 게임 규칙)", (
   const t = St.computeStats(champ("Graves"), 18, its, [], { aram: true }).total;
   assert.ok(Math.abs(t.ARPEN - (1 - 0.65 * 0.65)) < 1e-9, `ARPEN ${t.ARPEN}`);
 });
+
+test("진: 공격 속도는 아이템으로 오르지 않고, 추가 공격 속도·치명타는 공격력으로 · 추천 가중치에서 공격 속도 비중이 낮다", () => {
+  const jhin = champ("Jhin");
+  const zeal = d.items.find((i) => i.name === "광전사의 군화");
+  const a = St.computeStats(jhin, 18, [], []).total, b = St.computeStats(jhin, 18, [zeal], []).total;
+  assert.equal(b.AS, a.AS);
+  assert.ok(b.AD > a.AD, "추가 공격 속도 → 공격력");
+  const S2 = require("../web/scoring.js");
+  assert.ok(S2.profile(jhin, d.tags).AS < S2.profile(champ("Jinx"), d.tags).AS);
+});

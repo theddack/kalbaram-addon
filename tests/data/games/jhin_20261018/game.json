@@ -1,0 +1,81 @@
+{
+  "champion": "Jhin",
+  "note": "2026-10-18 진 판 (v0.1.43). 고른 증강 4개 = 경기 결과 파일과 같음. 시각 = 기록의 고른 시각",
+  "augments": [
+    [
+      "ARAM_Vulnerability",
+      40
+    ],
+    [
+      "ARAM_DontBlink",
+      318
+    ],
+    [
+      "ARAM_StatsOnStats",
+      594
+    ],
+    [
+      "ARAM_GiantSlayer",
+      847
+    ]
+  ],
+  "known": {
+    "AD·CRIT·HASTE·ARMOR": "594초에 고른 능력치 더하기 능력치!(모루 3개) 뒤로 모루 능력치(게임이 알려 주지 않음) 만큼 실제가 높다. 1510초 HASTE 66 은 그 뒤 고른 모루·아이템 추정"
+  },
+  "gaps": {
+    "live_2s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_302s.json": {
+      "HP": 0,
+      "AD": 0,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 0
+    },
+    "live_603s.json": {
+      "HP": 0,
+      "AD": 19.46,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 11
+    },
+    "live_905s.json": {
+      "HP": 0,
+      "AD": 31.57,
+      "AP": 0,
+      "ARMOR": 0,
+      "MR": 0,
+      "CRIT": 0,
+      "HASTE": 11
+    },
+    "live_1207s.json": {
+      "HP": 0,
+      "AD": 59.05,
+      "AP": 0,
+      "ARMOR": 12,
+      "MR": 0,
+      "CRIT": 0.16,
+      "HASTE": 11
+    },
+    "live_1509s.json": {
+      "HP": 0,
+      "AD": 124.34,
+      "AP": 0,
+      "ARMOR": 12,
+      "MR": 0,
+      "CRIT": 0.24,
+      "HASTE": 51
+    }
+  }
+}

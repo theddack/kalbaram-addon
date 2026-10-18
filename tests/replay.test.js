@@ -39,3 +39,11 @@ test("트리스타나 판: 무한 반복 가속은 60 + 처치 관여당 3, 치�
     assert.ok(Math.abs(calc - real) < 0.05, `${r.t}초 ${k}: 계산 ${calc} · 실제 ${real}`);
   }
 });
+
+test("진 판: 속삭임(공격 속도 고정 · 레벨·치명타·추가 공격 속도만큼 공격력 증가)으로 모루 전(3·7레벨) 공격력이 실제와 같다", () => {
+  const { rows } = replay("jhin_20261018");
+  for (const t of [2, 303]) {
+    const r = rows.find((x) => x.t === t);
+    for (const [k, [calc, real]] of Object.entries(r.stats)) assert.ok(Math.abs(calc - real) < 0.05, `${t}초 ${k}: 계산 ${calc} · 실제 ${real}`);
+  }
+});

@@ -149,6 +149,16 @@
     }
     t.AS = asOf(bonusAS);
     t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG;
+    // 진처럼 공격 속도가 고정인 챔피언 (champ.asFixed, rules.json champions.asFixed): 공격 속도는 레벨로만 오르고,
+    // 레벨별 % + 치명타 확률·추가 공격 속도 비례 %만큼 공격력이 늘며 치명타 피해는 줄어든다 (위키 Jhin '속삭임')
+    if (champ.asFixed) {
+      const f = champ.asFixed;
+      t.AS = base.AS + base.asLevelBonus * champ.asRatio;
+      const pct = (f.adPctLv[Math.min(17, L - 1)] || 0) + (f.perCrit || 0) * t.CRIT + (f.perBonusAS || 0) * bonusAS;
+      t.AD *= 1 + pct;
+      t.bonusAD = t.AD - base.AD;
+      t.CRITDMG *= f.critDmgMult || 1;
+    }
     // 이동 속도: (기본 + 고정 증가) × (1 + % 증가 합) → 게임의 감속 구간(415·490 초과분 감소)
     const rawMS = (base.MS + add.MS + (conv.HASTEtoMS ? t.HASTE * conv.HASTEtoMS : 0)) * (1 + add.MSP + mult.MSmult);
     t.MS = rawMS > 490 ? rawMS * 0.5 + 230 : rawMS > 415 ? rawMS * 0.8 + 83 : rawMS;
