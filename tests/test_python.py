@@ -126,7 +126,7 @@ class Logs(unittest.TestCase):
         d = pathlib.Path(tempfile.mkdtemp())
         for i in range(35):
             f = d / f"game_{i:02d}.json"
-            f.write_text("{}")
+            f.write_text("{}", encoding="utf-8")
             os.utime(f, (time.time() - 100 + i,) * 2)
         desktop.prune_logs(d, 30)
         left = sorted(p.name for p in d.glob("game_*.json"))
@@ -466,10 +466,10 @@ class DataFiles(unittest.TestCase):
         bundled = {"version": "16.21.1", "format": 2, "dataVersion": "b"}
         old = {"version": "16.20.1", "format": 2, "dataVersion": "a"}
         newer = {"version": "16.22.1", "format": 2, "dataVersion": "c"}
-        (d / "b.json").write_text(json.dumps(bundled))
+        (d / "b.json").write_text(json.dumps(bundled), encoding="utf-8")
         for mine, keep in ((old, False), (newer, True), (None, False), ({**newer, "format": 1}, False)):
             p = d / "m.json"
-            p.write_text(json.dumps(mine) if mine else '{"version": "16.2')  # None → 반쯤 쓰인 파일
+            p.write_text(json.dumps(mine) if mine else '{"version": "16.2', encoding="utf-8")  # None → 반쯤 쓰인 파일
             m, b = desktop.data_patch(p), desktop.data_patch(d / "b.json")
             replace = m is None or (b and (m[0] <= b[0] or m[1] < b[1]))
             self.assertEqual(not replace, keep, mine)
@@ -482,7 +482,7 @@ class DataFiles(unittest.TestCase):
         ts = [threading.Thread(target=lambda i=i: [st.set(**{f"k{i}": j}) for j in range(30)]) for i in range(8)]
         [t.start() for t in ts]
         [t.join() for t in ts]
-        self.assertEqual(len(json.loads(st.path.read_text())), 8)  # 깨지지 않은 JSON
+        self.assertEqual(len(json.loads(st.path.read_text(encoding="utf-8"))), 8)  # 깨지지 않은 JSON
 
     def test_data_has_format_and_parts(self):
         self.assertGreaterEqual(DATA.get("format", 0), 2)
@@ -507,7 +507,7 @@ class DataQuality(unittest.TestCase):
             p = ROOT / ".cache" / "bins" / f"{cid}.bin.json"
             if not p.exists():
                 self.skipTest("캐시 없음 (CI)")
-            b = json.loads(p.read_text())
+            b = json.loads(p.read_text(encoding="utf-8"))
             sp = next(v["mSpell"] for k, v in b.items() if isinstance(v, dict) and "Passive" in k
                       and isinstance(v.get("mSpell"), dict) and calc in (v["mSpell"].get("mSpellCalculations") or {}))
             e, _ = Calc(sp).calc(calc, 1)
@@ -525,7 +525,7 @@ class Measure(unittest.TestCase):
         for n in ('"나"', '"적"', "abc", "eyJ"):
             self.assertNotIn(n, red)
         d = pathlib.Path(tempfile.mkdtemp())
-        (d / "eog_123.json").write_text(red)
+        (d / "eog_123.json").write_text(red, encoding="utf-8")
         m = desktop.measure_summary(d)
         self.assertEqual(m["games"], 1)
         self.assertEqual(m["perMinute"]["TOTAL_DAMAGE_DEALT_TO_CHAMPIONS"]["avg"], 2000.0)
@@ -551,7 +551,7 @@ class Measure(unittest.TestCase):
         w.poll()  # 같은 게임은 한 번만 저장
         files = list(d.glob("eog_*.json"))
         self.assertEqual(len(files), 1)
-        self.assertNotIn("abc", files[0].read_text())
+        self.assertNotIn("abc", files[0].read_text(encoding="utf-8"))
         self.assertEqual(desktop.measure_summary(d)["games"], 1)
 
     def test_record_off_saves_nothing(self):
