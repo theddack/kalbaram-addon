@@ -1790,3 +1790,20 @@ class LocalWad(unittest.TestCase):
         cd = copy.deepcopy(self.CD)
         cd["Test/New"] = {"__type": "TestClass"}
         self.assertIn("항목이 게임 파일에 없음", L.compare(L.parse_bin(self.make_bin()), cd, self.names)[-1])
+
+
+class OfficialItems(unittest.TestCase):
+    """라이엇 공식 추천 아이템 (챔피언 데이터 ItemRecommendationOverrideSet): 칼바람 우선, 없으면 일반 게임"""
+
+    def test_aram_first_then_classic(self):
+        def ov(map_id, mode, ranges):
+            return {"mOverrideContexts": [{"mMapID": map_id, "mModeNameStringId": mode}],
+                    "mRecItemRanges": [{"items": [f"Items/{i}" for i in r]} for r in ranges]}
+        b = {"{1}": {"__type": "ItemRecommendationOverrideSet", "mOverrides": [
+            ov(11, "CLASSIC", [["6631"], ["3047"]]), ov(30, "cherry", [["223177"]]),
+            ov(12, "ARAM", [["6655", "6653"], ["3020"], ["4645", "Items/Bad"], []])]},
+             "{2}": {"__type": "SpellObject"}}
+        self.assertEqual(B.official_items(b), {"mode": "ARAM", "ranges": [["6655", "6653"], ["3020"], ["4645"]]})
+        del b["{1}"]["mOverrides"][2]
+        self.assertEqual(B.official_items(b)["mode"], "CLASSIC")
+        self.assertIsNone(B.official_items({"{2}": {"__type": "SpellObject"}}))

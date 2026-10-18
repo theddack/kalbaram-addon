@@ -163,8 +163,9 @@ test("상대 고르기: 탱커를 고르면 피해가 줄고, 기준으로 돌�
   const combo = () => p.text("#metrics .tile .big");
   const base = combo();
   const sel = p.q("#target-champ");
-  sel.value = "Malphite"; sel.dispatchEvent(new p.w.Event("change"));
-  assert.match(p.text("#target-info"), /말파이트/);
+  // 마법 저항력이 기준(63)보다 높은 탱커 (말파이트는 공식 추천 아이템이 방어력 위주라 마법 저항력이 기준과 같아졌다)
+  sel.value = "Galio"; sel.dispatchEvent(new p.w.Event("change"));
+  assert.match(p.text("#target-info"), /갈리오/);
   assert.ok(Number(combo().replace(/,/g, "")) < Number(base.replace(/,/g, "")));
   sel.value = ""; sel.dispatchEvent(new p.w.Event("change"));
   assert.equal(combo(), base);

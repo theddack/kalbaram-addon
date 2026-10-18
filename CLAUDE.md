@@ -58,6 +58,8 @@ v0.1.44 에 들어간 것: 상점 추천(아이템 세트) 막판 대기석 교�
 ## 다음 할 일 (우선순위)
 
 1. **추천이 챔피언마다 거의 같다** (원딜 16명 중 7명이 6칸 순서까지 같음: 크라켄·윤 탈·루난·도미닉…). 원인은 역할별 공통 가중치(`web/scoring.js` ROLE_PRESET).
+   - **2026-10-18 ①② 함**: build_data `official_items` → champ `officialItems`, scoring `OFFICIAL_BOOST` 3 (변칙 제외). `node tools/official_check.js`: 공식 핵심 담기 24 → 76 / 108, 같은 역할 똑같은 구성 137 → 100 / 173, 몰빵 점검 98.4% 유지. 남은 것: ③ 없는 54명(원딜 다수) ④는 도구로 대체.
+   - 별개로 발견: 탱커를 상대로 고르면 18레벨 추천 빌드가 방어 6칸이라 시온·갈리오 마법 저항력 287~365 처럼 지나치게 단단하다 (이번 변경 전부터).
    - **라이엇 공식 챔피언별 추천 아이템**이 게임 파일에 있다: 챔피언 bin(`game/data/characters/<id>/<id>.bin.json`)의 `ItemRecommendationOverrideSet` → `mOverrides[]` 중 `mOverrideContexts` 가 `mMapID 12 · mModeNameStringId "ARAM"` 인 것의 `mRecItemRanges`(핵심 → 신발 → 상황별). 173명 중 ARAM 108명, 일반 게임만 11명, **없음 54명**(징크스·진·베인·케이틀린·트리스타나 등 원딜 다수).
    - 공통 파일 `game/items.cdtb.bin.json` 에도 이름 없는 묶음 37개(ARAM 32개)가 있으나 어느 챔피언 것인지 연결 고리를 못 찾음 (hashes.binentries 에 이름 없음, 챔피언·맵 bin 에서 참조 없음).
    - 할 일: ① build_data 에서 공식 추천을 뽑아 champ 에 넣고 출처에 기록 ② 추천 점수에 가산점(목록으로만 고르게 하지는 않음 — 증강 맞춤이 우리 장점) ③ 없는 54명은 챔피언별 평타/스킬 피해 비율로 가중치 조정 ④ 108명으로 "우리 기본 추천이 공식 핵심을 몇 개 담나" 점수 매겨 검증.
