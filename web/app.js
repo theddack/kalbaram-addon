@@ -162,11 +162,13 @@ function enemyInfo() {
   const heals = (c) => (c.spells || []).filter((sp) => (sp.effects || []).some((x) => x && x.kind === "heal")).length
     + (((c.passive || {}).effects || []).some((x) => x && x.kind === "heal") ? 1 : 0);
   // 산 아이템도 본다: 흡혈 아이템을 산 적은 회복 많음, 방어 아이템 2개 이상이면 탱커
-  // 확인된 상대 증강도 본다 (소환사 주문 증강: 회복·보호막 증가 → 회복 많음)
-  const healAug = (c) => enemyAugs(c).some((a) => (augTags(a).HEALSHIELD || 0) >= 0.5);
-  const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem) || healAug(c));
-  const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length >= 2);
-  return { list, magic, healers, tanks, fromItems, fed };
+  // 확인된 상대 증강도 본다 (소환사 주문 칸 + Tab 점수판): 회복·흡혈 → 회복 많음, 체력·방어 → 탱커, 군중 제어 → 강인함
+  const healAug = (c) => augsWith(c, ["HEALSHIELD", "VAMP"], 0.5);
+  const tankAug = (c) => augsWith(c, ["HP", "ARMOR", "MR"]);
+  const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem) || healAug(c).length);
+  const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length + tankAug(c).length >= 2);
+  const ccAugs = list.flatMap((c) => augsWith(c, ["CC"]).map((a) => ({ c, a })));
+  return { list, magic, healers, tanks, fromItems, fed, ccAugs, healAug, tankAug };
 }
 
 // ---- 상대 아이템 반영 (2026-10-15): 적이 실제로 산 아이템(게임 안 Tab 점수판에 보이는 정보)으로
@@ -264,6 +266,13 @@ function spellAugment(token) {
 // 증강이 키우는 것 (규칙의 특성 우선)
 const augTags = (a) => ((state.data.rules.augments || {})[a.id] || {}).tags || a.tags || {};
 const enemyAugs = (c) => ((state.enemyBuilds || []).find((e) => e.champ.id === c.id) || {}).augments || [];
+// 그 적의 확인된 증강 중 효과 종류(keys 중 하나)가 min 이상인 것
+const augsWith = (c, keys, min = 0.6) => enemyAugs(c).filter((a) => keys.some((k) => (augTags(a)[k] || 0) >= min));
+// 조언 근거: 그 규칙에 걸린 적 증강 ' (적 증강: 사미라 ○○ · 케이틀린 △△)'
+const augNote = (list, by) => {
+  const parts = list.map((c) => [c, by(c)]).filter(([, a]) => a.length).map(([c, a]) => `${c.name} ${a.map((x) => x.name).join("·")}`);
+  return parts.length ? ` (적 증강: ${parts.join(" · ")})` : "";
+};
 const healItem = (i) => (i.tags && (i.tags.VAMP || 0) >= 0.5) || (i.stats && !Array.isArray(i.stats) && ("LS" in i.stats || "OMNIVAMP" in i.stats));
 const tankItem = (i) => i.tags && ((i.tags.HP || 0) >= 0.5 || (i.tags.ARMOR || 0) >= 0.5 || (i.tags.MR || 0) >= 0.5)
   && !((i.tags.AD || 0) >= 0.5 || (i.tags.AP || 0) >= 0.5);
@@ -353,7 +362,7 @@ function enemyAdvice() {
       if (state.champ.tags.includes("Tank")) want.push("덤불 조끼");
       gw = Object.values(state.data.parts || {}).filter((pt) => want.includes(pt.name)).map((pt) => `${pt.name}(부품 ${pt.gold}G)`);
     }
-    out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
+    out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + augNote(e.healers, e.healAug) + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
     want(gw.filter((n) => !n.includes("(부품")), "치유 감소");
   }
   // 관통: 탱커가 많거나, 적이 산 아이템으로 내 피해 유형 쪽 방어가 평소보다 25% 이상 높으면
@@ -367,7 +376,7 @@ function enemyAdvice() {
     need("관통", items.filter(penItem), state.items.some(penItem));
     const pen = byRank(items.filter((i) => fits(i) && penItem(i)).map((i) => i.name));
     pen.splice(2);
-    const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})` : "",
+    const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})${augNote(e.tanks, e.tankAug)}` : "",
       resHigh ? `적이 ${resKey === "MR" ? "마법 저항" : "방어"} 아이템 ${resN}개 (지금 평균 ${resKey === "MR" ? "마법 저항력" : "방어력"} ${fmt(now[resKey])})` : ""].filter(Boolean).join(" · ");
     out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
     want(pen, "관통");
@@ -390,6 +399,17 @@ function enemyAdvice() {
     state.adviceNeed.push({ why: "공속 대응", names: def, have: state.items.some(asDef) });  // 방어 아이템이라 내 피해 유형과 상관없이
     out.push(`적 공격 속도 높음 (${threats.as.join("·")})` + (def.length ? ` → 검토: ${def.join(" 또는 ")}` : ""));
     want(def, "공속 대응");
+  }
+  // 군중 제어 증강이 2개 이상이면 강인함 신발·정화 (확인된 적 증강만: 소환사 주문 칸 + Tab 점수판)
+  if (e.ccAugs.length >= 2) {
+    const qss = items.filter((i) => i.name === "헤르메스의 시미터" && typeOk(i));
+    const boots = state.data.items.find((i) => i.name === "헤르메스의 발걸음");
+    const hasBoots = state.items.some((i) => i.name === "헤르메스의 발걸음");
+    const opts = [boots && !hasBoots ? boots.name : "", ...qss.filter((i) => !state.items.some((o) => o.name === i.name)).map((i) => i.name)].filter(Boolean);
+    out.push(`적 군중 제어 증강 (${e.ccAugs.map((x) => `${x.c.name} ${x.a.name}`).join(" · ")})` + (opts.length ? ` → 검토: ${opts.join(" 또는 ")}` : ""));
+    want(qss.filter(fits).map((i) => i.name), "군중 제어 대응");
+    state.adviceNeed.push({ why: "군중 제어 대응", names: qss.map((i) => i.name),
+      have: hasBoots || state.items.some((i) => i.name === "헤르메스의 시미터") });
   }
   // 상대 증강: 소환사 주문 칸에 보이는 것만 확인된 정보로 (나머지는 공식 데이터에 없어 추측하지 않는다)
   const seen = (state.enemyBuilds || []).filter((x) => x.augments.length).map((x) => `${x.champ.name} ${x.augments.map((a) => a.name).join("·")}`);
@@ -414,7 +434,8 @@ function enemyThreats() {
       as: its.filter((i) => ((i.tags || {}).AS || 0) >= 0.5).length,
       pen: its.filter((i) => ((i.tags || {}).LETHAL || 0) >= 0.5 || ((i.tags || {}).MPEN || 0) >= 0.5).length };
     shield += n.shield + e.augments.filter((a) => (augTags(a).HEALSHIELD || 0) >= 0.5).length;
-    if (n.as >= 2) as.push(e.champ.name);
+    const asAug = augsWith(e.champ, ["AS"]);
+    if (n.as >= 2 || asAug.length) as.push(e.champ.name + (asAug.length ? `(증강 ${asAug.map((a) => a.name).join("·")})` : ""));
     const what = [n.tank >= 2 ? `탱커 ${n.tank}` : "", n.heal ? "흡혈" : "", n.shield ? "보호막" : "", n.as >= 2 ? `공속 ${n.as}` : "",
       n.pen >= 2 ? `관통 ${n.pen}` : ""].filter(Boolean);
     if (what.length) rows.push({ w: n.tank + n.heal + n.shield + n.as + n.pen, text: `${e.champ.name} ${what.join("·")}` });
@@ -1289,7 +1310,8 @@ function sendOverlay(src) {
   // 게임 화면 상자는 짧게: 할 일(→)이 없는 정보 줄(적별 위협·확인된 적 증강)은 애드온 창에만
   const INFO_ONLY = /^(적별|적 증강)/;
   const adv = enemyAdvice();
-  hud.push(...adv.filter((l) => !INFO_ONLY.test(l)));
+  // 적 증강 근거 ' (적 증강: …)' 는 애드온 창에만 (게임 화면 상자는 짧게)
+  hud.push(...adv.filter((l) => !INFO_ONLY.test(l)).map((l) => l.replace(/ \(적 증강: [^)]*\)/, "")));
   const v = itemVerdicts();
   if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
   if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
