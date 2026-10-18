@@ -1641,3 +1641,73 @@ class LowResource(unittest.TestCase):
         src = Path(desktop.__file__).read_text(encoding="utf-8")
         self.assertIn("child_priority(True)", src)
         self.assertIn("child_priority(False)", src)
+
+
+class LocalWad(unittest.TestCase):
+    """tools/local_wad.py: 커뮤니티드래곤 대조. 직접 만든 작은 파일로 본다."""
+
+    def setUp(self):
+        try:
+            import xxhash  # noqa: F401
+            import zstandard  # noqa: F401
+        except ImportError:
+            self.skipTest("xxhash·zstandard 없음")
+        sys.path.insert(0, str(ROOT / "tools"))
+        import local_wad
+        self.L = local_wad
+        self.names = local_wad.Names.__new__(local_wad.Names)
+        self.names.fnv = {}
+
+    def make_bin(self, value=1.5):
+        import struct
+        L, P = self.L, struct.pack
+
+        def field(name, t, raw):
+            return P("<IB", L.fnv1a(name), t) + raw
+
+        inner = field("x", L.S32, P("<i", 7))
+        mtx = P("<16f", *[1.0 if i % 5 == 0 else 0.0 for i in range(16)])
+        fields = [
+            field("mValue", L.F32, P("<f", value)),
+            field("name", L.STRING, P("<H", 3) + b"abc"),
+            field("ids", L.LIST, P("<BII", L.U32, 12, 2) + P("<II", 1, 2)),
+            field("bones", L.MAP, P("<BBII", L.U32, L.STRING, 7, 1) + P("<I", 60) + P("<H", 1) + b"x"),
+            field("transform", L.MTX44, mtx),
+            field("sub", L.EMBED, P("<IIH", L.fnv1a("Inner"), 4 + 2 + len(inner), 1) + inner),
+            field("nothing", L.POINTER, P("<I", 0)),
+            field("ref", L.LINK, P("<I", L.fnv1a("Test/Other"))),
+        ]
+        body = P("<IH", L.fnv1a("Test/Entry"), len(fields)) + b"".join(fields)
+        return b"PROP" + P("<III", 3, 0, 1) + P("<I", L.fnv1a("TestClass")) + P("<I", len(body)) + body
+
+    CD = {"Test/Entry": {"mValue": 1.5, "name": "abc", "ids": [1, 2], "bones": {"60": "x"},
+                         "transform": [[1.0, 0.0, 0.0, 0.0], [0.0, 1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]],
+                         "sub": {"x": 7, "__type": "Inner"}, "ref": "Test/Other", "__type": "TestClass"},
+          "__linked": []}
+
+    def test_wad_and_bin_match_cdragon(self):
+        import struct
+        import zstandard
+        L = self.L
+        data = self.make_bin()
+        comp = zstandard.ZstdCompressor().compress(data)
+        head = b"RW\x03\x04" + b"\0" * 256 + b"\0" * 8 + struct.pack("<I", 1)
+        off = len(head) + 32
+        toc = struct.pack("<QIIIBBHQ", L.xxh64("data/test.bin"), off, len(comp), len(data), 3, 0, 0, 0)
+        d = pathlib.Path(tempfile.mkdtemp())
+        (d / "t.wad.client").write_bytes(head + toc + comp)
+        w = L.Wad(d / "t.wad.client")
+        self.assertTrue(w.has("DATA/Test.bin"))  # 경로는 대소문자 무시
+        entries = L.parse_bin(w.read("data/test.bin"))
+        self.assertEqual(L.compare(entries, self.CD, self.names), [])
+        named = L.named(entries, self.names)
+        self.assertEqual(named["{%08x}" % L.fnv1a("Test/Entry")]["{%08x}" % L.fnv1a("bones")], {"60": "x"})
+
+    def test_compare_finds_difference(self):
+        L = self.L
+        diffs = L.compare(L.parse_bin(self.make_bin(2.25)), self.CD, self.names)
+        self.assertEqual(len(diffs), 1)
+        self.assertIn("2.25 ≠ 1.5", diffs[0])
+        cd = copy.deepcopy(self.CD)
+        cd["Test/New"] = {"__type": "TestClass"}
+        self.assertIn("항목이 게임 파일에 없음", L.compare(L.parse_bin(self.make_bin()), cd, self.names)[-1])
