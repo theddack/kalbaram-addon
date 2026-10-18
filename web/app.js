@@ -1880,6 +1880,9 @@ window.addEventListener("pywebviewready", async () => {
     // 위치 맞추기 칸을 펼쳤을 때만 상태를 묻는다
     setInterval(async () => { if (!$("#overlay-pos").open) return; const o = await api.overlay_status(); $("#overlay-status").textContent = `(${o.status})`; }, 1500);
   }
+  $("#record-wrap").hidden = false;
+  $("#record-toggle").checked = !!st.record;
+  $("#record-toggle").addEventListener("change", (e) => api.set_record(e.target.checked));
   $("#itemset-toggle").checked = st.itemSets;
   $("#itemset-toggle").addEventListener("change", (e) => { api.set_item_sets(e.target.checked); itemSetDone = null; });
   // 롤 클라이언트: 게임 중엔 챔피언 선택·상점 추천 등록이 끝났으니 15초마다만 (게임 중 CPU)

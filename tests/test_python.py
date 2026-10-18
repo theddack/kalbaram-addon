@@ -283,7 +283,7 @@ class Desktop(unittest.TestCase):
         api = desktop.Api(desktop.Settings())
         public = [n for n in dir(api) if not n.startswith("_")]
         self.assertTrue(all(callable(getattr(api, n)) for n in public), public)
-        self.assertLessEqual(len(public), 18)  # update_status 추가 (데이터 받기 진행 표시)
+        self.assertLessEqual(len(public), 19)  # set_record 추가 (개선용 기록 남기기)
 
     def test_version_compare(self):
         self.assertGreater(desktop.version_tuple("0.1.10"), desktop.version_tuple("0.1.9"))
@@ -547,6 +547,26 @@ class Measure(unittest.TestCase):
         self.assertEqual(len(files), 1)
         self.assertNotIn("abc", files[0].read_text())
         self.assertEqual(desktop.measure_summary(d)["games"], 1)
+
+    def test_record_off_saves_nothing(self):
+        # 개선용 기록이 꺼져 있으면 (일반 사용자 기본값) 경기 결과·한 판 기록을 남기지 않는다
+        import gamelog
+        d = pathlib.Path(tempfile.mkdtemp())
+        w = desktop.LcuWatcher(d / "measure")
+        rec = gamelog.GameRecorder(d / "games")
+        desktop.apply_record(False, rec, None, w)
+        w.client = type("C", (), {"req": lambda self, *a, **k: Measure.EOG})()
+        w.save_eog()
+        rec.start("Bard")
+        rec.event("picked", {"picked": "취약"})
+        rec.finish()
+        self.assertEqual([p.name for p in d.rglob("*")], [])
+        desktop.apply_record(True, rec, None, w)
+        w.save_eog()
+        rec.start("Bard")
+        rec.finish()
+        self.assertEqual(len(list((d / "measure").glob("eog_*.json"))), 1)
+        self.assertEqual(len(list((d / "games").glob("*.zip"))), 1)
 
     def test_bad_format_ignored(self):
         self.assertIsNone(desktop.eog_summary({"gameId": 1}))

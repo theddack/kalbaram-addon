@@ -401,12 +401,13 @@ class LiveWatcher(threading.Thread):
             self.on_new_game(st)  # 새 게임: 증강 칸 읽기 초기화, 한 판 기록 시작
         if key != self._game_key or now - self._last_snap >= SNAPSHOT_EVERY or aug != getattr(self, "_last_aug", ()):
             self._last_aug = aug
-            self.log_dir.mkdir(parents=True, exist_ok=True)
-            name = time.strftime("game_%Y%m%d_%H%M%S") + f"_{st.get('champion') or 'unknown'}_{int(t)}s.json"
-            (self.log_dir / name).write_text(json.dumps(redact_names(raw), ensure_ascii=False, indent=1), encoding="utf-8")
-            prune_logs(self.log_dir, LOG_KEEP)
+            if getattr(self, "record", True):
+                self.log_dir.mkdir(parents=True, exist_ok=True)
+                name = time.strftime("game_%Y%m%d_%H%M%S") + f"_{st.get('champion') or 'unknown'}_{int(t)}s.json"
+                (self.log_dir / name).write_text(json.dumps(redact_names(raw), ensure_ascii=False, indent=1), encoding="utf-8")
+                prune_logs(self.log_dir, LOG_KEEP)
+                st["savedSnapshot"] = name
             self._game_key, self._last_snap = key, now
-            st["savedSnapshot"] = name
 
 
 # ---------------------------------------------------------------- 실측 (경기 결과)
@@ -503,7 +504,7 @@ class LcuWatcher(threading.Thread):
 
     def save_eog(self):
         """경기 결과 저장 (게임마다 한 번). 실패해도 다른 기능에는 영향 없게"""
-        if not self.measure_dir:
+        if not self.measure_dir or not getattr(self, "record", True):
             return
         try:
             eog = self.client.req("GET", "/lol-end-of-game/v1/eog-stats-block")
@@ -553,6 +554,15 @@ class LcuWatcher(threading.Thread):
         except Exception as e:
             self.client = None  # 클라이언트를 껐다 켜면 포트·비밀번호가 바뀐다
             self.state = {"connected": False, "error": str(e)[:120]}
+
+
+def apply_record(on, rec, watcher, lcu):
+    """개선용 기록을 켜고 끈다 (게임 중에 끄면 지금 판 기록은 끝까지 남기고 다음 판부터)"""
+    if rec is not None:
+        rec.enabled = on
+    for w in (watcher, lcu):
+        if w is not None:
+            w.record = on
 
 
 class Diag(threading.Thread):
@@ -890,7 +900,15 @@ class Api:
                 "live": bool(self._settings.get("live", True)),
                 "overlay": bool(self._settings.get("overlay", True)), "overlaySupported": overlay.IS_WINDOWS,
                 "overlayPos": self._settings.get("overlay_pos") or overlay.DEFAULT_POS,
-                "itemSets": bool(self._settings.get("item_sets", True))}
+                "itemSets": bool(self._settings.get("item_sets", True)),
+                "record": bool(self._settings.get("record", False))}
+
+    def set_record(self, on):
+        """개선용 기록 남기기: 한 판 기록(화면 조각 그림·events.json)·5분마다 게임 정보·경기 결과 파일.
+        기본은 꺼짐 (일반 사용자는 디스크·CPU 를 안 쓰게). 진단 기록(diag.log)은 늘 남는다. 이미 쌓인 기록은 지우지 않는다"""
+        self._settings.set(record=bool(on))
+        apply_record(bool(on), self._rec, self._watcher, self._lcu)
+        return bool(on)
 
     def set_item_sets(self, on):
         self._settings.set(item_sets=bool(on))
@@ -1371,6 +1389,7 @@ def main():
     rec = gamelog.GameRecorder(user_dir() / "logs" / "games")
     api._rec = rec
     watcher.rec = rec
+    apply_record(bool(settings.get("record", False)), rec, watcher, lw)
     if reader:
         reader.rec = rec
     prev_new = getattr(watcher, "on_new_game", None)
@@ -1467,6 +1486,7 @@ def main():
     diag.cpu_cap = capped
     diag.in_game = lambda: bool(watcher.state.get("inGame"))
     diag.start()
+    diag.write("개선용 기록: " + ("켜짐 (한 판 기록·게임 정보·경기 결과 저장)" if settings.get("record") else "꺼짐 (진단 기록만)"))
     webmem.log = diag.write
     window.events.loaded += lambda: webmem.apply()
     window.events.minimized += lambda: webmem.set(minimized=True)

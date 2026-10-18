@@ -27,6 +27,7 @@ class GameRecorder:
         self.base = Path(base_dir)
         self.keep = keep
         self.max_images = max_images
+        self.enabled = True  # 꺼져 있으면 새 판 기록을 시작하지 않는다 (일반 사용자 기본값: 꺼짐, 설정 '개선용 기록 남기기')
         self.dir = None
         self.last_dir = None  # 마지막으로 끝난 판 (경기 결과 파일로 정리할 때)
         self.last_end = 0.0
@@ -46,6 +47,8 @@ class GameRecorder:
         with self._lock:
             self._finish_locked()
             self._eog = None
+            if not self.enabled:
+                return
             safe = re.sub(r"[^A-Za-z0-9_-]", "", str(champion or "unknown"))[:30] or "unknown"
             self.dir = self.base / (time.strftime("%Y%m%d_%H%M%S") + f"_{safe}")
             try:
