@@ -1541,7 +1541,11 @@ function itemRanking() {
       .sort((a, b) => syn[b.item.id].delta - syn[a.item.id].delta).slice(0, LINK_TOP).map((r) => r.item.id);
     for (const r of rows) r.synergy = links.includes(r.item.id) || !!ctx.wanted[r.item.name];
   }
-  return rows;
+  // 점수가 비슷하면 증강 필요 → 증강 연계 → 라이엇 추천 → 점수 순 (scoring tieOrder)
+  const ctx = S.augContext(state.chosen, d.rules);
+  const official = S.officialWeights(state.champ, 1) || {};
+  const prio = (r) => (ctx.wanted[r.item.name] ? 0 : r.synergy ? 1 : official[r.item.id] ? 2 : 3);
+  return S.tieOrder(rows, prio);
 }
 
 // ---- 지금 골드로 살 것: 1순위 아이템을 완성하려면 남은 금액, 지금 살 수 있는 가장 비싼 부품
@@ -1684,7 +1688,7 @@ function renderNextBuy(rows) {
     + (state.nextChange ? `<div class="small next-change">${esc(state.nextChange)}</div>` : "")
     + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.building ? "(만드는 중)" : r.must ? "(증강)" : r.counter ? "(적 대응)" : r.advice ? `(${r.advice})` : ""))}">
       <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.building ? ` <span class="chip syn" title="산 부품 ${fmt(r.sunk)}G 어치를 이 아이템에 쓰고 있어요">🧩 만드는 중</span>` : r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.advice ? ` <span class="chip adv">🛡️ ${esc(r.advice)}</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
-      <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : swapHtml());
+      <div class="small muted">${esc([r.tie, itemReason(r)].filter(Boolean).join(" · "))}</div>${gainLine(r.gain)}</div></div>`).join("") : swapHtml());
   if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);
   box.insertAdjacentHTML("beforeend", `<div id="buy-now" class="small"></div>`);
   state.nextTop = pick.length ? pick[0].item : null;

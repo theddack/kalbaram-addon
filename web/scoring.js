@@ -643,6 +643,25 @@
       .sort((a, b) => (a.offType ? 1 : 0) - (b.offType ? 1 : 0) || b.score - a.score);
   }
 
+  // 점수가 비슷하면(애매하면) 믿을 만한 근거 순서로 (2026-10-19 사용자 결정):
+  // 고른 증강이 직접 요구 → 고른 증강과 연계(🔗) → 라이엇 공식 추천(비슷한 챔피언 추천 포함) → 계산 점수.
+  // '비슷하다' = 남은 것 중 1위 점수와 TIE_BAND 안. 차이가 크면 계산 순서 그대로 (증강 연계라도 확실히 손해면 안 올린다)
+  const TIE_BAND = 0.05;
+  const TIE_WHY = { 0: "고른 증강에 필요", 1: "증강 연계", 2: "라이엇 추천" };
+  function tieOrder(rows, prio) {
+    const head = rows.filter((r) => !r.offType), tail = rows.filter((r) => r.offType);
+    const left = head.slice(), out = [];
+    while (left.length) {
+      const best = left.reduce((m, x) => (x.score > m.score ? x : m));
+      const band = left.filter((r) => r.score >= best.score - Math.abs(best.score) * TIE_BAND);
+      const pick = band.reduce((m, x) => (prio(x) < prio(m) || (prio(x) === prio(m) && x.score > m.score) ? x : m));
+      if (pick !== best && prio(pick) < prio(best)) pick.tie = `점수 비슷 → ${TIE_WHY[prio(pick)]} 우선`;
+      out.push(pick);
+      left.splice(left.indexOf(pick), 1);
+    }
+    return out.concat(tail);
+  }
+
   // 연계 티어: 지금까지 고른 증강 기준으로 같은 등급 증강을 S/A/B/C/D 로 나눈다.
   // 숫자로 평가되는 증강은 빌드 가치 증가(같이 골랐을 때)로, 나머지는 효과 점수로 각각 순위를 매긴다.
   // 궁합(interaction) = 같이 골랐을 때 가치 − 혼자 골랐을 때 가치 (고른 증강이 있을 때만)
@@ -791,7 +810,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK,
+    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

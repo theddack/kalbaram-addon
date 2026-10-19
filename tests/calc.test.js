@@ -430,3 +430,17 @@ test("크라켄 학살자는 3번째 평타마다 기본 피해 (최대값을 �
   assert.ok(kraken / base < 3, `크라켄 ${(kraken / base).toFixed(2)}배`);
   assert.ok(kraken / base < 1.6 * (ie / base), "무한의 대검보다 터무니없이 크지 않다");
 });
+
+test("점수가 비슷하면 증강 필요 → 증강 연계 → 라이엇 추천 → 점수 순 (차이가 크면 계산 순서 그대로)", () => {
+  const row = (id, score, p, offType = false) => ({ item: { id }, score, p, offType });
+  const prio = (r) => r.p;
+  // 100 · 98(라이엇) · 97(연계) · 80(연계) · 오프타입
+  const rows = [row("a", 100, 3), row("b", 98, 2), row("c", 97, 1), row("d", 80, 1), row("x", 120, 0, true)];
+  const out = S.tieOrder(rows, prio);
+  assert.deepEqual(out.map((r) => r.item.id), ["c", "b", "a", "d", "x"], "5% 안쪽(95 이상)은 근거 순, 80 은 크게 낮아 뒤, 반대 유형은 맨 뒤 그대로");
+  assert.equal(out[0].tie, "점수 비슷 → 증강 연계 우선");
+  assert.equal(out[1].tie, "점수 비슷 → 라이엇 추천 우선");
+  assert.equal(out[2].tie, undefined, "원래 1위가 그대로면 표시 없음");
+  const far = S.tieOrder([row("a", 100, 3), row("c", 90, 1)], prio);
+  assert.deepEqual(far.map((r) => r.item.id), ["a", "c"], "10% 차이면 연계라도 안 올린다");
+});
