@@ -57,6 +57,7 @@ class _Win:
         u.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
         u.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
         u.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.UINT]
+        u.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
         self.hwnd = None
 
     def place(self, x, y, w, h):
@@ -67,6 +68,20 @@ class _Win:
         SWP_NOACTIVATE, SWP_SHOWWINDOW, SWP_NOOWNERZORDER = 0x10, 0x40, 0x200
         return bool(self.user32.SetWindowPos(self.hwnd, HWND_TOPMOST, int(x), int(y), int(w), int(h),
                                              SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_NOOWNERZORDER))
+
+    def raise_top(self):
+        """위치·크기는 그대로 맨 위로 다시 올린다 (활성화 없이). 게임이 화면을 다시 잡으면(선택 화면 연출 등) 표시 창이 뒤로
+        밀려 알트탭을 해야 보였다 (2026-10-19 지적) → 보이는 동안 1초마다"""
+        if not self.hwnd:
+            return False
+        SWP_NOSIZE, SWP_NOMOVE, SWP_NOACTIVATE, SWP_NOOWNERZORDER = 0x1, 0x2, 0x10, 0x200
+        return bool(self.user32.SetWindowPos(self.hwnd, self.wt.HWND(-1), 0, 0, 0, 0,
+                                             SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE | SWP_NOOWNERZORDER))
+
+    def _pid(self, hwnd):
+        pid = self.wt.DWORD(0)
+        self.user32.GetWindowThreadProcessId(hwnd, self.ct.byref(pid))
+        return pid.value
 
     def game_rect(self):
         """롤 게임 창의 화면 좌표 (x, y, w, h) 와 맨 앞 여부. 없거나 최소화면 None"""
@@ -81,7 +96,11 @@ class _Win:
         w, h = rc.right - rc.left, rc.bottom - rc.top
         if w < 200 or h < 200:
             return None, False
-        return (pt.x, pt.y, w, h), u.GetForegroundWindow() == hwnd
+        # 맨 앞 여부는 창 번호가 아니라 프로세스로 본다: 게임이 맨 앞인데 다른 창 번호(게임이 띄운 다른 창)가 잡히면
+        # '게임 창이 뒤에 있음'으로 보고 표시·글자 읽기를 멈췄다가 알트탭해야 다시 떴을 수 있다
+        fg = u.GetForegroundWindow()
+        front = bool(fg) and (fg == hwnd or self._pid(fg) == self._pid(hwnd))
+        return (pt.x, pt.y, w, h), front
 
     def click_through(self, tk_root):
         """표시 창을 클릭 통과·작업 표시줄 숨김·포커스 안 받게"""
@@ -410,6 +429,7 @@ def draw_timers(canvas, states, x, y, h, icon_dir, tag="timers"):
 
 
 KIND_NAME = {"card": "카드", "hud": "상점 상자", "timers": "쿨타임", "swap": "바꾸기"}
+RAISE_EVERY = 1.0  # 초. 보이는 동안 표시 창을 맨 위로 다시 올리는 간격
 PARK = (-4000, -4000)  # 보여 줄 게 없을 때 표시 창을 치워 두는 자리 (화면 밖)
 
 
@@ -490,10 +510,11 @@ class Overlay(threading.Thread):
         root.update()
         shown, last, placed = False, None, None
         last_main, last_tim = None, None
+        raised = 0.0
         self._running = True
 
         def tick():
-            nonlocal shown, last, placed, last_main, last_tim
+            nonlocal shown, last, placed, last_main, last_tim, raised
             self.beat = time.time()
             rect = None
             try:
@@ -505,7 +526,7 @@ class Overlay(threading.Thread):
                 root.after(200 if rect else 1000, tick)
 
         def step():
-            nonlocal shown, last, placed, last_main, last_tim
+            nonlocal shown, last, placed, last_main, last_tim, raised
             while not self.q.empty():
                 k, v = self.q.get_nowait()
                 if k == "payload":
@@ -572,7 +593,10 @@ class Overlay(threading.Thread):
                 if where != placed:  # 게임 창이 움직이면 위치만 옮긴다 (활성화 없이 맨 위로)
                     root.geometry(f"{bw}x{bh}+{where[0]}+{where[1]}")
                     win.place(*where)
-                    placed = where
+                    placed, raised = where, time.time()
+                elif time.time() - raised >= RAISE_EVERY:
+                    win.raise_top()
+                    raised = time.time()
                 shown = True
                 # 무엇을 어디에 그렸는지 (게임 창 비율, 0.05 단위): 실제 게임에서 무엇을 가리는지 기록으로 보려고.
                 # 0.05 단위라 초가 바뀌어도 상태 글은 그대로 → 진단 기록에 매초 남지 않는다
