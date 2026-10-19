@@ -2068,3 +2068,19 @@ class BoxDetail(unittest.TestCase):
         self.assertTrue(api.set_box_detail("detail"))
         self.assertFalse(api.set_box_detail("huge"))
         self.assertEqual(api._settings.get("box_detail"), "detail")
+
+
+class CompactBox(unittest.TestCase):
+    """죽어 있을 때 짧은 상자는 글자에 맞춰 작게 (큰 상자 크기를 이어받지 않는다, 2026-10-19 사용자 지적)"""
+
+    def test_compact_box_fits_text(self):
+        import overlay
+        hud = ["다음 구매: 삼위일체 > 크라켄 학살자 > 몰락한 왕의 검", "💰 지금 탐식의 망치 (1100G)"] + [f"조언 {i}" for i in range(5)]
+        rect = lambda c: [v for v in c.items.values() if len(v) == 4][0]
+        c = FakeCanvas()
+        overlay.draw(c, {"hud": hud, "shop": {"left": 0.2}}, 1920, 1080)
+        big = rect(c)
+        overlay.draw(c, {"hud": hud, "shop": "dead"}, 1920, 1080)
+        small = rect(c)
+        self.assertLess(small[2] - small[0], big[2] - big[0], "폭: 글자 폭만큼")
+        self.assertLess(small[3] - small[1], big[3] - big[1], "높이: 앞서 본 큰 상자 높이를 이어받지 않는다")
