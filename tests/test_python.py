@@ -1551,7 +1551,8 @@ class ShopBox(unittest.TestCase):
         api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인", "적 회복 많음 → 치유 감소"], "box": "dead"})
         items = overlay.layout(api._ov.p, 1920, 1080)
         self.assertEqual([k for k, *_ in items], ["hud"])
-        self.assertEqual(items[0][3][0], ["다음 구매: 리치베인"], "죽어 있기만 하면 한 줄")
+        self.assertEqual(items[0][3][0], ["다음 구매: 리치베인", "적 회복 많음 → 치유 감소"], "보통(기본): 다음 구매 + 적 대응 1줄")
+        self.assertEqual(items[0][2], int(1080 * overlay.DEAD_Y), "죽음 정보 창 밑으로")
         api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인"], "box": None})
         self.assertEqual(overlay.layout(api._ov.p, 1920, 1080), [], "평소엔 안 띄운다")
 
@@ -2048,7 +2049,9 @@ class BoxDetail(unittest.TestCase):
 
     def test_dead_simple_vs_detail(self):
         import overlay
-        simple = overlay.layout({"hud": self.HUD, "shop": "dead"}, 1920, 1080)[0][3][0]
+        simple = overlay.layout({"hud": self.HUD, "shop": "dead", "boxDetail": "simple"}, 1920, 1080)[0][3][0]
+        auto = overlay.layout({"hud": self.HUD, "shop": "dead"}, 1920, 1080)[0][3][0]
+        self.assertEqual(auto, overlay.hud_fit(self.HUD)[:3], "보통: 다음 구매 + 지금 살 것 + 가장 중요한 적 대응 1줄 (치유 감소)")
         detail = overlay.layout({"hud": self.HUD, "shop": "dead", "boxDetail": "detail"}, 1920, 1080)[0][3][0]
         self.assertEqual(simple, self.HUD[:2])
         self.assertEqual(detail, self.HUD, "자세히: 죽어 있을 때도 상세, 글자도 안 자른다")
@@ -2080,3 +2083,26 @@ class CompactBox(unittest.TestCase):
         small = rect(c)
         self.assertLess(small[2] - small[0], big[2] - big[0], "폭: 글자 폭만큼")
         self.assertLess(small[3] - small[1], big[3] - big[1], "높이: 앞서 본 큰 상자 높이를 이어받지 않는다")
+
+
+class BoxNoObstruct(unittest.TestCase):
+    """상자는 어떤 설정에서도 게임을 가리지 않는다 (2026-10-19 사용자): 아래 끝 한도 · 죽음 정보 창 피하기"""
+
+    def test_detail_stops_at_bottom_limit(self):
+        import overlay
+        hud = ["다음 구매: 가 > 나 > 다"] + [f"조언 {i} → 무엇" for i in range(11)]
+        c = FakeCanvas()
+        overlay.draw(c, {"hud": hud, "shop": {"left": 0.2}, "boxDetail": "detail", "boxPos": "left-middle"}, 1920, 1080)
+        texts = [v for v in c.items.values() if len(v) == 3]
+        self.assertLessEqual(max(y for _, y, _ in texts), 1080 * overlay.BOX_MAX_BOTTOM, "채팅(60~77%) 위에서 멈춘다")
+        self.assertEqual(texts[-1][2], "…", "넘는 줄은 … 로")
+        rect = [v for v in c.items.values() if len(v) == 4][0]
+        self.assertLessEqual(rect[3], 1080 * overlay.BOX_MAX_BOTTOM + 30)
+
+    def test_dead_box_below_death_recap(self):
+        import overlay
+        for mode in ("auto", "simple", "detail"):
+            it = overlay.layout({"hud": ["다음 구매: 가"], "shop": "dead", "boxDetail": mode}, 1920, 1080)[0]
+            self.assertGreaterEqual(it[2], int(1080 * overlay.DEAD_Y), mode)
+        shop = overlay.layout({"hud": ["다음 구매: 가"], "shop": {"left": 0.2}}, 1920, 1080)[0]
+        self.assertEqual(shop[2], int(1080 * overlay.BOX_Y), "상점 창이 열렸을 땐 원래 자리")
