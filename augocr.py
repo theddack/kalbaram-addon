@@ -184,8 +184,9 @@ def segments(words, gap):
 OWN_BOX_RIGHT = 0.22  # 애드온 상자(게임 창 왼쪽 위 고정) 오른쪽 끝 (너비 비율). 이 안의 글자는 우리 상자라 증강 이름으로 보지 않는다
 
 
-def find_offers(words, width, height, matcher):
-    """카드 이름 덩어리 → [(증강 이름, 가운데 x, 이름 y)] 왼쪽부터. 2개 이상 맞아야 선택 화면으로 본다"""
+def find_offers(words, width, height, matcher, scores=None, min_count=2):
+    """카드 이름 덩어리 → [(증강 이름, 가운데 x, 이름 y)] 왼쪽부터. min_count 개 이상 맞아야 선택 화면으로 본다.
+    scores: 넘기면 {이름: 맞춘 점수} 를 채운다 (1.0 = 글자가 정확히 같음)"""
     found = {}
     for text, cx, y in segments(words, gap=width * 0.04):
         if not (NAME_BAND[0] * height <= y <= NAME_BAND[1] * height):
@@ -196,7 +197,9 @@ def find_offers(words, width, height, matcher):
         if name and (name not in found or found[name][2] < score):
             found[name] = (cx, y, score)
     offers = sorted(((n, v[0], v[1]) for n, v in found.items()), key=lambda o: o[1])
-    return offers if len(offers) >= 2 else []
+    if scores is not None:
+        scores.update({n: v[2] for n, v in found.items()})
+    return offers if len(offers) >= min_count else []
 
 
 def slots(offers, width):
@@ -224,6 +227,16 @@ def card_pos(offers, width, height):
         xs = [x if x is not None else x0 + (i - i0) * step for i, x in enumerate(xs)]
     ys = [o[2] / height for o in offers]
     return {"xs": [round(x, 4) for x in xs], "nameY": round(sum(ys) / len(ys), 4)}
+
+
+CARD_REL_X = (-0.3344, 0.0059, 0.3467)  # 카드 가운데: (가로 - 창 가운데) / 창 높이 (16:10 기록 0.291·0.504·0.717 에서)
+CARD_NAME_Y = 0.4019  # 카드 이름 줄 (창 높이 비율)
+REREAD_TRIES = 3  # 선택 화면이 떠 있는 동안 다시 읽기 최대 횟수 (한 칸 0.05~0.1초)
+
+
+def default_card_pos(width, height):
+    """카드 위치를 아직 못 봤을 때 (이번 창 크기에서 3장을 다 읽은 적이 없을 때) 쓰는 기본 위치"""
+    return {"xs": [round(0.5 + r * height / width, 4) for r in CARD_REL_X], "nameY": CARD_NAME_Y}
 
 
 def card_at(pos, x, y):
@@ -588,6 +601,9 @@ class Reader(threading.Thread):
         self._counts = {}  # 한 판 동안 센 것: 상점 읽기·알아봄, 보호 켬 등 (기록 요약)
         self._bottom_ok = set()  # 상점 아래 버튼 줄로 상점을 알아본 적이 있는 게임 창 크기 (그러면 위쪽 띠는 안 읽는다)
         self.board = None  # Tab 점수판 읽기 (hudicons.BoardReader)
+        self._card_hint = {}  # 게임 창 크기 → 3장 다 읽었을 때 카드 위치 (못 읽은 칸 다시 읽을 자리)
+        self._reread_n = 0  # 이번 선택 화면에서 다시 읽은 횟수
+        self._verified = set()  # 비슷하게만 맞은 칸을 이미 다시 확인한 선택지
         self.board_on = False  # 설정 '점수판 적 증강 읽기 (시험)' (기본 꺼짐: 안정화 기획서)
         self.board_reads = 0  # 이번 판 점수판 읽은 횟수 (판 끝 대조 줄에)
         self.enemy_augs = {}  # 점수판에서 읽은 적 증강 {챔피언 id: [증강 id]}
@@ -898,36 +914,68 @@ class Reader(threading.Thread):
         words = [(t, x / k + x0, y / k + y0, w / k, h / k) for t, x, y, w, h in ocr.words(img, tw, th)]
         return words, img, tw, th
 
-    def reread_missing(self, cap, ocr, rect, offers, matcher):
-        """이름을 2개만 읽었으면 나머지 카드 이름 자리만 2배로 키워 한 번 더 읽는다.
-        2026-10-19 퀸 판: 첫 선택지 '주문 분산'은 또렷이 보였는데 이름 줄 글자가 통째로 빠져 첫 증강 설명이 안 떴다"""
+    def reread_cards(self, cap, ocr, rect, offers, matcher, scores, words=()):
+        """카드 이름을 다 못 읽었거나 비슷하게만 맞았으면 그 카드 이름 자리만 2배로 키워 한 번 더 읽는다.
+        - 2개 읽음 → 나머지 1칸 (2026-10-19 퀸 판: '주문 분산'이 또렷한데 이름 줄 글자가 통째로 빠짐)
+        - 1개 읽음 → 나머지 2칸 · 0개인데 선택 화면처럼 보임(이름 조각이 보임) → 3칸 (외부 의견: 2개 읽었을 때만이면 부족)
+        - 비슷하게만 맞은 칸(점수 1.0 미만) → 같은 선택지마다 한 번 확인, 더 확실하면 바꾼다
+        카드 위치: 3장 다 읽은 적이 있으면 그 자리, 없으면 기록에서 본 기본 자리. 선택 화면이 떠 있는 동안 REREAD_TRIES 번까지"""
+        if self.protect or self._reread_n >= REREAD_TRIES:
+            return offers
         gx, gy, gw, gh = rect
-        pos = card_pos(offers, gw, gh)
-        have = {n for n, _, _ in offers}
-        items = _slot_items(offers, gw)
-        for i, it in enumerate(items):
-            if it is not None or pos["xs"][i] is None:
-                continue
+        if len(offers) < 2 and not self.selection_likely():
+            # 이름을 0~1개만 읽었으면: 선택 화면이 떠 있었거나 곧 뜰 때만 (평소 게임 중에도 '소나'·'공포' 같은 조각 글자,
+            # 증강 이름과 우연히 같은 글자가 보인다 → 매번 칸을 다시 읽으면 무겁다)
+            return offers
+        if not offers:
+            segs = [t for t, cx, y in segments(list(words), gap=gw * 0.04)
+                    if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh and cx >= gw * OWN_BOX_RIGHT]
+            looks = not self.shop and not any(SHOP_TEXT.search(t) for t in segs) and any(matcher.partial(t) for t in segs)
+            if not looks:
+                return offers
+        pos = card_pos(offers, gw, gh) if len(offers) >= 2 else (self._card_hint.get((gw, gh)) or default_card_pos(gw, gh))
+        items = _slot_items(offers, gw) if len(offers) >= 2 else [None, None, None]
+        if len(offers) == 1:  # 읽은 1개는 가장 가까운 칸에
+            near = min(range(3), key=lambda i: abs(pos["xs"][i] * gw - offers[0][1]))
+            items[near] = offers[0]
+        key = tuple(o[0] for o in offers)
+        check = [i for i, it in enumerate(items) if it is None
+                 or (scores.get(it[0], 1.0) < 1.0 and key not in self._verified)]
+        if not check:
+            return offers
+        self._reread_n += 1
+        self._verified.add(key)
+        have = {o[0] for o in offers}
+        for i in check:
             cx, cy = pos["xs"][i] * gw, pos["nameY"] * gh
             w, h = int(gw * 0.16), int(gh * 0.05)
             x0, y0 = max(0, int(cx - w / 2)), max(0, int(cy - h / 2))
             t0 = time.time()
             img = cap.grab(gx + x0, gy + y0, w, h, w * 2, h * 2)
-            words = ocr.words(img, w * 2, h * 2)
+            got = ocr.words(img, w * 2, h * 2)
             self._time("이름 다시 읽기", t0)
+            self._count("이름 다시 읽기")
             # 이름 밑 꼬리표('피해량'·'보조')가 같이 읽히면 안 맞는다 → 위쪽 줄 단어부터, 앞에서부터 늘려 가며 가장 잘 맞는 것
-            toks = [t for t, *_ in sorted(words, key=lambda w_: (round(w_[2] / max(1, h // 2)), w_[1]))]
+            toks = [t for t, *_ in sorted(got, key=lambda w_: (round(w_[2] / max(1, h // 2)), w_[1]))]
             name, best = None, 0.0
             for k in range(len(toks), 0, -1):
                 n, sc = matcher.match(" ".join(toks[:k]))
                 if n and sc > best:
                     name, best = n, sc
-            self._count("이름 다시 읽기")
-            if name and name not in have:
+            if not name:
+                continue
+            old = items[i]
+            if old is None and name not in have:
                 self._count("이름 다시 읽어 찾음")
-                offers = sorted(offers + [(name, x0 + w / 2, cy)], key=lambda o: o[1])
+                items[i] = (name, x0 + w / 2, cy)
                 have.add(name)
-        return offers
+            elif old is not None and name != old[0] and best > scores.get(old[0], 1.0) and name not in have:
+                self._count("이름 다시 읽어 고침")
+                self._rec("near", {"reread": [old[0], name], "score": [round(scores.get(old[0], 0), 2), round(best, 2)]})
+                have.discard(old[0])
+                items[i] = (name, old[1], old[2])
+                have.add(name)
+        return [it for it in items if it is not None]
 
     def apply_fix(self):
         """증강 칸이 고른 증강을 알려 주면 클릭으로 짐작한 것을 고친다 (못 정했으면 채운다)"""
@@ -962,9 +1010,15 @@ class Reader(threading.Thread):
         t0 = time.time()
         words, img, iw, ih = self.read_band(cap, ocr, rect, NAME_BAND)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
         self._time("이름 줄", t0)
-        offers = find_offers(words, gw, gh, matcher)
-        if len(offers) == 2 and not self.protect:
-            offers = self.reread_missing(cap, ocr, rect, offers, matcher)
+        scores = {}
+        offers = find_offers(words, gw, gh, matcher, scores, min_count=1)
+        if len(offers) == 3:
+            self._card_hint[(gw, gh)] = card_pos(offers, gw, gh)  # 다음에 못 읽은 칸을 다시 읽을 자리
+        if not offers and not self.selection_likely():
+            self._reread_n = 0  # 선택 화면도 아니고 곧 뜰 때도 아니면 횟수를 새로
+        offers = self.reread_cards(cap, ocr, rect, offers, matcher, scores, words)
+        if len(offers) < 2:
+            offers = []  # 다시 읽고도 1개뿐이면 선택 화면으로 보지 않는다 (예전처럼 2개 이상)
         self.offered.update(n for n, _, _ in offers)
         partial = False
         segs = [t for t, cx, y in segments(words, gap=gw * 0.04)
@@ -1197,6 +1251,17 @@ class Reader(threading.Thread):
         if self.hud_ids and len(self.hud_ids) >= len(self._picked_names):
             return HUD_SETTLED
         return HUD_EVERY if self.offered else HUD_EVERY_MISSING
+
+    def selection_likely(self):
+        """선택 화면이 떠 있었거나 곧 뜰 때: 떠 있음 · 증강 레벨에 올라 아직 안 고름 · 게임 시작 90초 안 (첫 증강)"""
+        if self.tracker.showing or self.aug_pending():
+            return True
+        try:
+            live = (self.live_fn() or {}) if self.live_fn else {}
+        except Exception:
+            live = {}
+        t = live.get("gameTime")
+        return t is not None and t < 90
 
     def aug_pending(self, now=None):
         """증강 레벨에 올랐는데 그 레벨 증강을 아직 안 골랐다 (선택 화면이 언제든 뜰 수 있다)"""
