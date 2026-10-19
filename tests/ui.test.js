@@ -995,3 +995,25 @@ test("다음 구매 3개는 같이 가질 수 있는 것만 (같은 계열 고�
   assert.doesNotMatch(p.text("#next-buy"), /치유 감소: 필멸자의 운명/);
   assert.deepEqual(p.errors, []);
 });
+
+test("산 부품으로 만들던 아이템은 순위가 바뀌어도 다음 구매 1순위로 (만드는 중)", async () => {
+  const p = await loadPage({ simple: true });
+  const live = (items, level = 9) => p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level, items, gold: 0 });
+  live([]);
+  const first = () => p.q("#next-buy .next-row").dataset.id;
+  // 단검 하나(250G)로는 묶지 않는다
+  live(["1042"]);
+  assert.doesNotMatch(p.text("#next-buy"), /만드는 중/);
+  // 단검 2개 + 민첩성의 망토 (2026-10-19 지적: 루난을 보고 샀는데 윤 탈로 바뀜) → 그 부품을 가장 많이 쓰는 아이템이 1순위
+  live(["1042", "1042", "1018"]);
+  assert.match(p.text("#next-buy"), /🧩 만드는 중/);
+  const kept = first();
+  const D = JSON.parse(require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "web", "data.json"), "utf8"));
+  const tree = (id) => { const x = D.parts[id] || D.items.find((i) => i.id === id); return [id, ...((x && x.from) || []).flatMap(tree)]; };
+  assert.ok(tree(kept).includes("1018"), `망토를 쓰는 아이템: ${kept}`);
+  // 레벨이 바뀌어 다시 계산해도 그대로
+  live(["1042", "1042", "1018"], 12);
+  assert.equal(first(), kept);
+  assert.match(p.q("#next-buy .next-row").dataset.label, /\(만드는 중\)/, "게임 화면 상자에도");
+  assert.deepEqual(p.errors, []);
+});

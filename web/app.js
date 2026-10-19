@@ -1583,6 +1583,23 @@ function renderBuyNow() {
   state.buyNowText = b.done ? `지금 ${top.name} 완성 가능` : b.part ? `지금 ${b.part.name} (${b.part.cost}G)` : "";
 }
 
+// 산 부품으로 만들던 아이템: 순위가 조금 바뀌어도 그대로 1순위로 (중간에 바꾸면 산 부품이 남는다).
+// 2026-10-19 지적: 루난의 허리케인을 보고 단검 2개·민첩성의 망토를 샀는데 다음에 윤 탈 야생화살로 바뀌었다
+const BUILD_KEEP_GOLD = 500;  // 그 아이템 트리 안의 부품을 이만큼 넘게 샀으면 '만드는 중'
+const BUILD_KEEP_TOP = 8;  // 순위가 이 안일 때만 (적 상황이 크게 바뀌어 멀리 밀렸으면 놓아 준다)
+function buildingItem(avail) {
+  const inv = state.inventory || [];
+  if (!inv.length) return null;
+  const sunk = (r) => partGold(r.item.id) - remainingCost(r.item.id, inv.reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {}));
+  const near = avail.slice(0, BUILD_KEEP_TOP).filter((r) => r.item.kind === "legendary" && !r.offType);
+  // 바로 전 1순위를 만들던 중이면 그것 (부품을 같이 쓰는 아이템이 여럿이어도 사람이 보고 산 쪽)
+  const prev = state.nextTop && near.find((r) => r.item.id === state.nextTop.id);
+  if (prev && (prev.sunk = sunk(prev)) >= BUILD_KEEP_GOLD) return prev;
+  let best = null;
+  for (const r of near) if ((r.sunk = sunk(r)) > ((best && best.sunk) || 0)) best = r;
+  return best && best.sunk >= BUILD_KEEP_GOLD ? best : null;
+}
+
 function renderNextBuy(rows) {
   const box = $("#next-buy");
   if (!state.champ) { box.innerHTML = ""; return; }
@@ -1602,8 +1619,11 @@ function renderNextBuy(rows) {
   // 3개끼리도 같이 가질 수 있어야 한다: 같은 계열 고유 효과(도미닉·필멸자·세릴다 = 치명상 계열)·신발 2개를 함께 권하지 않는다
   // (2026-10-17 그레이브즈 판: '도미닉 경의 인사 > 필멸자의 운명 > 세릴다의 원한' — 셋 중 하나만 살 수 있다)
   const clash = (r, others) => others.some((o) => o !== r && ((r.item.limit && r.item.limit === o.item.limit) || (r.item.kind === "boots" && o.item.kind === "boots")));
+  const building = buildingItem(avail);
+  for (const r of avail) r.building = r === building;
   const pick = [];
-  for (const r of [...must, ...avail.filter((r) => !must.includes(r))]) {
+  for (const r of [...(building ? [building] : []), ...must, ...avail.filter((r) => !must.includes(r))]) {
+    if (pick.includes(r)) continue;
     if (pick.length >= 3) break;
     if (!clash(r, pick)) pick.push(r);
   }
@@ -1613,7 +1633,8 @@ function renderNextBuy(rows) {
   state.counter = counter.length ? { items: counter, why: enemyItemSummary() } : null;
   for (const r of avail) r.counter = counter.includes(r.item.id);
   const fit3 = (r) => r && !clash(r, pick.slice(0, 2));
-  if (counter.length && !pick.some((r) => r.counter) && pick.length === 3 && !pick[2].must) {
+  const fixedAt = (i) => pick[i].must || pick[i].building;
+  if (counter.length && !pick.some((r) => r.counter) && pick.length === 3 && !fixedAt(2)) {
     const c = avail.find((r) => r.counter && fit3(r));
     if (c) pick[2] = c;
   }
@@ -1630,8 +1651,8 @@ function renderNextBuy(rows) {
     return r ? { w: { name: r.item.name, why }, r } : null;
   }).find(Boolean);
   if (wanted && !pick.some((r) => r.counter || r.item.name === wanted.w.name) && pick.length === 3) {
-    const at = pick.slice(0, 2).findIndex((o) => !o.must && o.item.limit && o.item.limit === wanted.r.item.limit);
-    const slot = at >= 0 ? at : !pick[2].must ? 2 : -1;
+    const at = pick.slice(0, 2).findIndex((o) => !o.must && !o.building && o.item.limit && o.item.limit === wanted.r.item.limit);
+    const slot = at >= 0 ? at : !fixedAt(2) ? 2 : -1;
     if (slot >= 0) {
       wanted.r.advice = wanted.w.why;
       pick[slot] = wanted.r;
@@ -1658,8 +1679,8 @@ function renderNextBuy(rows) {
   } else if (!now.names.length) state.nextChange = null;
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
     + (state.nextChange ? `<div class="small next-change">${esc(state.nextChange)}</div>` : "")
-    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.must ? "(증강)" : r.counter ? "(적 대응)" : r.advice ? `(${r.advice})` : ""))}">
-      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.advice ? ` <span class="chip adv">🛡️ ${esc(r.advice)}</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
+    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.building ? "(만드는 중)" : r.must ? "(증강)" : r.counter ? "(적 대응)" : r.advice ? `(${r.advice})` : ""))}">
+      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.building ? ` <span class="chip syn" title="산 부품 ${fmt(r.sunk)}G 어치를 이 아이템에 쓰고 있어요">🧩 만드는 중</span>` : r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.advice ? ` <span class="chip adv">🛡️ ${esc(r.advice)}</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc(itemReason(r) || "")}</div>${gainLine(r.gain)}</div></div>`).join("") : swapHtml());
   if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);
   box.insertAdjacentHTML("beforeend", `<div id="buy-now" class="small"></div>`);
@@ -1908,7 +1929,9 @@ function applyLive(L) {
   // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
   const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
   if (key === liveLast) {
-    if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay("gold"); }
+    // 부품을 샀으면 다음 구매도 다시 (만드는 중인 아이템을 1순위로 묶는다). 골드만 바뀌면 '지금 살 것'만
+    if (invChanged && state.champ) { renderNextBuy(itemRanking()); renderChosenItems(); }
+    else if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay("gold"); }
     return;
   }
   const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));
