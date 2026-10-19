@@ -289,7 +289,7 @@ class Desktop(unittest.TestCase):
         api = desktop.Api(desktop.Settings())
         public = [n for n in dir(api) if not n.startswith("_")]
         self.assertTrue(all(callable(getattr(api, n)) for n in public), public)
-        self.assertLessEqual(len(public), 22)  # set_board · set_box_pos · card_summary 추가 (2026-10-19 안정화)
+        self.assertLessEqual(len(public), 23)  # set_board · set_box_pos · card_summary · set_box_detail 추가 (2026-10-19)
 
     def test_version_compare(self):
         self.assertGreater(desktop.version_tuple("0.1.10"), desktop.version_tuple("0.1.9"))
@@ -2042,3 +2042,29 @@ class CardsAndBox0150(unittest.TestCase):
         api.set_overlay({"cards": [{"name": "검을 뽑아라", "label": "추천"}, None, None], "hud": []})
         self.assertEqual(api._ov.p["cards"], [None] * 3, "선택 화면이 닫혔으면 기본 위치에 카드를 그리지 않는다")
         self.assertEqual(overlay.layout(api._ov.p, 1920, 1080), [])
+
+
+class BoxDetail(unittest.TestCase):
+    """상자 '간단히/자세히' 설정 (2026-10-19 사용자 요청, 기본 간단히). 증강 선택 중 카드만은 둘 다 그대로"""
+
+    HUD = ["다음 구매: 삼위일체 > 크라켄 학살자 > 몰락한 왕의 검", "💰 지금 탐식의 망치 (1100G)",
+           "적 회복 많음 (코그모·아칼리) → 치유 감소: 필멸자의 운명 또는 처형인의 대검(부품 800G)", "고른 증강: 최상급 조준경 부착"]
+
+    def test_dead_simple_vs_detail(self):
+        import overlay
+        simple = overlay.layout({"hud": self.HUD, "shop": "dead"}, 1920, 1080)[0][3][0]
+        detail = overlay.layout({"hud": self.HUD, "shop": "dead", "boxDetail": "detail"}, 1920, 1080)[0][3][0]
+        self.assertEqual(simple, self.HUD[:2])
+        self.assertEqual(detail, self.HUD, "자세히: 죽어 있을 때도 상세, 글자도 안 자른다")
+        picking = overlay.layout({"hud": self.HUD, "shop": "dead", "boxDetail": "detail", "cards": [{"name": "x"}, None, None]}, 1920, 1080)
+        self.assertEqual([k for k, *_ in picking], ["card"], "증강 고를 땐 자세히여도 카드만")
+
+    def test_setting_api(self):
+        api = desktop.Api.__new__(desktop.Api)
+        api._settings = desktop.Settings.__new__(desktop.Settings)
+        api._settings.path, api._settings.v = None, {}
+        api._settings.set = lambda **kw: api._settings.v.update(kw)
+        api._settings.get = lambda k, d=None: api._settings.v.get(k, d)
+        self.assertTrue(api.set_box_detail("detail"))
+        self.assertFalse(api.set_box_detail("huge"))
+        self.assertEqual(api._settings.get("box_detail"), "detail")
