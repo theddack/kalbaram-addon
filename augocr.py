@@ -49,6 +49,10 @@ MIN_RATIO = 0.72  # 이름 비슷한 정도 (OCR 이 한두 글자 틀려도 잡
 INTERVAL = 1.0  # 초 (글자 읽기: 증강 선택 화면이 떠 있거나 막 닫혔을 때)
 CALM_EVERY = 3  # 레벨이 그대로인 전투 중엔 증강 이름 줄을 이만큼에 한 번만 (2초 x 3 = 6초). 글자 인식이 CPU 를 가장 많이 쓴다
 FAST_AFTER_LEVEL = 20  # 초. 레벨이 오르면 이만큼은 매번 (증강은 레벨에 맞춰 생긴다. 미뤘다 여는 화면은 6초 안에)
+# 첫 증강(시작) 다음 증강이 생기는 레벨. 2026-10-15~18 기록 6판 모두 2·3·4번째 고르기가 7·11·15레벨에 오른 뒤였다.
+# 선택 화면은 미뤘다 열 수 있어서(사미라 판: 7레벨 뒤 100초) 레벨이 오르고 20초가 지나면 6초에 한 번만 읽어 늦게 떴다 (2026-10-19 지적)
+AUG_LEVELS = (7, 11, 15)
+PENDING_FOR = 240.0  # 초. 증강 레벨에 오른 뒤 아직 안 골랐으면 이만큼은 1초마다 읽는다 (고르면 바로 그친다)
 IDLE_INTERVAL = 2.0  # 초 (선택 화면이 아닐 때. 뜨면 2초 안에 알아채고 그때부터 1초마다)
 CLICK_POLL = 0.03  # 초 (선택 화면이 떠 있을 때만 마우스 버튼 확인)
 # 상점 여닫기 키·클릭을 보면 2초를 기다리지 않고 곧바로 상점 창을 읽는다 (2026-10-17 지적: 상점을 열고 닫을 때 상자가 뜨다 말다.
@@ -555,6 +559,7 @@ class Reader(threading.Thread):
         self.live_fn = None  # 게임 데이터 (레벨·죽음)를 돌려주는 함수
         self._level = None
         self._fast_until = 0.0
+        self._pending_until = 0.0  # 증강 레벨에 올랐고 아직 안 고른 동안 (이 시각까지)
         self.size_hint = None  # 게임 창 높이 → 지난 게임에서 찾은 증강 칸 아이콘 크기 (함수)
         self.size_save = None  # (게임 창 높이, 크기) 를 저장하는 함수
         self._perf = {}  # 종류별 처리 시간(ms) 목록: 이름 줄·상점·증강 칸·넓혀 찾기 (한 판 기록에 요약)
@@ -800,6 +805,7 @@ class Reader(threading.Thread):
         self._hud_at = time.time() + HUD_EVERY_MISSING
         self._game_n = getattr(self, "_game_n", 0) + 1
         self._level = None
+        self._pending_until = 0.0
         self._verify = None
         self._fix = None
         self._recover = None
@@ -830,7 +836,7 @@ class Reader(threading.Thread):
         end = time.time() + INTERVAL
         if not (rect and self.tracker.showing):
             # 선택 화면이 아니면 2초마다 (글자 인식이 CPU 를 가장 많이 쓴다). 직전 10초 안에 떴었으면 1초 (새로고침·다음 화면)
-            recent = time.time() - getattr(self.tracker, "_full_at", 0) < 10
+            recent = time.time() - getattr(self.tracker, "_full_at", 0) < 10 or self.aug_pending()
             self.wait_shop_keys(mouse, time.time() + (INTERVAL if recent else IDLE_INTERVAL), bool(rect))
             return
         while time.time() < end:
@@ -1145,6 +1151,14 @@ class Reader(threading.Thread):
             return HUD_SETTLED
         return HUD_EVERY if self.offered else HUD_EVERY_MISSING
 
+    def aug_pending(self, now=None):
+        """증강 레벨에 올랐는데 그 레벨 증강을 아직 안 골랐다 (선택 화면이 언제든 뜰 수 있다)"""
+        now = now or time.time()
+        if now >= self._pending_until or self._level is None:
+            return False
+        want = 1 + sum(1 for L in AUG_LEVELS if L <= self._level)
+        return max(len(self._picked_names), len(self.hud_ids or [])) < want
+
     def urgent(self, now=None):
         """증강 선택 화면이 곧 뜨거나 떠 있을 때: 선택 화면이 보임·고른 뒤 확인 중·레벨이 막 오름·죽어 있음"""
         now = now or time.time()
@@ -1159,8 +1173,10 @@ class Reader(threading.Thread):
             if lv is not None and lv != self._level:
                 # 게임 시작(첫 증강)은 60초, 레벨이 오르면 FAST_AFTER_LEVEL 초
                 self._fast_until = now + (FAST_AFTER_LEVEL if self._level is not None else 60)
+                if self._level is not None and any(self._level < L <= lv for L in AUG_LEVELS):
+                    self._pending_until = now + PENDING_FOR
                 self._level = lv
-        return bool(self.tracker.showing or self._verify or now < self._fast_until
+        return bool(self.tracker.showing or self._verify or now < self._fast_until or self.aug_pending(now)
                     or (live and live.get("dead")) or not self.live_fn or not live or not live.get("inGame"))
 
     def _watch_inventory(self):

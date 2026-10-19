@@ -777,6 +777,28 @@ class AugOcr(unittest.TestCase):
         r.tracker.feed(None)
         self.assertEqual(r.tracker.state["picked"], "환영 무기")
 
+    def test_pending_augment_level_keeps_reading(self):
+        # 2026-10-19 지적: 3번째 증강 선택지 표시가 늦었다. 11레벨에 오르고 20초가 지나면 6초에 한 번만 읽었다
+        # → 증강 레벨(7·11·15)에 올랐고 그 증강을 아직 안 골랐으면 계속 서둘러 읽는다. 고르면 그친다
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        live = {"inGame": True, "level": 10}
+        r.live_fn = lambda: live
+        t = 1000.0
+        r.urgent(t)
+        r._picked_names = {"a", "b"}
+        self.assertFalse(r.urgent(t + 100), "증강 레벨이 아니면 평소대로")
+        live["level"] = 11
+        self.assertTrue(r.urgent(t + 101))
+        self.assertTrue(r.urgent(t + 160), "레벨 오르고 20초가 지나도 아직 안 골랐으면")
+        r._picked_names.add("c")
+        self.assertFalse(r.urgent(t + 161), "고르면 그친다")
+        r._picked_names.discard("c")
+        self.assertFalse(r.urgent(t + 101 + augocr.PENDING_FOR + 1), "끝내 못 보면 정해진 시간 뒤엔 놓는다")
+        live["level"] = 12
+        self.assertTrue(r.urgent(t + 2000))
+        self.assertFalse(r.urgent(t + 2000 + augocr.FAST_AFTER_LEVEL + 1), "증강 레벨이 아닌 레벨업은 20초만")
+
 
 class UpdateData(unittest.TestCase):
     """데이터 받기는 별도 프로그램에서 (창이 '응답 없음'이 되지 않게), 진행은 기록 파일로 본다"""
