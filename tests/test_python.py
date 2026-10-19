@@ -959,8 +959,8 @@ class HudIcons(unittest.TestCase):
         # Tab 점수판: 적 줄의 증강만, 그 줄 챔피언 것으로. 아군 줄 증강은 빼고, 여러 사람이 같은 증강을 골라도 각자
         single = [g[0] for g in self.tpl.groups if len(g) == 1]
         a, b, c, d = single[3], single[40], single[77], single[100]
-        img, H = self.board_image({"Jinx": (200, 250, [a, b]), "Vayne": (200, 310, [c]),
-                                   "Ahri": (900, 250, [d]), "Garen": (900, 310, [a])})
+        img, H = self.board_image({"Jinx": (320, 250, [a, b]), "Vayne": (320, 310, [c]),
+                                   "Ahri": (1100, 250, [d]), "Garen": (1100, 310, [a])})
         br = self.h.BoardReader(self.tpl, str(ROOT / "web" / "icons" / "champion"))
         br.champ_size, br.aug_size = 44 / 1050, 26 / 1050  # 크기 찾기는 무거워서 (실제로는 첫 읽기에서 찾는다)
         br.scan(img, H, ["Jinx", "Vayne"], ["Ahri", "Garen"])
@@ -1284,6 +1284,26 @@ class HudIcons(unittest.TestCase):
         r._hud_runs = augocr.HUD_GIVE_UP
         self.assertEqual(r._hud_wait(), float("inf"), "2026-10-18 세나 판: 44번 읽고 0개")
         self.assertEqual(r._hud_wait(soon=True), 2)
+
+    def test_no_verify_when_hud_blind(self):
+        # 이번 판 증강 칸이 안 보이면 고른 뒤 확인·넓혀 찾기를 안 돌린다 (2026-10-19 아크샨 판 2520x1575:
+        # 증강 칸 19번 평균 3.0초 · 넓혀 찾기 3번 평균 8.1초, 하나도 못 찾음. 고른 증강은 경기 결과로 '모두 맞음')
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.icon_dir = "x"
+        r._changed = lambda: None
+        before = {"pickSeq": 0}
+        after = {"pickSeq": 1, "picked": "부식", "pickedFrom": [None, "부식", "도주 계획"]}
+        r._hud_runs = augocr.HUD_GIVE_UP
+        self.assertTrue(r.hud_blind())
+        r._after_pick(before, after)
+        self.assertIsNone(r._verify)
+        self.assertFalse(getattr(r, "_hud_soon", False), "고른 직후 다시 읽기도 안 한다")
+        self.assertEqual(r._counts.get("확인 건너뜀"), 1)
+        r._hud_runs = 0
+        self.assertFalse(r.hud_blind(), "아직 덜 찾아봤으면 평소처럼")
+        r._after_pick(before, {**after, "pickSeq": 2})
+        self.assertIsNotNone(r._verify)
 
     def test_shop_top_band_skipped_after_bottom_works(self):
         # 아래 버튼 줄로 상점을 알아본 창 크기에서는 위쪽 띠(큰 그림)를 따로 읽지 않는다

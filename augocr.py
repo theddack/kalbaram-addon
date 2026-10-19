@@ -589,6 +589,7 @@ class Reader(threading.Thread):
         self._bottom_ok = set()  # 상점 아래 버튼 줄로 상점을 알아본 적이 있는 게임 창 크기 (그러면 위쪽 띠는 안 읽는다)
         self.board = None  # Tab 점수판 읽기 (hudicons.BoardReader)
         self.board_on = False  # 설정 '점수판 적 증강 읽기 (시험)' (기본 꺼짐: 안정화 기획서)
+        self.board_reads = 0  # 이번 판 점수판 읽은 횟수 (판 끝 대조 줄에)
         self.enemy_augs = {}  # 점수판에서 읽은 적 증강 {챔피언 id: [증강 id]}
         self.board_unsure = {}  # 그림이 같은 증강이라 못 정한 것 {챔피언 id: [[이름 목록]]}
         self._board_now = False
@@ -827,6 +828,7 @@ class Reader(threading.Thread):
             self.board.reset()
         self.enemy_augs, self.board_unsure = {}, {}
         self._board_at = 0.0
+        self.board_reads = 0
 
     def id_names(self):
         """{증강 id: 이름} (아이콘 파일 이름이 id)"""
@@ -963,12 +965,18 @@ class Reader(threading.Thread):
         if after.get("pickSeq") == before.get("pickSeq"):
             return
         self._rec("picked", {"picked": after.get("picked"), "from": after.get("pickedFrom"), "by": "click"})
-        self._hud_at = time.time() + 2  # 고른 직후엔 증강 칸을 바로 확인
-        self._hud_soon = True  # 지금 읽는 중이면 끝나고 바로 한 번 더
+        if not self.hud_blind():
+            self._hud_at = time.time() + 2  # 고른 직후엔 증강 칸을 바로 확인
+            self._hud_soon = True  # 지금 읽는 중이면 끝나고 바로 한 번 더
         if after.get("picked") and after["picked"] in getattr(self, "no_icon", ()):
             # 공용 아이콘 증강(믿음직한 무기 등)은 증강 칸에 다른 그림이 떠서 찾을 수 없다 → 확인·넓혀 찾기를 돌리지 않는다
             # (2026-10-17 사미라 판: 25초 확인 + 넓혀 찾기가 헛돌았다)
             self._rec("verify", {"from": [n for n in after["pickedFrom"] if n], "click": after["picked"], "result": "공용 아이콘이라 확인 안 함"})
+        elif self.icon_dir and after.get("pickedFrom") and self.hud_blind():
+            # 이번 판 증강 칸이 안 보이는 화면: 확인·넓혀 찾기를 돌리지 않는다 (고른 증강은 판 끝 경기 결과로 맞춘다).
+            # 2026-10-19 아크샨 판(2520x1575): 증강 칸 19번 평균 3.0초 · 넓혀 찾기 3번 평균 8.1초를 돌리고 하나도 못 찾음
+            self._rec("verify", {"from": [n for n in after["pickedFrom"] if n], "click": after.get("picked"), "result": "증강 칸이 안 보여 확인 안 함"})
+            self._count("확인 건너뜀")
         elif self.icon_dir and after.get("pickedFrom"):
             # 클릭으로 잡았으면 몇 번만 맞는지 보고, 못 잡았으면 VERIFY_FOR 초까지 (확인이 CPU 를 쓴다: 25초 내내면 평균 5→9%)
             self._verify = {"from": [n for n in after["pickedFrom"] if n], "click": after.get("picked"),
@@ -1095,6 +1103,7 @@ class Reader(threading.Thread):
             picked = self.board.scan(rgb, rect[3], enemies, allies)
             self._time("점수판", t0)
             self._count("점수판")
+            self.board_reads += 1
             # 그림이 같은 증강(돌진=앙파상)은 적이 무엇을 골랐는지 모르니 하나로 정하지 않는다
             ids = {c: [g[0] for g in gs if len(g) == 1] for c, gs in picked.items()}
             unsure = {c: [[names.get(a, a) for a in g] for g in gs if len(g) > 1] for c, gs in picked.items()}
@@ -1138,6 +1147,10 @@ class Reader(threading.Thread):
 
     def _count(self, kind, n=1):
         self._counts[kind] = self._counts.get(kind, 0) + n
+
+    def hud_blind(self):
+        """이번 판 증강 칸 아이콘을 HUD_GIVE_UP 번 넘게 찾고도 하나도 못 찾았다 (그 화면에선 증강 칸 읽기가 헛돈다)"""
+        return not self.hud_ids and not (self.hud and self.hud.last) and getattr(self, "_hud_runs", 0) >= HUD_GIVE_UP
 
     def _hud_wait(self, soon=False):
         """다음 증강 칸 읽기까지 몇 초. 증강 칸 읽기가 이 프로그램에서 가장 무거운 일이라(평균 0.6초, 길면 4초)

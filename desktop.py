@@ -1597,11 +1597,16 @@ def main():
     lw.on_eog = on_eog
 
     def on_match(m):
-        """점수판에서 읽은 적 증강을 전적의 정답과 맞춰 진단 기록에 (점수판을 한 번도 안 읽은 판은 건너뛴다)"""
-        if not board_seen:
+        """점수판에서 읽은 적 증강을 전적의 정답과 맞춰 진단 기록에 (점수판 읽기를 켠 판만).
+        경기 결과·전적이 판 끝 처리보다 먼저 오는 판이 있다 (2026-10-19 아크샨 판: 대조 줄이 안 남음) → 그땐 지금 읽은 것으로"""
+        if not (reader and reader.board_on):
+            return
+        seen = board_seen or {c: list(v) for c, v in reader.enemy_augs.items()}
+        if not seen:
+            diag.write(f"점수판 적 증강 대조: 읽은 적 증강 없음 (점수판 {reader.board_reads}번 읽음)")
             return
         nums = {**{n: i for n, i in lw.augment_ids().items() if i in aug_name_by_id}, **aug_id_by_num}
-        res = board_check(board_seen, m, champ_by_key, nums)
+        res = board_check(seen, m, champ_by_key, nums)
         if res:
             wrong = ", ".join(f"{c} {aug_name_by_id.get(a, a)}" for c, a in res["wrong"][:5])
             diag.write(f"점수판 적 증강 대조: 맞음 {res['right']} · 틀림 {len(res['wrong'])} · 못 읽음 {res['missed']} / 적 증강 {res['truth']}개"
