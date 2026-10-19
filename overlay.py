@@ -31,6 +31,10 @@ BELOW_NAME = 0.15
 CARD_BOTTOM = 0.22
 FONT_PX = (20, 15, 11)  # 글자 크기(픽셀, 1080p 기준): 제목, 이유·상자, 가장 작게.
 # 포인트로 주면 화면 배율(150% 등)만큼 한 번 더 커졌다 (게임 창 크기 비례 + 배율 = 두 번 키움)
+# 상점 상자 글자(픽셀, 1080p 기준). 이유 글자(15)와 같이 쓰면 작아서 읽기 어려웠다 (2026-10-19 지적)
+HUD_PX = 19
+HUD_HEAD = "#e3c06b"  # 머리줄(다음 구매·지금 살 것·6칸 완성) 색
+BOX_W = 0.22  # 상자 폭 (게임 창 너비 비율). 증강 인식이 이 안의 글자를 우리 상자로 보고 뺀다 (augocr.OWN_BOX_RIGHT)
 BOX_X, BOX_Y = 16, 0.08  # 상점 옆 상자 자리: 게임 창 왼쪽 위 (픽셀, 높이 비율)
 TIMER_X, TIMER_Y = 16, 0.34  # 증강 쿨타임 자리: 게임 창 왼쪽, 상점 상자 밑 (실제 화면 확인 전 추정)
 
@@ -271,6 +275,19 @@ def timer_image(path, size, step):
     return out
 
 
+def hud_lines(lines):
+    """상자 줄 → 그릴 줄 [(글자, 머리줄 여부)]. '다음 구매: a > b > c' 는 한 줄에 하나씩 번호를 붙인다
+    (작은 글자로 한 줄에 몰아 쓰면 줄이 꺾여 어디서 끊기는지 읽기 어려웠다, 2026-10-19 지적)"""
+    out = []
+    for line in lines:
+        if line.startswith("다음 구매: "):
+            out.append(("다음 구매", True))
+            out += [(f"{i}. {n}", False) for i, n in enumerate(line[len("다음 구매: "):].split(" > "), 1)]
+        else:
+            out.append((line, line.startswith(("💰", "✅"))))
+    return out
+
+
 def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
     canvas.delete("all")
     canvas.images = []  # 그림을 붙잡아 둔다 (안 그러면 Tk 그림이 지워진다)
@@ -279,7 +296,7 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
     big, small, tiny = (-max(1, round(px * scale)) for px in FONT_PX)
     pos = payload.get("pos") or {}
     bottom = int(h * pos["bottom"]) if pos.get("bottom") else None
-    box_bottom = None
+    box_bottom = left_bottom = None
     for kind, x, y, c in layout(payload, w, h):
         if kind == "card":
             color = c.get("color") or TIER_COLORS.get(c.get("tier"), "#78909c")
@@ -315,26 +332,38 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
             canvas.tag_raise(title)
             canvas.tag_raise(reason)
         elif kind == "timers":
-            draw_timers(canvas, c, x, y, h, icon_dir)
+            # 상자 글자가 커져 길어지면 쿨타임 아이콘과 겹친다 → 상자(·바꾸기) 밑으로 내린다
+            canvas.timer_y = max(y, left_bottom + 8) if left_bottom is not None else y  # 쿨타임만 다시 그릴 때도 같은 자리
+            draw_timers(canvas, c, x, canvas.timer_y, h, icon_dir)
         elif kind == "hud":
             lines_list, anchor = c if isinstance(c, tuple) else (c, "ne")
-            lines = "\n".join(lines_list)
-            t = canvas.create_text(x - 10 if anchor == "ne" else x + 10, y, text=lines, anchor=anchor, font=(font, small),
-                                   fill="#e6e9ec", width=int(w * 0.22))
-            hb = canvas.bbox(t)
+            bw = int(w * BOX_W)
+            px = -max(1, round(HUD_PX * scale))
+            gap = max(2, round(4 * scale))
+            ty, texts = y, []
+            for i, (line, head) in enumerate(hud_lines(lines_list)):
+                if head and i:
+                    ty += gap * 2  # 묶음 사이를 조금 띄운다
+                t = canvas.create_text(x - 10 if anchor == "ne" else x + 10, ty, text=line, anchor=anchor,
+                                       font=(font, px, "bold") if head else (font, px), fill=HUD_HEAD if head else "#e6e9ec", width=bw)
+                tb = canvas.bbox(t)
+                if tb:
+                    texts.append((t, tb))
+                    ty = tb[3] + gap
+            hb = (min(b[0] for _, b in texts), texts[0][1][1], max(b[2] for _, b in texts), texts[-1][1][3]) if texts else None
             if hb:
                 # 상자 크기를 고정: 폭은 글자 폭 한도 그대로, 높이는 이 게임 창에서 본 가장 큰 높이 (줄 수가 바뀔 때마다
                 # 상자가 커졌다 작아졌다 해서 '창이 움직인다'고 느꼈다, 2026-10-17 로그: 가로 0.20↔0.25 · 세로 0.15~0.30)
-                bw = int(w * 0.22)
                 x0 = hb[0] if anchor == "nw" else hb[2] - bw
                 tall = getattr(canvas, "hud_tall", {})
                 tall[(w, h)] = bh = max(tall.get((w, h), 0), hb[3] - hb[1])
                 canvas.hud_tall = tall
                 canvas.create_rectangle(x0 - 10, hb[1] - 8, x0 + bw + 10, hb[1] + bh + 8, fill="#111820", outline="#c8aa6e")
-                box_bottom = hb[1] + bh + 8
-            canvas.tag_raise(t)
+                box_bottom = left_bottom = hb[1] + bh + 8
+            for t, _ in texts:
+                canvas.tag_raise(t)
         elif kind == "swap":
-            draw_swap(canvas, c, x, (box_bottom if box_bottom is not None else int(h * BOX_Y)) + 6, h, icon_dir, (font, small))
+            left_bottom = draw_swap(canvas, c, x, (box_bottom if box_bottom is not None else int(h * BOX_Y)) + 6, h, icon_dir, (font, small))
 
 
 def swap_image(sell_path, buy_path, size):
@@ -380,6 +409,7 @@ def draw_swap(canvas, ids, x, y, h, icon_dir, font):
         canvas.create_text(x0, y + size // 2, text="✕ → ✓", font=font, fill="#e6e9ec", anchor="w")
     r = canvas.create_rectangle(x, y - 4, x0 + size * 2 + size // 2 + 8, y + size + 4, fill="#111820", outline="#c8aa6e")
     canvas.tag_lower(r)
+    return y + size + 4
 
 
 TIMER_SOON = 3  # 이 초 이하로 남으면 숫자를 노랗게 (곧 발동: 미리 자리 잡게)
@@ -570,7 +600,7 @@ class Overlay(threading.Thread):
                     t0 = time.time()
                     _, tx, ty, states = tim[0]
                     canvas.delete("timers")
-                    draw_timers(canvas, states, tx - self._box[0], ty - self._box[1], h, self.icon_dir)
+                    draw_timers(canvas, states, tx - self._box[0], getattr(canvas, "timer_y", ty) - self._box[1], h, self.icon_dir)
                     self._perf_add("쿨타임만", t0)
                     last = key
                 elif key != last:  # 내용·게임 창 크기가 바뀌었을 때만 다시 그린다

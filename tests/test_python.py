@@ -353,6 +353,21 @@ class Overlay(unittest.TestCase):
             boxes.append([a for a in c.items.values() if len(a) == 4 and not isinstance(a[2], str)][0])
         self.assertEqual(boxes[0], boxes[1])
 
+    def test_box_lines_readable(self):
+        """상자 글자는 이유 글자보다 크게, '다음 구매' 는 한 줄에 하나씩 · 쿨타임 아이콘은 상자 밑으로 (2026-10-19 지적: 글자가 작아 읽기 어렵다)"""
+        import overlay
+        self.assertEqual(overlay.hud_lines(["다음 구매: 루난의 허리케인(만드는 중) > 무한의 대검", "💰 지금 단검 (250G)", "고른 증강: 취약"]),
+                         [("다음 구매", True), ("1. 루난의 허리케인(만드는 중)", False), ("2. 무한의 대검", False),
+                          ("💰 지금 단검 (250G)", True), ("고른 증강: 취약", False)])
+        self.assertGreater(overlay.HUD_PX, overlay.FONT_PX[1])
+        c = FakeCanvas()
+        hud = ["다음 구매: " + " > ".join(f"아이템{i}" for i in range(3))] + [f"줄{i}" for i in range(12)]
+        import time
+        timers = [{"id": "x", "name": "x", "kind": "auto", "period": 10, "base": time.time()}]
+        overlay.draw(c, {"hud": hud, "shop": True, "timers": timers}, 1600, 900)
+        box = [a for a in c.items.values() if len(a) == 4 and not isinstance(a[2], str)][0]
+        self.assertGreaterEqual(c.timer_y, box[3], "쿨타임은 상자 밑에서 시작")
+
     def test_card_reason_stays_above_reroll(self):
         """이유가 길어도 새로고침 버튼(이름 줄 + CARD_BOTTOM) 위에서 끝난다. 글자 크기는 픽셀(음수)이라 화면 배율을 안 탄다 (2026-10-15 지적)"""
         import overlay
