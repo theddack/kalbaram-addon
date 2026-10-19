@@ -247,93 +247,79 @@ class HudReader:
         self._seen = {}
 
 
-# ---------------------------------------------------------------- Tab 점수판: 적이 고른 증강 (시험: 실제 점수판 그림으로 크기·문턱을 맞출 것)
-# 점수판 줄마다 챔피언 초상화와 그 사람이 고른 증강 아이콘이 보인다 (진 판 캡처: '취약' 아이콘, 1680x1050 에서 약 26px).
-# 점수판 배치를 가정하지 않는다: 이번 판 챔피언 초상화를 먼저 찾고, 같은 줄에서 가장 가까운 초상화의 증강으로 붙인다.
-# 찾는 범위 (게임 창 비율: 왼쪽, 위, 오른쪽, 아래). 2026-10-19 아크샨 판(2520x1575): 오른쪽 끝(가로 0.91~0.94)의 다른 화면 요소를
-# 티모·녹턴·오공 초상화로 번갈아 착각해 가운데로 좁혔다 (점수판 그림으로 다시 맞출 것)
-BOARD_REGION = (0.12, 0.06, 0.88, 0.90)
-BOARD_CHAMP_SIZES = tuple(round(0.026 * 1.1 ** i, 4) for i in range(9))  # 초상화 한 변 / 게임 창 높이 후보 (0.026~0.056)
-BOARD_AUG_SIZES = tuple(round(0.019 * 1.08 ** i, 4) for i in range(7))  # 증강 아이콘 후보 (0.019~0.030)
-BOARD_CHAMP_SCORE = 0.80  # 초상화는 이번 판 챔피언 10명하고만 비교해서 문턱을 낮춘다 (둥근 테두리·어둡게 칠한 경우)
+# ---------------------------------------------------------------- Tab 점수판: 플레이어가 고른 증강 (시험)
+# 2026-10-19 실제 Tab 점수판 스크린샷(1680x1050) + 기록(2520x1575)으로 맞춘 배치:
+# - 증강 아이콘은 점수판 양옆 패널에 플레이어마다 3칸 × 2줄. 왼쪽 패널 = 우리 팀, 오른쪽 패널 = 적 팀
+# - 줄 순서 = 게임 연동(allPlayers)의 팀별 플레이어 순서. 줄 간격은 게임 창 높이의 7.05%, 첫 줄 위끝은 높이의 28.7%
+# - 적 초상화는 시야에 없으면 '?' 로 가려져 초상화로 줄을 찾던 예전 방식은 아군 증강을 적에게 붙였다 (3개 중 1개만 맞음)
+#   → 초상화를 쓰지 않고 '패널(팀) + 높이(줄 번호)'로 붙인다. 같은 판 스크린샷 12장: 맞음 56 · 틀림 20 (틀림은 아이콘 착각)
+BOARD_SIDE = (0.47, 0.72)  # 패널 가로 범위: 게임 창 가운데에서 떨어진 거리 / 게임 창 높이 (해상도·화면비와 상관없게)
+BOARD_YS = (0.27, 0.70)  # 패널 세로 범위 (게임 창 높이 비율)
+BOARD_ROW0, BOARD_STEP = 0.287, 0.0705  # 첫 줄 위끝, 줄 간격 (게임 창 높이 비율)
+BOARD_AUG_SIZES = (0.024, 0.022, 0.026, 0.028)  # 증강 아이콘 한 변 / 게임 창 높이 (스크린샷 0.024 가 가장 잘 맞음)
 BOARD_SURE = 0.95  # 한 번만 봐도 인정하는 점수 (아니면 두 번 보여야)
 
 
+def board_bands(w, h):
+    """점수판 양옆 패널 자리 → [("ally"|"enemy", (x0, y0, x1, y1))] (게임 창 픽셀)"""
+    cx = w / 2
+    y0, y1 = int(BOARD_YS[0] * h), int(BOARD_YS[1] * h)
+    left = (int(max(0, cx - BOARD_SIDE[1] * h)), y0, int(max(0, cx - BOARD_SIDE[0] * h)), y1)
+    right = (int(min(w, cx + BOARD_SIDE[0] * h)), y0, int(min(w, cx + BOARD_SIDE[1] * h)), y1)
+    return [("ally", left), ("enemy", right)]
+
+
+def board_row(cy, h):
+    """아이콘 가운데 높이(게임 창 픽셀) → 줄 번호 0~4 (범위 밖이면 None)"""
+    r = int((cy / h - BOARD_ROW0) // BOARD_STEP)
+    return r if 0 <= r < 5 else None
+
+
 class BoardReader:
-    """scan(점수판 그림, 게임 창 높이, 적 챔피언, 아군 챔피언) → picked {적 챔피언 id: [증강 그림 묶음]}"""
+    """scan(양옆 패널 그림들, 게임 창 높이, 적 챔피언 순서, 아군 챔피언 순서) → picked {적 챔피언 id: [증강 그림 묶음]}"""
 
     CONFIRM = 2
 
-    def __init__(self, aug_tpl, champ_dir):
+    def __init__(self, aug_tpl):
         self.aug_tpl = aug_tpl
-        self.champ_dir = champ_dir  # icons/champion (파일 이름이 챔피언 id)
-        self._champ_tpl, self._champ_key = None, None
-        self.champ_size = None  # 찾은 초상화 크기 (게임 창 높이 비율)
-        self.aug_size = None
+        self.aug_size = None  # 찾은 아이콘 크기 (게임 창 높이 비율)
         self.picked = {}
         self._seen = {}
-        self.last = {"champs": [], "augs": []}
+        self.last = {"augs": []}
 
-    def _champs(self, champs):
-        key = tuple(sorted(champs))
-        if key != self._champ_key:
-            self._champ_tpl = Templates(self.champ_dir, {c: c for c in champs})
-            self._champ_key = key
-        return self._champ_tpl
-
-    @staticmethod
-    def _best(tpl, rgb, H, sizes, **kw):
-        """여러 크기로 찾아 평균 점수가 가장 높은 크기 → (찾은 것, 크기)"""
-        best, best_size, best_mean = [], None, 0.0
-        for s in sizes:
-            hits = find_icons(tpl, rgb, max(GRID, s * H), **kw)
-            m = sum(h[1] for h in hits) / len(hits) if hits else 0.0
-            if m > best_mean:
-                best, best_size, best_mean = hits, s, m
-        return best, best_size
-
-    def scan(self, rgb, H, enemies, allies=()):
-        """rgb: 점수판 부분 (h, w, 3), H: 게임 창 높이. 좌표는 rgb 기준"""
-        champs = [c for c in dict.fromkeys(list(enemies) + list(allies)) if c]
-        tpl = self._champs(champs)
-        if not tpl.groups:
-            return self.picked
-        sizes = [self.champ_size] if self.champ_size else BOARD_CHAMP_SIZES
-        found, size = self._best(tpl, rgb, H, sizes, max_cands=len(champs) + 4, min_score=BOARD_CHAMP_SCORE)
+    def scan(self, bands, h, enemies, allies=()):
+        """bands: [("ally"|"enemy", 그림(h, w, 3), (x0, y0) 게임 창 기준 왼쪽 위)]"""
+        found = []  # (팀, 줄, 묶음, 점수, x, y)
+        sizes = [self.aug_size] if self.aug_size else BOARD_AUG_SIZES
+        best_size, best_mean = None, 0.0
+        for side, rgb, (x0, y0) in bands:
+            for s in sizes:
+                hits = find_icons(self.aug_tpl, rgb, max(GRID, s * h), max_cands=40, unique=False)
+                if not hits:
+                    continue
+                mean = sum(x[1] for x in hits) / len(hits)
+                if mean > best_mean:
+                    best_size, best_mean = s, mean
+                for g, sc, x, y in hits:
+                    row = board_row(y + y0 + s * h / 2, h)
+                    if row is not None:
+                        found.append((side, row, g, sc, x + x0, y + y0, s))
+                if self.aug_size:
+                    break
+        if best_size and not self.aug_size:
+            self.aug_size = best_size
         if not found:
-            self.last = {"champs": [], "augs": []}
-            self.champ_size = self.aug_size = None  # 고정한 크기로 못 찾았으면 (창 크기를 바꿈) 다음엔 여러 크기로
-            return self.picked
-        self.champ_size = self.champ_size or size
-        ps = self.champ_size * H
-        portraits = [(g[0], sc, x, y) for g, sc, x, y in found]  # 묶음 → 챔피언 id (같은 그림 챔피언은 없다)
-        h, w = rgb.shape[:2]
-        augs = []
-        enemy_set = set(enemies)
-        for cid, _, px, py in portraits:
-            if cid not in enemy_set:
-                continue
-            # 그 초상화 줄만 잘라 증강을 찾는다 (점수판 전체보다 훨씬 가볍다)
-            y0, y1 = max(0, int(py - 0.2 * ps)), min(h, int(py + 1.2 * ps))
-            band = rgb[y0:y1]
-            asz = [self.aug_size] if self.aug_size else BOARD_AUG_SIZES
-            hits, s = self._best(self.aug_tpl, band, H, asz, max_cands=12, unique=False)
-            if hits and not self.aug_size:
-                self.aug_size = s
-            augs += [(g, sc, x, y + y0) for g, sc, x, y in hits]
-        # 증강마다 같은 줄(세로 중심이 초상화 높이 안)에서 가장 가까운 초상화의 것 (아군 초상화도 후보: 한 줄에 두 팀이 나란한 배치)
-        a_half = (self.aug_size or 0.025) * H / 2
+            self.aug_size = None  # 못 찾았으면 (창 크기를 바꿈) 다음엔 여러 크기로
+        size = self.aug_size or best_size
+        found = [f for f in found if size is None or f[6] == size]
+        self.last = {"augs": [f[:6] for f in found], "size": size}
         now = {}
-        for g, sc, x, y in augs:
-            cy = y + a_half
-            row = [(abs(x + a_half - (px + ps / 2)), cid) for cid, _, px, py in portraits if py - 0.1 * ps <= cy <= py + 1.1 * ps]
-            if not row:
+        for side, row, g, sc, *_ in found:
+            if side != "enemy" or row >= len(enemies):
                 continue
-            cid = min(row)[1]
-            if cid in enemy_set:
-                now.setdefault(cid, {})
-                now[cid][g] = max(sc, now[cid].get(g, 0.0))
-        self.last = {"champs": portraits, "augs": augs, "size": [self.champ_size, self.aug_size]}
+            cid = enemies[row]
+            now.setdefault(cid, {})
+            now[cid][g] = max(sc, now[cid].get(g, 0.0))
         for cid, gs in now.items():
             for g, sc in gs.items():
                 k = (cid, g)
@@ -345,7 +331,7 @@ class BoardReader:
     def reset(self):
         """새 게임: 읽은 증강만 비운다 (찾은 크기는 같은 창 크기면 그대로 쓴다)"""
         self.picked, self._seen = {}, {}
-        self.last = {"champs": [], "augs": []}
+        self.last = {"augs": []}
 
 
 # ---------------------------------------------------------------- 상점 창 안 아이템 위치 (시험: 기록만, 화면 표시는 실제 그림으로 확인한 뒤)
