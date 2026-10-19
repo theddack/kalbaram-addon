@@ -20,7 +20,10 @@ h3 { font-size: 13px; margin: 16px 0 6px; color: var(--muted); }
 .muted { color: var(--muted); }
 .warn { color: var(--accent); border: 1px solid var(--accent); border-radius: 6px; padding: 6px 10px; }
 .small { font-size: 12px; }
-main { display: grid; grid-template-columns: 280px 1fr 340px; gap: 12px; padding: 12px; height: calc(100vh - 52px); }
+/* 왼쪽·가운데·오른쪽 칸 너비는 창 크기에 맞춰 자동 (고정 px 이면 창을 키워도 가운데만 넓어지고 오른쪽 다음 구매는 그대로 좁았다, 2026-10-19 지적).
+   양쪽 칸은 창 너비 비율로 늘고 줄되 최소·최대가 있고, 가운데가 나머지를 쓴다 */
+main { display: grid; grid-template-columns: clamp(220px, 20%, 320px) minmax(0, 1fr) clamp(320px, 30%, 520px);
+  gap: clamp(8px, 1vw, 16px); padding: clamp(8px, 1vw, 16px); height: calc(100vh - 52px); }
 .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 12px; overflow-y: auto; }
 input[type=search] { width: 100%; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; }
 button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
@@ -201,7 +204,7 @@ body.mini .how-list { display: none; }
 /* 윈도우 프로그램: 챔피언 검색·목록 없음 (롤에서 고른 챔피언을 자동으로 띄운다) */
 /* 롤이 챔피언을 알려 주는 동안(autochamp)만 숨긴다. 연결이 안 되면 직접 고르게 보인다 */
 body.winapp.autochamp #champ-panel { display: none; }
-body.winapp.autochamp:not(.mini) main { grid-template-columns: 1fr 340px; }
+body.winapp.autochamp:not(.mini) main { grid-template-columns: minmax(0, 1fr) clamp(320px, 34%, 560px); }
 body.winapp:not(.autochamp) #champ-grid { display: grid; }
 
 @media (max-width: 1000px) {
@@ -255,8 +258,10 @@ body.mini #guide, body.mini .easy-legend { display: none !important; }
 .enemy-advice { margin: 6px 0; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; }
 /* 게임 중엔 챔피언 목록을 접는다 (검색 중이면 보임) */
 body.ingame #champ-grid { display: none; }
-/* 목록을 접으면 칸도 좁혀서 그 자리를 선택지·다음 구매에 준다 (검색 칸만 남김) */
-body.ingame:not(.searching):not(.mini) main { grid-template-columns: 150px 1fr 340px; }
+/* 목록을 접으면 칸도 좁혀서 그 자리를 선택지·다음 구매에 준다 (검색 칸만 남김).
+   롤이 챔피언을 알려 줘서 왼쪽 칸을 아예 숨겼으면(autochamp) 2칸 그대로: 예전엔 이 3칸 규칙이 뒤에 있어 이겨서
+   가운데 내용이 좁은 왼쪽 칸에 들어가고 오른쪽에 빈 칸이 남았다 (2026-10-19 '왼쪽·가운데·오른쪽 간격' 지적) */
+body.ingame:not(.autochamp):not(.searching):not(.mini) main { grid-template-columns: clamp(140px, 12%, 220px) minmax(0, 1fr) clamp(320px, 32%, 560px); }
 body.ingame.searching #champ-grid { display: grid; }
 /* 가벼운 모드: 자세히 보기 버튼 숨김 (쉽게 보기만), 챔피언 목록은 검색할 때만 */
 body.light #champ-grid { display: none; }

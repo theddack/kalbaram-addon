@@ -1017,3 +1017,13 @@ test("산 부품으로 만들던 아이템은 순위가 바뀌어도 다음 구�
   assert.match(p.q("#next-buy .next-row").dataset.label, /\(만드는 중\)/, "게임 화면 상자에도");
   assert.deepEqual(p.errors, []);
 });
+
+test("게임 중 챔피언 칸을 숨겼으면(autochamp) 3칸 규칙을 쓰지 않는다 · 칸 너비는 창 크기에 맞춰", () => {
+  // 2026-10-19 지적: 왼쪽·가운데·오른쪽 간격. 3칸 규칙이 뒤에 있어 이겨서 가운데 내용이 좁은 왼쪽 칸에 들어갔다
+  const css = require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "web", "style.css"), "utf8");
+  const three = css.split("\n").filter((l) => /body\.ingame[^{]*main \{ grid-template-columns: \S+ \S+ \S+/.test(l)
+    || /body\.ingame[^{]*main \{ grid-template-columns: clamp\([^)]*\) minmax\(0, 1fr\) clamp/.test(l));
+  assert.ok(three.length >= 1, "게임 중 3칸 규칙");
+  for (const l of three) assert.match(l, /:not\(\.autochamp\)/, l);
+  assert.doesNotMatch(css, /main \{[^}]*grid-template-columns: \d+px 1fr \d+px/, "큰 칸 3개를 고정 px 로 두지 않는다");
+});
