@@ -43,6 +43,10 @@ BOX_PRESETS = {"left-top": (BOX_X, BOX_Y, "nw"), "left-middle": (BOX_X, 0.45, "n
 HUD_MAX_LINES, HUD_MAX_CHARS = 7, 44
 # 상자 '자세히' (설정, 2026-10-19 사용자 요청: 간단히가 기본): 죽어 있을 때도 상세, 줄 수 한도만 넓게, 글자는 안 자른다
 HUD_MAX_LINES_DETAIL = 12
+# 상자 글자 크기 설정 (표시 설정 '글자 크기'): HUD_PX 에 곱한다
+BOX_FONT_SCALE = {"small": 0.85, "normal": 1.0, "large": 1.2}
+# 미리 보기 예시 상자 (게임 밖에서 자리·글자 크기를 볼 때)
+PREVIEW_HUD = ("다음 구매: 예시 아이템 > 예시 아이템 > 예시 아이템", "💰 지금 예시 부품 (1100G)", "적 회복 많음 → 치유 감소: 예시 아이템")
 # 상자 아래 끝 한도 (게임 창 높이 비율): 어떤 설정에서도 이 밑으로 내려가지 않는다 — 왼쪽 아래 채팅(60~77%)·능력치 창을 가리지 않게
 # (2026-10-19 사용자: '자세히 12줄이 게임에 영향을 주면 안 된다'). 넘는 줄은 '…' 한 줄로
 BOX_MAX_BOTTOM = 0.58
@@ -387,7 +391,7 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
         elif kind == "hud":
             lines_list, anchor, compact = (c + (False,))[:3] if isinstance(c, tuple) else (c, "ne", False)
             bw = int(w * BOX_W)
-            px = -max(1, round(HUD_PX * scale))
+            px = -max(1, round(HUD_PX * scale * BOX_FONT_SCALE.get(payload.get("boxFont"), 1.0)))
             gap = max(2, round(4 * scale))
             ty, texts = y, []
             limit = h * BOX_MAX_BOTTOM - abs(px) * 1.4  # 이 밑으로는 글자를 안 쓴다 (채팅·능력치 창을 가리지 않게)

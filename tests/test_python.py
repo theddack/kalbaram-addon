@@ -289,7 +289,7 @@ class Desktop(unittest.TestCase):
         api = desktop.Api(desktop.Settings())
         public = [n for n in dir(api) if not n.startswith("_")]
         self.assertTrue(all(callable(getattr(api, n)) for n in public), public)
-        self.assertLessEqual(len(public), 23)  # set_board · set_box_pos · card_summary · set_box_detail 추가 (2026-10-19)
+        self.assertLessEqual(len(public), 24)  # set_board · set_box_pos · card_summary · set_box_detail · set_box_font (2026-10-19~20)
 
     def test_version_compare(self):
         self.assertGreater(desktop.version_tuple("0.1.10"), desktop.version_tuple("0.1.9"))
@@ -2170,3 +2170,45 @@ class OcrRetry(unittest.TestCase):
         for _ in range(6):
             r.reread_cards(cap, ocr, (0, 0, gw, gh), offers, m, {"궁극의 각성": 1.0, "주문 분산": 1.0})
         self.assertEqual(len(grabs), augocr.REREAD_TRIES, "선택 화면이 떠 있는 동안 정해진 횟수까지만")
+
+
+class DisplaySettings(unittest.TestCase):
+    """맨 위 '⚙ 표시 설정' (2026-10-20 사용자: 설정이 찾기 어렵다): 글자 크기 · 미리 보기 예시 상자"""
+
+    def test_font_scale_keeps_bottom_limit(self):
+        import overlay
+        hud = ["다음 구매: 가 > 나 > 다"] + [f"조언 {i} → 무엇" for i in range(11)]
+        for size in overlay.BOX_FONT_SCALE:
+            c = FakeCanvas()
+            overlay.draw(c, {"hud": hud, "shop": {"left": 0.2}, "boxDetail": "detail", "boxFont": size, "boxPos": "left-middle"}, 1920, 1080)
+            texts = [v for v in c.items.values() if len(v) == 3]
+            self.assertLessEqual(max(y for _, y, _ in texts), 1080 * overlay.BOX_MAX_BOTTOM, size)
+
+    def test_preview_shows_sample_box(self):
+        import overlay
+
+        class Ov:
+            preview = True
+
+            def update(self, p):
+                self.p = p
+
+        class Reader:
+            state = {"shop": None, "offers": None, "pos": None}
+        api = desktop.Api.__new__(desktop.Api)
+        api._ov, api._rec, api._reader, api._settings = Ov(), None, Reader(), {"box_font": "large", "box_pos": "right-middle"}
+        api._cards, api._cards_seq = {"선택지": 0, "3장 읽음": 0, "라벨 3장": 0, "평가 없음": 0}, None
+        api.set_overlay({"cards": [None] * 3, "hud": []})
+        self.assertEqual(api._ov.p["shop"], "preview")
+        self.assertEqual(api._ov.p["hud"], list(overlay.PREVIEW_HUD), "게임 밖이어도 예시 상자")
+        self.assertEqual(api._ov.p["boxFont"], "large")
+        items = overlay.layout(api._ov.p, 1920, 1080)
+        self.assertEqual(items[0][3][1], "ne", "고른 자리(오른쪽 가운데)에")
+
+    def test_set_box_font(self):
+        api = desktop.Api.__new__(desktop.Api)
+        store = {}
+        api._settings = type("S", (), {"set": lambda self, **kw: store.update(kw), "get": lambda self, k, d=None: store.get(k, d)})()
+        self.assertTrue(api.set_box_font("large"))
+        self.assertFalse(api.set_box_font("huge"))
+        self.assertEqual(store["box_font"], "large")
