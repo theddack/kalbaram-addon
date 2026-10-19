@@ -1551,7 +1551,8 @@ class ShopBox(unittest.TestCase):
         api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인", "적 회복 많음 → 치유 감소"], "box": "dead"})
         items = overlay.layout(api._ov.p, 1920, 1080)
         self.assertEqual([k for k, *_ in items], ["hud"])
-        self.assertEqual(items[0][3][0], ["다음 구매: 리치베인"], "죽어 있기만 하면 한 줄")
+        self.assertEqual(items[0][3][0], ["다음 구매: 리치베인", "적 회복 많음 → 치유 감소"], "보통(기본): 다음 구매 + 적 대응 1줄")
+        self.assertEqual(items[0][2], int(1080 * overlay.DEAD_Y), "죽음 정보 창 밑으로")
         api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인"], "box": None})
         self.assertEqual(overlay.layout(api._ov.p, 1920, 1080), [], "평소엔 안 띄운다")
 
@@ -2006,7 +2007,7 @@ class CardsAndBox0150(unittest.TestCase):
                 return [("주문", 10, 5, 40, 20), ("분산", 60, 5, 40, 20), ("피해량", 30, 60, 50, 15)]
         gw, gh = 2520, 1575
         offers = [("궁극의 각성", 0.291 * gw, 0.40 * gh), ("최상급 조준경 부착", 0.504 * gw, 0.40 * gh)]
-        got = r.reread_missing(Cap(), Ocr(), (0, 0, gw, gh), offers, m)
+        got = r.reread_cards(Cap(), Ocr(), (0, 0, gw, gh), offers, m, {"궁극의 각성": 1.0, "최상급 조준경 부착": 1.0})
         self.assertEqual([n for n, *_ in got], ["궁극의 각성", "최상급 조준경 부착", "주문 분산"])
         self.assertEqual(len(grabs), 1, "못 읽은 칸 하나만")
         self.assertEqual(grabs[0][4], grabs[0][2] * 2, "2배로 키워 읽는다")
@@ -2048,7 +2049,9 @@ class BoxDetail(unittest.TestCase):
 
     def test_dead_simple_vs_detail(self):
         import overlay
-        simple = overlay.layout({"hud": self.HUD, "shop": "dead"}, 1920, 1080)[0][3][0]
+        simple = overlay.layout({"hud": self.HUD, "shop": "dead", "boxDetail": "simple"}, 1920, 1080)[0][3][0]
+        auto = overlay.layout({"hud": self.HUD, "shop": "dead"}, 1920, 1080)[0][3][0]
+        self.assertEqual(auto, overlay.hud_fit(self.HUD)[:3], "보통: 다음 구매 + 지금 살 것 + 가장 중요한 적 대응 1줄 (치유 감소)")
         detail = overlay.layout({"hud": self.HUD, "shop": "dead", "boxDetail": "detail"}, 1920, 1080)[0][3][0]
         self.assertEqual(simple, self.HUD[:2])
         self.assertEqual(detail, self.HUD, "자세히: 죽어 있을 때도 상세, 글자도 안 자른다")
@@ -2080,3 +2083,90 @@ class CompactBox(unittest.TestCase):
         small = rect(c)
         self.assertLess(small[2] - small[0], big[2] - big[0], "폭: 글자 폭만큼")
         self.assertLess(small[3] - small[1], big[3] - big[1], "높이: 앞서 본 큰 상자 높이를 이어받지 않는다")
+
+
+class BoxNoObstruct(unittest.TestCase):
+    """상자는 어떤 설정에서도 게임을 가리지 않는다 (2026-10-19 사용자): 아래 끝 한도 · 죽음 정보 창 피하기"""
+
+    def test_detail_stops_at_bottom_limit(self):
+        import overlay
+        hud = ["다음 구매: 가 > 나 > 다"] + [f"조언 {i} → 무엇" for i in range(11)]
+        c = FakeCanvas()
+        overlay.draw(c, {"hud": hud, "shop": {"left": 0.2}, "boxDetail": "detail", "boxPos": "left-middle"}, 1920, 1080)
+        texts = [v for v in c.items.values() if len(v) == 3]
+        self.assertLessEqual(max(y for _, y, _ in texts), 1080 * overlay.BOX_MAX_BOTTOM, "채팅(60~77%) 위에서 멈춘다")
+        self.assertEqual(texts[-1][2], "…", "넘는 줄은 … 로")
+        rect = [v for v in c.items.values() if len(v) == 4][0]
+        self.assertLessEqual(rect[3], 1080 * overlay.BOX_MAX_BOTTOM + 30)
+
+    def test_dead_box_below_death_recap(self):
+        import overlay
+        for mode in ("auto", "simple", "detail"):
+            it = overlay.layout({"hud": ["다음 구매: 가"], "shop": "dead", "boxDetail": mode}, 1920, 1080)[0]
+            self.assertGreaterEqual(it[2], int(1080 * overlay.DEAD_Y), mode)
+        shop = overlay.layout({"hud": ["다음 구매: 가"], "shop": {"left": 0.2}}, 1920, 1080)[0]
+        self.assertEqual(shop[2], int(1080 * overlay.BOX_Y), "상점 창이 열렸을 땐 원래 자리")
+
+
+
+class OcrRetry(unittest.TestCase):
+    """카드 이름 다시 읽기 조건 넓히기 (외부 의견 2026-10-19: 3개 중 2개 읽었을 때만이면 부족)"""
+
+    NAMES = ["궁극의 각성", "최상급 조준경 부착", "주문 분산", "조준경 부착"]
+
+    def reader(self, reads):
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        grabs = []
+
+        class Cap:
+            def grab(self, x, y, w, h, tw=None, th=None):
+                grabs.append(x)
+                return b""
+
+        class Ocr:
+            def words(self, img, w, h):
+                text = reads.get(len(grabs), "")
+                return [(t, 10 * i, 5, 40, 20) for i, t in enumerate(text.split())]
+        return r, Cap(), Ocr(), grabs, augocr.Matcher(self.NAMES)
+
+    def test_one_read_rereads_two_slots(self):
+        import augocr
+        r, cap, ocr, grabs, m = self.reader({1: "궁극의 각성", 2: "주문 분산"})
+        r.live_fn = lambda: {"gameTime": 12}  # 게임 시작 직후 첫 증강
+        gw, gh = 2520, 1575
+        got = r.reread_cards(cap, ocr, (0, 0, gw, gh), [("최상급 조준경 부착", 0.504 * gw, 0.40 * gh)], m, {"최상급 조준경 부착": 1.0})
+        self.assertEqual([n for n, *_ in got], ["궁극의 각성", "최상급 조준경 부착", "주문 분산"])
+        self.assertEqual(len(grabs), 2, "못 읽은 2칸만")
+        pos = augocr.default_card_pos(gw, gh)
+        self.assertAlmostEqual(pos["xs"][0], 0.291, 2)
+
+    def test_zero_read_only_when_screen_likely(self):
+        r, cap, ocr, grabs, m = self.reader({1: "궁극의 각성", 2: "최상급 조준경 부착", 3: "주문 분산"})
+        words = [("주문", 1300, 630, 40, 20)]  # 이름 조각 (이름 줄 높이)
+        got = r.reread_cards(cap, ocr, (0, 0, 2520, 1575), [], m, {}, words)
+        self.assertEqual(got, [], "선택 화면이 떠 있지도 곧 뜰 때도 아니면 안 읽는다 (평소 조각 글자)")
+        self.assertEqual(grabs, [])
+        r.tracker._last = ["a", "b", "c"]  # 선택 화면이 떠 있었다
+        got = r.reread_cards(cap, ocr, (0, 0, 2520, 1575), [], m, {}, words)
+        self.assertEqual([n for n, *_ in got], ["궁극의 각성", "최상급 조준경 부착", "주문 분산"])
+
+    def test_fuzzy_match_checked_once(self):
+        r, cap, ocr, grabs, m = self.reader({1: "최상급 조준경 부착"})
+        gw, gh = 2520, 1575
+        offers = [("궁극의 각성", 0.291 * gw, 0.40 * gh), ("조준경 부착", 0.504 * gw, 0.40 * gh), ("주문 분산", 0.717 * gw, 0.40 * gh)]
+        scores = {"궁극의 각성": 1.0, "조준경 부착": 0.9, "주문 분산": 1.0}
+        got = r.reread_cards(cap, ocr, (0, 0, gw, gh), offers, m, scores)
+        self.assertEqual([n for n, *_ in got], ["궁극의 각성", "최상급 조준경 부착", "주문 분산"], "비슷하게만 맞은 칸을 다시 읽어 고친다")
+        self.assertEqual(r._counts.get("이름 다시 읽어 고침"), 1)
+        r.reread_cards(cap, ocr, (0, 0, gw, gh), offers, m, scores)
+        self.assertEqual(len(grabs), 1, "같은 선택지는 한 번만 확인")
+
+    def test_tries_limited(self):
+        import augocr
+        r, cap, ocr, grabs, m = self.reader({})
+        gw, gh = 2520, 1575
+        offers = [("궁극의 각성", 0.291 * gw, 0.40 * gh), ("주문 분산", 0.717 * gw, 0.40 * gh)]
+        for _ in range(6):
+            r.reread_cards(cap, ocr, (0, 0, gw, gh), offers, m, {"궁극의 각성": 1.0, "주문 분산": 1.0})
+        self.assertEqual(len(grabs), augocr.REREAD_TRIES, "선택 화면이 떠 있는 동안 정해진 횟수까지만")

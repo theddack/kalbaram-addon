@@ -2013,7 +2013,7 @@ window.addEventListener("pywebviewready", async () => {
     const pos = () => { api.set_overlay_pos(Number($("#ov-y").value), Number($("#ov-spread").value)); sendOverlay(); };
     $("#ov-y").addEventListener("input", pos);
     $("#ov-box").value = st.boxPos || "left-top";
-    state.boxDetail = st.boxDetail || "simple";
+    state.boxDetail = st.boxDetail || "auto";
     $("#ov-detail").value = state.boxDetail;
     $("#ov-detail").addEventListener("change", (e) => { state.boxDetail = e.target.value; api.set_box_detail(e.target.value); sendOverlay(); });
     // 상점 상자 자리: 미리 보기를 켜 두면 예시 상자를 그 자리에 띄운다

@@ -43,6 +43,13 @@ BOX_PRESETS = {"left-top": (BOX_X, BOX_Y, "nw"), "left-middle": (BOX_X, 0.45, "n
 HUD_MAX_LINES, HUD_MAX_CHARS = 7, 44
 # 상자 '자세히' (설정, 2026-10-19 사용자 요청: 간단히가 기본): 죽어 있을 때도 상세, 줄 수 한도만 넓게, 글자는 안 자른다
 HUD_MAX_LINES_DETAIL = 12
+# 상자 아래 끝 한도 (게임 창 높이 비율): 어떤 설정에서도 이 밑으로 내려가지 않는다 — 왼쪽 아래 채팅(60~77%)·능력치 창을 가리지 않게
+# (2026-10-19 사용자: '자세히 12줄이 게임에 영향을 주면 안 된다'). 넘는 줄은 '…' 한 줄로
+BOX_MAX_BOTTOM = 0.58
+# 죽어 있을 때 왼쪽 위 상자는 죽음 정보 창(왼쪽 위 높이 0~27%, 2026-10-19 스크린샷) 밑으로 내린다
+DEAD_Y = 0.30
+# 죽어 있을 때 '보통'에서 다음 구매·지금 살 것 밑에 하나만 붙이는 조언 (콕 집은 대응이 먼저)
+DEAD_ADVICE = ("치유 감소", "관통", "보호막 감소", "군중 제어", "공격 속도", "우선")
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -214,17 +221,27 @@ def layout(payload, w, h):
     # - 상점 창이 열렸을 때만 상세 (다음 구매·조언·바꾸기). 죽어 있기만 하면 한 줄 요약 (죽음 정보가 가려졌다, UX-04)
     # - 상태를 모르면 띄우지 않는다 (시작 75초 동안 늘 띄우던 것은 없앴다, UX-03)
     picking = any(c for c in (payload.get("cards") or []))
-    detail = payload.get("boxDetail") == "detail"
+    mode = payload.get("boxDetail") if payload.get("boxDetail") in ("simple", "detail") else "auto"  # 기본 '보통(자동)'
+    detail = mode == "detail"
     hud = hud_fit(payload.get("hud") or [], detail)
     shop = payload.get("shop")
     if hud and shop and not picking:
-        bx, by, anchor = BOX_PRESETS.get(payload.get("boxPos") or "", BOX_PRESETS["left-top"])
+        pos_name = payload.get("boxPos") or "left-top"
+        bx, by, anchor = BOX_PRESETS.get(pos_name, BOX_PRESETS["left-top"])
         x = w + bx if bx < 0 else bx
+        if shop == "dead" and by < DEAD_Y:
+            by = DEAD_Y  # 죽음 정보 창 밑으로
         if shop == "dead" and not detail:
-            # 죽어 있을 때 = 칼바람에서 아이템을 사는 때: 다음 구매·지금 살 것만 (적 조언 등은 상점 창을 열었을 때).
-            # 첫 줄만 보이던 v0.1.49 는 '지금 살 것'까지 빠지고 다음 구매가 잘려 '나오다 마는' 상자였다 (2026-10-19 퀸 판)
+            # 죽어 있을 때 = 칼바람에서 아이템을 사는 때. 간단히: 다음 구매·지금 살 것 / 보통: 거기에 가장 중요한 적 대응 1줄.
+            # 첫 줄만 보이던 v0.1.49 는 '지금 살 것'까지 빠지고 다음 구매가 잘려 '나오다 마는' 상자였다 (2026-10-19 퀸 판).
             # 짧게 보여 줄 땐 상자도 글자에 맞춰 작게 (compact: 큰 상자 크기를 기억해 두지 않는다, 2026-10-19 사용자 지적)
-            items.append(("hud", x, int(h * by), ([l for l in hud if l.startswith(("다음 구매: ", "💰", "✅"))][:2] or hud[:1], anchor, True)))
+            lines = [l for l in hud if l.startswith(("다음 구매: ", "💰", "✅"))][:2] or hud[:1]
+            if mode == "auto":
+                tips = [l for l in hud if "→" in l and not l.startswith(("다음 구매", "💰", "✅", "🔁"))]
+                tip = next((l for k in DEAD_ADVICE for l in tips if k in l.split("→", 1)[1]), None)
+                if tip:
+                    lines = lines + [tip]
+            items.append(("hud", x, int(h * by), (lines, anchor, True)))
         else:
             items.append(("hud", x, int(h * by), (hud, anchor)))
             sw = payload.get("swap")
@@ -373,9 +390,16 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
             px = -max(1, round(HUD_PX * scale))
             gap = max(2, round(4 * scale))
             ty, texts = y, []
+            limit = h * BOX_MAX_BOTTOM - abs(px) * 1.4  # 이 밑으로는 글자를 안 쓴다 (채팅·능력치 창을 가리지 않게)
             for i, (line, head) in enumerate(hud_lines(lines_list)):
                 if head and i:
                     ty += gap * 2  # 묶음 사이를 조금 띄운다
+                if ty > limit and texts:
+                    t = canvas.create_text(x - 10 if anchor == "ne" else x + 10, ty, text="…", anchor=anchor, font=(font, px), fill="#e6e9ec", width=bw)
+                    tb = canvas.bbox(t)
+                    if tb:
+                        texts.append((t, tb))
+                    break
                 t = canvas.create_text(x - 10 if anchor == "ne" else x + 10, ty, text=line, anchor=anchor,
                                        font=(font, px, "bold") if head else (font, px), fill=HUD_HEAD if head else "#e6e9ec", width=bw)
                 tb = canvas.bbox(t)

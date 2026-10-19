@@ -854,7 +854,7 @@ class Api:
             if not payload["shop"] and payload.get("box"):
                 payload["shop"] = payload["box"]
             payload["boxPos"] = self._settings.get("box_pos") or "left-top"
-            payload["boxDetail"] = self._settings.get("box_detail") or "simple"
+            payload["boxDetail"] = self._settings.get("box_detail") or "auto"
             # 위치 맞추기 미리 보기 중이면 상자도 그 자리에 보이게 (카드 예시가 없을 때)
             if getattr(self._ov, "preview", False) and not payload["shop"] and not any(payload.get("cards") or []):
                 payload["shop"] = "preview"
@@ -1006,7 +1006,7 @@ class Api:
                 "record": bool(self._settings.get("record", False)),
                 "board": bool(self._settings.get("board", False)),
                 "boxPos": self._settings.get("box_pos") or "left-top",
-                "boxDetail": self._settings.get("box_detail") or "simple"}
+                "boxDetail": self._settings.get("box_detail") or "auto"}
 
     def set_record(self, on):
         """개선용 기록 남기기: 한 판 기록(화면 조각 그림·events.json)·5분마다 게임 정보·경기 결과 파일.
@@ -1023,8 +1023,9 @@ class Api:
         return bool(on)
 
     def set_box_detail(self, mode):
-        """게임 화면 상자 내용: simple(간단히, 기본) · detail(자세히: 죽어 있을 때·시작 직후에도 상세)"""
-        if mode not in ("simple", "detail"):
+        """게임 화면 상자 내용: auto(보통, 기본: 상점 열림 상세 · 죽어 있음 다음 구매+지금 살 것+적 대응 1줄) ·
+        simple(간단히: 죽어 있을 땐 다음 구매·지금 살 것만) · detail(자세히: 죽어 있을 때·시작 직후에도 상세)"""
+        if mode not in ("auto", "simple", "detail"):
             return False
         self._settings.set(box_detail=mode)
         return True
