@@ -937,41 +937,37 @@ class HudIcons(unittest.TestCase):
         ids, unsure = augocr.resolve_groups(groups, self.names, set())
         self.assertEqual(unsure, [["돌진", "앙파상"]], "선택지를 못 봤으면 못 정함")
 
-    def board_image(self, layout):
-        """가짜 Tab 점수판: {챔피언: (x, y, [증강 id])} → (점수판 부분 rgb, 게임 창 높이). 초상화 44px · 증강 26px (1680x1050)"""
+    def test_board_layout_rows(self):
+        # 점수판 줄: 게임 창 높이 기준 첫 줄 28.7% · 간격 7.05% (2026-10-19 1680x1050 스크린샷 · 2520x1575 기록)
+        h = self.h
+        self.assertEqual([h.board_row(y, 1050) for y in (322, 357, 400, 470, 545, 620, 652)], [0, 0, 1, 2, 3, 4, 4])
+        self.assertIsNone(h.board_row(280, 1050))
+        self.assertIsNone(h.board_row(700, 1050))
+        (s1, l), (s2, r) = h.board_bands(1680, 1050)
+        self.assertEqual((s1, s2), ("ally", "enemy"))
+        self.assertTrue(l[0] <= 185 and l[2] >= 305 and r[0] <= 1410 and r[2] >= 1540, (l, r))  # 양옆 패널이 들어간다
+
+    def test_board_real_panels(self):
+        # 실제 Tab 점수판 양옆 패널 (2026-10-19 트위치 판 17:26, 이름 없는 부분만). 적 = 오른쪽 패널 줄 순서대로.
+        # 정답(전적): 피들스틱 사악한 정신·보석 건틀릿·마도사의 주스 상자·적응형 능력치, 바루스 쌍둥이 불꽃 …
         import numpy as np
         from PIL import Image
-        canvas = Image.new("RGB", (1680, 1050), (12, 14, 20))
-
-        def put(path, x, y, s):
-            im = Image.open(path).convert("RGBA").resize((s, s))
-            bg = Image.new("RGBA", (s, s), (0, 0, 0, 255))
-            bg.alpha_composite(im)
-            canvas.paste(bg.convert("RGB"), (x, y))
-        for c, (x, y, augs) in layout.items():
-            put(ROOT / "web" / "icons" / "champion" / f"{c}.webp", x, y, 44)
-            for k, a in enumerate(augs):
-                put(ROOT / "web" / "icons" / "augment" / f"{a}.webp", x + 300 + k * 32, y + 9, 26)
-        l, t, r, b = self.h.BOARD_REGION
-        return np.asarray(canvas)[int(1050 * t):int(1050 * b), int(1680 * l):int(1680 * r)], 1050
-
-    def test_board_reads_enemy_augments_by_row(self):
-        # Tab 점수판: 적 줄의 증강만, 그 줄 챔피언 것으로. 아군 줄 증강은 빼고, 여러 사람이 같은 증강을 골라도 각자
-        single = [g[0] for g in self.tpl.groups if len(g) == 1]
-        a, b, c, d = single[3], single[40], single[77], single[100]
-        img, H = self.board_image({"Jinx": (320, 250, [a, b]), "Vayne": (320, 310, [c]),
-                                   "Ahri": (1100, 250, [d]), "Garen": (1100, 310, [a])})
-        br = self.h.BoardReader(self.tpl, str(ROOT / "web" / "icons" / "champion"))
-        br.champ_size, br.aug_size = 44 / 1050, 26 / 1050  # 크기 찾기는 무거워서 (실제로는 첫 읽기에서 찾는다)
-        br.scan(img, H, ["Jinx", "Vayne"], ["Ahri", "Garen"])
-        got = br.scan(img, H, ["Jinx", "Vayne"], ["Ahri", "Garen"])
-        self.assertEqual({k: sorted(g[0] for g in v) for k, v in got.items()}, {"Jinx": sorted([a, b]), "Vayne": [c]})
-        br.reset()
-        self.assertEqual(br.picked, {})
-        self.assertEqual(br.champ_size, 44 / 1050, "새 게임이어도 찾은 크기는 그대로")
-        empty = self.board_image({})[0]
-        br.scan(empty, H, ["Jinx"], [])
-        self.assertIsNone(br.champ_size, "초상화를 못 찾으면 다음엔 여러 크기로")
+        h = 1050
+        bands = []
+        for side, (x0, y0, x1, y1) in self.h.board_bands(1680, h):
+            bands.append((side, np.asarray(Image.open(ROOT / "tests" / "data" / f"board_{side}.png").convert("RGB")), (x0, y0)))
+        br = self.h.BoardReader(self.tpl)
+        br.aug_size = 0.024
+        enemies = ["MonkeyKing", "Jhin", "KogMaw", "Fiddlesticks", "Varus"]
+        br.scan(bands, h, enemies)
+        got = br.scan(bands, h, enemies)
+        named = {c: [sorted(self.names[a] for a in g) for g in v] for c, v in got.items()}
+        self.assertIn(["사악한 정신"], named.get("Fiddlesticks", []))
+        self.assertTrue(any("쌍둥이 불꽃" in g for g in named.get("Varus", [])), named)
+        ally = {g for side, row, g, *_ in br.last["augs"] if side == "ally"}
+        enemy_got = {g for v in got.values() for g in v}
+        shadow = next(g for g in ally if "그림자 질주" in [self.names[a] for a in g])
+        self.assertNotIn(shadow, enemy_got, "왼쪽(아군) 패널 아이콘은 적에게 안 붙는다 (예전엔 헤카림 '그림자 질주'를 진에게)")
 
     def test_tab_triggers_board_read(self):
         # Tab 을 누르고 있으면 점수판을 읽는다. 적을 모르거나 직전에 읽었거나, 잠깐만 눌렀으면 안 읽는다

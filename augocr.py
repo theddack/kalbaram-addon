@@ -1114,26 +1114,26 @@ class Reader(threading.Thread):
             return
         live = (self.live_fn() or {}) if self.live_fn else {}
         gx, gy, gw, gh = rect
-        l, t, r, b = hudicons.BOARD_REGION
-        x0, y0, x1, y1 = int(gw * l), int(gh * t), int(gw * r), int(gh * b)
-        raw = cap.grab(gx + x0, gy + y0, x1 - x0, y1 - y0)
-        rgb = np.frombuffer(raw, dtype=np.uint8).reshape(y1 - y0, x1 - x0, 4)[..., [2, 1, 0]].copy()
+        bands = []
+        for side, (x0, y0, x1, y1) in hudicons.board_bands(gw, gh):
+            raw = cap.grab(gx + x0, gy + y0, x1 - x0, y1 - y0)
+            rgb = np.frombuffer(raw, dtype=np.uint8).reshape(y1 - y0, x1 - x0, 4)[..., [2, 1, 0]].copy()
+            bands.append((side, rgb, (x0, y0)))
         self._board_busy, self._board_at = True, time.time()
-        args = (rgb, rect, (x0, y0), list(live.get("enemies") or []), list(live.get("allies") or []), getattr(self, "_game_n", 0))
+        args = (bands, rect, list(live.get("enemies") or []), list(live.get("allies") or []), getattr(self, "_game_n", 0))
         threading.Thread(target=self._board_job, args=args, daemon=True, name="점수판 읽기").start()
 
-    def _board_job(self, rgb, rect, offset, enemies, allies, game_n):
+    def _board_job(self, bands, rect, enemies, allies, game_n):
         try:
             lower_thread()
             import hudicons
             names = self.id_names()
             key = tuple(sorted(names))
             if self.board is None or getattr(self, "_board_key", None) != key:
-                champ_dir = os.path.join(os.path.dirname(self.icon_dir), "champion")
-                self.board = hudicons.BoardReader(hudicons.Templates(self.icon_dir, names), champ_dir)
+                self.board = hudicons.BoardReader(hudicons.Templates(self.icon_dir, names))
                 self._board_key = key
             t0 = time.time()
-            picked = self.board.scan(rgb, rect[3], enemies, allies)
+            picked = self.board.scan(bands, rect[3], enemies, allies)
             self._time("점수판", t0)
             self._count("점수판")
             self.board_reads += 1
@@ -1146,12 +1146,12 @@ class Reader(threading.Thread):
                 changed = ids != self.enemy_augs
                 self.enemy_augs, self.board_unsure = ids, unsure
             gw, gh = rect[2], rect[3]
-            ox, oy = offset
             last = self.board.last
+            # 본 아이콘: [팀, 줄, 그림 묶음(이름 3개까지), 점수, 가로, 세로] (게임 창 비율). 아군 것도 남겨 배치 확인에 쓴다
             self._rec("board", {"enemies": {c: [names.get(i, i) for i in v] for c, v in ids.items()}, "unsure": unsure,
                                 "size": last.get("size"), "window": [gw, gh],
-                                "champs": [[c, round(sc, 3), round((x + ox) / gw, 3), round((y + oy) / gh, 3)] for c, sc, x, y in last["champs"]],
-                                "seen": [[list(g)[:3], round(sc, 3), round((x + ox) / gw, 3), round((y + oy) / gh, 3)] for g, sc, x, y in last["augs"]]},
+                                "seen": [[side, row, [names.get(a, a) for a in list(g)[:3]], round(sc, 3), round(x / gw, 3), round(y / gh, 3)]
+                                         for side, row, g, sc, x, y in last["augs"]]},
                       dedupe=True)
             if changed:
                 self._changed()
