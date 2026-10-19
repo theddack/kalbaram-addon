@@ -15,6 +15,26 @@
     <label class="small" title="게임 중 챔피언·레벨·아이템을 자동으로 반영 (롤 공식 게임 중 데이터 API)"><input id="live-toggle" type="checkbox"> 게임 연동</label>
     <span id="live-status" class="small muted"></span>
     <label class="small" id="overlay-wrap" hidden title="롤 게임 창(창 모드·테두리 없는 창 모드) 위에 평가를 표시. 클릭은 게임으로 통과해요"><input id="overlay-toggle" type="checkbox"> 게임 화면 표시</label>
+    <details id="ov-settings" hidden>
+      <summary class="reset" title="게임 화면에 뜨는 팁의 자리·내용·글자 크기">⚙ 표시 설정</summary>
+      <div class="menu ov-menu">
+        <div class="ov-head"><b>게임 화면 표시 설정</b>
+          <label class="small" title="게임이 뒤에 있어도 예시를 게임 화면에 띄워요"><input id="ov-preview" type="checkbox"> 미리 보기</label>
+          <span class="muted small" id="overlay-status"></span></div>
+        <fieldset><legend>상점 상자 <span class="muted small">상점을 열면 왼쪽에 뜨는 팁</span></legend>
+          <div class="opt-row"><span class="opt-name">자리</span><label><input type="radio" name="ov-box" value="left-top"> 왼쪽 위</label><label><input type="radio" name="ov-box" value="left-middle"> 왼쪽 가운데</label><label><input type="radio" name="ov-box" value="right-middle"> 오른쪽 가운데</label></div>
+          <div class="opt-row"><span class="opt-name">내용</span><label><input type="radio" name="ov-detail" value="auto"> 보통 (추천)</label><label><input type="radio" name="ov-detail" value="simple"> 간단히</label><label><input type="radio" name="ov-detail" value="detail"> 자세히</label></div>
+          <p class="muted small" id="ov-detail-help"></p>
+          <div class="opt-row"><span class="opt-name">글자 크기</span><label><input type="radio" name="ov-font" value="small"> 작게</label><label><input type="radio" name="ov-font" value="normal"> 보통</label><label><input type="radio" name="ov-font" value="large"> 크게</label></div>
+          <p class="muted small">어느 설정이든 죽음 정보 창과 채팅은 가리지 않게 자리와 길이를 맞춰요.</p>
+        </fieldset>
+        <fieldset><legend>증강 카드 평가 <span class="muted small">증강을 고를 때 카드 밑</span></legend>
+          <label class="small">세로 위치 <input id="ov-y" type="range" min="0.5" max="0.95" step="0.01"></label>
+          <label class="small">카드 간격 <input id="ov-spread" type="range" min="0.08" max="0.3" step="0.005"></label>
+          <p class="muted small">움직이면 예시 카드가 떠요 (미리 보기를 켜 두면 게임이 뒤에 있어도).</p>
+        </fieldset>
+      </div>
+    </details>
     <label class="small" title="챔피언이 정해지면 상점 추천 칸에 우리 빌드(아이템 세트)를 등록해요. 블리츠·OP.GG와 같은 방식"><input id="itemset-toggle" type="checkbox"> 상점 추천 등록</label>
     <span id="itemset-status" class="small muted"></span>
   </span>
@@ -74,21 +94,9 @@
     <div class="row"><h2>이번 선택지 <span class="muted">(게임에 뜬 3개를 입력)</span></h2>
       <button id="reset-offers" class="reset">선택지 비우기</button></div>
     <div id="offers"></div>
-    <details id="overlay-pos" hidden>
-      <summary class="small">게임 화면 표시 위치 맞추기 <span class="muted" id="overlay-status"></span></summary>
-      <p class="muted small">증강 카드 밑에 표시가 오도록 맞춰요. "미리 보기"를 켜면 게임이 뒤에 있어도 보여요.</p>
-      <label class="small">세로 위치 <input id="ov-y" type="range" min="0.5" max="0.95" step="0.01"></label>
-      <label class="small">카드 간격 <input id="ov-spread" type="range" min="0.08" max="0.3" step="0.005"></label>
-      <label class="small"><input id="ov-preview" type="checkbox"> 미리 보기</label>
-      <label class="small">상점 상자 자리 <select id="ov-box">
-        <option value="left-top">왼쪽 위 (기본)</option><option value="left-middle">왼쪽 가운데</option><option value="right-middle">오른쪽 가운데</option>
-      </select></label>
-      <label class="small" title="보통: 상점을 열면 자세히, 죽어 있을 땐 다음 구매·지금 살 것·가장 중요한 적 대응 1줄. 간단히: 죽어 있을 땐 다음 구매·지금 살 것만. 자세히: 죽어 있을 때·게임 시작 직후에도 자세히. 어느 것이든 채팅·죽음 정보 창은 가리지 않아요">상자 내용 <select id="ov-detail">
-        <option value="auto">보통 (기본)</option><option value="simple">간단히</option><option value="detail">자세히</option>
-      </select></label>
-    </details>
     <div id="offer-result"></div>
     <datalist id="aug-names"></datalist>
+    <p id="ov-hint" class="small hint" hidden>💡 게임 화면에 뜨는 팁의 자리·내용·글자 크기는 맨 위 <b>⚙ 표시 설정</b>에서 바꿀 수 있어요. <button id="ov-hint-close" class="reset">알겠어요</button></p>
 
     <div class="row">
       <h2><span id="aug-title">첫 증강 추천</span> <span class="muted small" id="tier-basis"></span></h2>

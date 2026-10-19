@@ -855,9 +855,12 @@ class Api:
                 payload["shop"] = payload["box"]
             payload["boxPos"] = self._settings.get("box_pos") or "left-top"
             payload["boxDetail"] = self._settings.get("box_detail") or "auto"
+            payload["boxFont"] = self._settings.get("box_font") or "normal"
             # 위치 맞추기 미리 보기 중이면 상자도 그 자리에 보이게 (카드 예시가 없을 때)
             if getattr(self._ov, "preview", False) and not payload["shop"] and not any(payload.get("cards") or []):
                 payload["shop"] = "preview"
+                if not payload.get("hud"):  # 게임 밖에서도 자리·글자 크기를 볼 수 있게 예시 상자
+                    payload["hud"] = list(overlay.PREVIEW_HUD)
             cards = (self._reader.state.get("pos") if self._reader else None)
             if not cards and self._reader is not None and self._reader.state.get("offers") is None \
                     and not getattr(self._ov, "preview", False):
@@ -1006,7 +1009,8 @@ class Api:
                 "record": bool(self._settings.get("record", False)),
                 "board": bool(self._settings.get("board", False)),
                 "boxPos": self._settings.get("box_pos") or "left-top",
-                "boxDetail": self._settings.get("box_detail") or "auto"}
+                "boxDetail": self._settings.get("box_detail") or "auto",
+                "boxFont": self._settings.get("box_font") or "normal"}
 
     def set_record(self, on):
         """개선용 기록 남기기: 한 판 기록(화면 조각 그림·events.json)·5분마다 게임 정보·경기 결과 파일.
@@ -1028,6 +1032,13 @@ class Api:
         if mode not in ("auto", "simple", "detail"):
             return False
         self._settings.set(box_detail=mode)
+        return True
+
+    def set_box_font(self, size):
+        """게임 화면 상자 글자 크기 (overlay.BOX_FONT_SCALE 중 하나). 크게여도 아래 끝 한도·죽음 정보 창 피하기는 그대로"""
+        if size not in overlay.BOX_FONT_SCALE:
+            return False
+        self._settings.set(box_font=size)
         return True
 
     def set_box_pos(self, name):

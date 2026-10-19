@@ -2005,31 +2005,55 @@ window.addEventListener("pywebviewready", async () => {
   }
   if (st.overlaySupported) {
     $("#overlay-wrap").hidden = false;
-    $("#overlay-pos").hidden = false;
+    $("#ov-settings").hidden = false;
     $("#overlay-toggle").checked = st.overlay;
     $("#overlay-toggle").addEventListener("change", (e) => api.set_overlay_enabled(e.target.checked));
     $("#ov-y").value = st.overlayPos.y;
     $("#ov-spread").value = st.overlayPos.spread;
     const pos = () => { api.set_overlay_pos(Number($("#ov-y").value), Number($("#ov-spread").value)); sendOverlay(); };
-    $("#ov-y").addEventListener("input", pos);
-    $("#ov-box").value = st.boxPos || "left-top";
-    state.boxDetail = st.boxDetail || "auto";
-    $("#ov-detail").value = state.boxDetail;
-    $("#ov-detail").addEventListener("change", (e) => { state.boxDetail = e.target.value; api.set_box_detail(e.target.value); sendOverlay(); });
-    // 상점 상자 자리: 미리 보기를 켜 두면 예시 상자를 그 자리에 띄운다
-    $("#ov-box").addEventListener("change", (e) => { api.set_box_pos(e.target.value); sendOverlay(); });
-    $("#ov-spread").addEventListener("input", pos);
-    $("#ov-preview").addEventListener("change", (e) => {
-      api.set_overlay_preview(e.target.checked);
-      // 미리 보기: 선택지가 비어 있으면 예시 카드로 위치를 맞출 수 있게
-      if (e.target.checked && !overlayCards.some(Boolean)) {
+    // 카드 슬라이더를 움직이면 예시 카드, 상자 설정을 바꾸면 예시 상자 (미리 보기: 증강 고를 땐 상자를 숨기는 규칙 때문에 따로)
+    const sampleCards = () => {
+      if (!overlayCards.some(Boolean) || overlayCards.every((c) => !c || c.name === "예시")) {
         overlayCards = ["S", "D", "B"].map((t, i) => ({ name: "예시", icon: TIER_LABEL[t][0], label: TIER_LABEL[t][1] + " (위치 맞추기)", tier: t, reason: ["왼쪽", "가운데", "오른쪽"][i] + " 카드 밑에 오면 맞아요" }));
       }
+    };
+    const sampleBox = () => { if (overlayCards.every((c) => !c || c.name === "예시")) overlayCards = [null, null, null]; };
+    $("#ov-y").addEventListener("input", () => { sampleCards(); pos(); });
+    $("#ov-spread").addEventListener("input", () => { sampleCards(); pos(); });
+    const radios = (name, value, set) => {
+      document.querySelectorAll(`input[name="${name}"]`).forEach((el) => {
+        el.checked = el.value === value;
+        el.addEventListener("change", () => { if (el.checked) { set(el.value); sampleBox(); sendOverlay(); } });
+      });
+    };
+    const DETAIL_HELP = { auto: "보통: 상점을 열면 자세히, 죽어 있을 땐 다음 구매·지금 살 것·가장 중요한 적 대응 한 줄, 싸울 땐 안 보여요.",
+      simple: "간단히: 상점을 열면 자세히, 죽어 있을 땐 다음 구매·지금 살 것만.",
+      detail: "자세히: 죽어 있을 때·게임 시작 직후에도 조언까지 다 보여요 (화면을 조금 더 가려요)." };
+    const help = (v) => { $("#ov-detail-help").textContent = DETAIL_HELP[v] || ""; };
+    state.boxDetail = st.boxDetail || "auto";
+    help(state.boxDetail);
+    radios("ov-box", st.boxPos || "left-top", (v) => api.set_box_pos(v));
+    radios("ov-detail", state.boxDetail, (v) => { state.boxDetail = v; help(v); api.set_box_detail(v); });
+    radios("ov-font", st.boxFont || "normal", (v) => api.set_box_font(v));
+    // 처음 한 번: 표시 설정이 어디 있는지 알려 준다 (닫으면 다시 안 띄운다. 저장 못 하면 이번 실행 동안만)
+    let hinted = false;
+    try { hinted = localStorage.getItem("ovHintSeen") === "1"; } catch (e) { /* 저장소를 못 쓰면 매번 */ }
+    if (!hinted) {
+      $("#ov-hint").hidden = false;
+      $("#ov-hint-close").addEventListener("click", () => {
+        $("#ov-hint").hidden = true;
+        try { localStorage.setItem("ovHintSeen", "1"); } catch (e) { /* 무시 */ }
+      });
+    }
+    $("#ov-preview").addEventListener("change", (e) => {
+      api.set_overlay_preview(e.target.checked);
+      // 미리 보기를 켜면 먼저 예시 상자 (카드는 슬라이더를 움직이면)
+      if (e.target.checked) sampleBox();
       if (!e.target.checked) renderOfferResult();
       sendOverlay();
     });
-    // 위치 맞추기 칸을 펼쳤을 때만 상태를 묻는다
-    setInterval(async () => { if (!$("#overlay-pos").open) return; const o = await api.overlay_status(); $("#overlay-status").textContent = `(${o.status})`; }, 1500);
+    // 표시 설정을 펼쳤을 때만 상태를 묻는다
+    setInterval(async () => { if (!$("#ov-settings").open) return; const o = await api.overlay_status(); $("#overlay-status").textContent = `(${o.status})`; }, 1500);
   }
   $("#record-wrap").hidden = false;
   if ($("#board-wrap") && "board" in st) {

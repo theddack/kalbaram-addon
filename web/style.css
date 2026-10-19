@@ -28,7 +28,18 @@ main { display: grid; grid-template-columns: clamp(220px, 20%, 320px) minmax(0, 
 input[type=search] { width: 100%; padding: 6px 8px; background: var(--bg); border: 1px solid var(--line); color: var(--text); border-radius: 6px; }
 button { background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; cursor: pointer; }
 /* 더보기 메뉴: 데이터 갱신·업데이트 내역·출처·파일 확인·전체 초기화 */
-#more-menu { position: relative; }
+#more-menu, #ov-settings { position: relative; }
+#ov-settings > summary { list-style: none; display: inline-block; }
+#ov-settings > summary::-webkit-details-marker { display: none; }
+#ov-settings .ov-menu { position: absolute; left: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; gap: 8px;
+  width: min(420px, 90vw); padding: 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+#ov-settings fieldset { border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+#ov-settings legend { font-size: 13px; padding: 0 4px; }
+#ov-settings .ov-head { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+#ov-settings .opt-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13px; }
+#ov-settings .opt-name { min-width: 56px; color: var(--muted); }
+#ov-settings p { margin: 0; }
+.hint { background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 6px 8px; }
 #more-menu > summary { list-style: none; display: inline-block; }
 #more-menu > summary::-webkit-details-marker { display: none; }
 #more-menu .menu { position: absolute; right: 0; top: calc(100% + 4px); z-index: 20; display: flex; flex-direction: column; gap: 6px;

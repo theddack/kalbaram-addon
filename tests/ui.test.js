@@ -681,6 +681,35 @@ test("선택 화면이 닫히면 클릭을 못 잡았어도 게임 화면 카드
   assert.deepEqual(p.errors, []);
 });
 
+test("맨 위 '⚙ 표시 설정': 상자 자리·내용·글자 크기를 라디오로, 처음 한 번 안내 (2026-10-20 찾기 어렵다는 지적)", async () => {
+  const p = await loadPage({ simple: true });
+  const calls = [];
+  const st = { desktop: true, live: false, overlay: true, overlaySupported: true, overlayPos: { y: 0.7, spread: 0.246 },
+    itemSets: false, record: false, board: false, boxPos: "left-middle", boxDetail: "auto", boxFont: "normal" };
+  p.w.pywebview = { api: new Proxy({}, { get: (_, name) => async (...a) => { calls.push([name, ...a]); return name === "get_state" ? st : null; } }) };
+  p.w.dispatchEvent(new p.w.Event("pywebviewready"));
+  await new Promise((r) => setTimeout(r, 50));
+  assert.equal(p.q("#ov-settings").hidden, false, "게임 화면 표시 옆에 보인다");
+  const checked = (name) => p.q(`input[name="${name}"]:checked`).value;
+  assert.equal(checked("ov-box"), "left-middle");
+  assert.equal(checked("ov-detail"), "auto");
+  assert.equal(checked("ov-font"), "normal");
+  assert.match(p.text("#ov-detail-help"), /보통: 상점을 열면 자세히/);
+  const big = p.q('input[name="ov-font"][value="large"]');
+  big.checked = true; big.dispatchEvent(new p.w.Event("change"));
+  assert.ok(calls.some(([n, v]) => n === "set_box_font" && v === "large"));
+  const det = p.q('input[name="ov-detail"][value="detail"]');
+  det.checked = true; det.dispatchEvent(new p.w.Event("change"));
+  assert.ok(calls.some(([n, v]) => n === "set_box_detail" && v === "detail"));
+  assert.match(p.text("#ov-detail-help"), /자세히: 죽어 있을 때/);
+  assert.equal(p.q("#ov-hint").hidden, false, "처음 한 번 안내");
+  p.q("#ov-hint-close").click();
+  assert.equal(p.q("#ov-hint").hidden, true);
+  assert.equal(p.q("#overlay-pos"), null, "옛 '위치 맞추기' 칸은 없앴다");
+  assert.deepEqual(p.errors, []);
+  p.w.close();  // 프로그램 시작 처리가 켠 주기 타이머를 멈춘다 (안 그러면 테스트가 안 끝난다)
+});
+
 test("추천 다시 계산 시간을 게임 화면 표시와 같이 보낸다 (기록용)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
