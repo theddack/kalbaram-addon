@@ -1980,7 +1980,7 @@ class OverlayStates(unittest.TestCase):
 
     def test_box_limits_and_presets(self):
         import overlay
-        long = ["다음 구매: " + "가" * 80] + [f"줄 {i}" for i in range(12)]
+        long = ["적 회복 많음 " + "가" * 80] + [f"줄 {i}" for i in range(12)]
         items = overlay.layout({"hud": long, "shop": {"left": 0.2}}, 1920, 1080)
         lines = items[0][3][0]
         self.assertEqual(len(lines), overlay.HUD_MAX_LINES)
@@ -1989,3 +1989,56 @@ class OverlayStates(unittest.TestCase):
         self.assertEqual((r[1], r[2], r[3][1]), (1920 - 16, int(1080 * 0.30), "ne"))
         d = overlay.layout({"hud": self.HUD, "shop": {"left": 0.2}, "boxPos": "없는 자리"}, 1920, 1080)[0]
         self.assertEqual((d[1], d[3][1]), (overlay.BOX_X, "nw"), "모르는 자리면 기본(왼쪽 위)")
+
+
+class CardsAndBox0150(unittest.TestCase):
+    """2026-10-19 퀸 판(v0.1.49): 첫 선택지 이름 하나를 못 읽음 · 닫힌 뒤 카드가 남음 · 죽었을 때 상자가 '나오다 마는' 모양"""
+
+    def test_reread_missing_card_name(self):
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        m = augocr.Matcher(["궁극의 각성", "최상급 조준경 부착", "주문 분산"])
+        grabs = []
+
+        class Cap:
+            def grab(self, x, y, w, h, tw=None, th=None):
+                grabs.append((x, y, w, h, tw, th))
+                return b""
+
+        class Ocr:
+            def words(self, img, w, h):
+                return [("주문", 10, 5, 40, 20), ("분산", 60, 5, 40, 20), ("피해량", 30, 60, 50, 15)]
+        gw, gh = 2520, 1575
+        offers = [("궁극의 각성", 0.291 * gw, 0.40 * gh), ("최상급 조준경 부착", 0.504 * gw, 0.40 * gh)]
+        got = r.reread_missing(Cap(), Ocr(), (0, 0, gw, gh), offers, m)
+        self.assertEqual([n for n, *_ in got], ["궁극의 각성", "최상급 조준경 부착", "주문 분산"])
+        self.assertEqual(len(grabs), 1, "못 읽은 칸 하나만")
+        self.assertEqual(grabs[0][4], grabs[0][2] * 2, "2배로 키워 읽는다")
+        self.assertEqual(r._counts.get("이름 다시 읽어 찾음"), 1)
+
+    def test_dead_box_shows_next_buy_and_buy_now(self):
+        import overlay
+        hud = ["다음 구매: 삼위일체(만드는 중) > 크라켄 학살자 > 몰락한 왕의 검", "💰 지금 탐식의 망치 (1100G)",
+               "적 구성 추정: 마법 45% · 물리 55%", "고른 증강: 최상급 조준경 부착"]
+        items = overlay.layout({"hud": hud, "shop": "dead"}, 2520, 1575)
+        self.assertEqual(items[0][3][0], hud[:2], "다음 구매 + 지금 살 것 (적 조언 등은 상점 창에서)")
+        self.assertEqual(overlay.hud_fit(hud)[0], hud[0], "다음 구매 줄은 자르지 않는다 (아이템마다 나눠 그린다)")
+        self.assertEqual([t for t, _ in overlay.hud_lines(hud[:1])][-1], "3. 몰락한 왕의 검")
+
+    def test_no_cards_without_position_after_close(self):
+        import overlay
+
+        class Ov:
+            preview = False
+
+            def update(self, p):
+                self.p = p
+
+        class Reader:
+            state = {"shop": None, "offers": None, "pos": None}
+        api = desktop.Api.__new__(desktop.Api)
+        api._ov, api._rec, api._reader, api._settings = Ov(), None, Reader(), {}
+        api._cards, api._cards_seq = {"선택지": 0, "3장 읽음": 0, "라벨 3장": 0, "평가 없음": 0}, None
+        api.set_overlay({"cards": [{"name": "검을 뽑아라", "label": "추천"}, None, None], "hud": []})
+        self.assertEqual(api._ov.p["cards"], [None] * 3, "선택 화면이 닫혔으면 기본 위치에 카드를 그리지 않는다")
+        self.assertEqual(overlay.layout(api._ov.p, 1920, 1080), [])

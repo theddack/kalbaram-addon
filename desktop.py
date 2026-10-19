@@ -858,6 +858,9 @@ class Api:
             if getattr(self._ov, "preview", False) and not payload["shop"] and not any(payload.get("cards") or []):
                 payload["shop"] = "preview"
             cards = (self._reader.state.get("pos") if self._reader else None)
+            if not cards and self._reader is not None and self._reader.state.get("offers") is None \
+                    and not getattr(self._ov, "preview", False):
+                payload["cards"] = [None] * 3  # 선택 화면이 닫혔다: 남은 카드 평가를 엉뚱한 자리(기본 위치)에 그리지 않게
             if cards:
                 payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME,
                                   "bottom": cards["nameY"] + overlay.CARD_BOTTOM}
