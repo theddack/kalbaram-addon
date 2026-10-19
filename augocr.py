@@ -898,6 +898,37 @@ class Reader(threading.Thread):
         words = [(t, x / k + x0, y / k + y0, w / k, h / k) for t, x, y, w, h in ocr.words(img, tw, th)]
         return words, img, tw, th
 
+    def reread_missing(self, cap, ocr, rect, offers, matcher):
+        """이름을 2개만 읽었으면 나머지 카드 이름 자리만 2배로 키워 한 번 더 읽는다.
+        2026-10-19 퀸 판: 첫 선택지 '주문 분산'은 또렷이 보였는데 이름 줄 글자가 통째로 빠져 첫 증강 설명이 안 떴다"""
+        gx, gy, gw, gh = rect
+        pos = card_pos(offers, gw, gh)
+        have = {n for n, _, _ in offers}
+        items = _slot_items(offers, gw)
+        for i, it in enumerate(items):
+            if it is not None or pos["xs"][i] is None:
+                continue
+            cx, cy = pos["xs"][i] * gw, pos["nameY"] * gh
+            w, h = int(gw * 0.16), int(gh * 0.05)
+            x0, y0 = max(0, int(cx - w / 2)), max(0, int(cy - h / 2))
+            t0 = time.time()
+            img = cap.grab(gx + x0, gy + y0, w, h, w * 2, h * 2)
+            words = ocr.words(img, w * 2, h * 2)
+            self._time("이름 다시 읽기", t0)
+            # 이름 밑 꼬리표('피해량'·'보조')가 같이 읽히면 안 맞는다 → 위쪽 줄 단어부터, 앞에서부터 늘려 가며 가장 잘 맞는 것
+            toks = [t for t, *_ in sorted(words, key=lambda w_: (round(w_[2] / max(1, h // 2)), w_[1]))]
+            name, best = None, 0.0
+            for k in range(len(toks), 0, -1):
+                n, sc = matcher.match(" ".join(toks[:k]))
+                if n and sc > best:
+                    name, best = n, sc
+            self._count("이름 다시 읽기")
+            if name and name not in have:
+                self._count("이름 다시 읽어 찾음")
+                offers = sorted(offers + [(name, x0 + w / 2, cy)], key=lambda o: o[1])
+                have.add(name)
+        return offers
+
     def apply_fix(self):
         """증강 칸이 고른 증강을 알려 주면 클릭으로 짐작한 것을 고친다 (못 정했으면 채운다)"""
         fix, self._fix = self._fix, None
@@ -932,6 +963,8 @@ class Reader(threading.Thread):
         words, img, iw, ih = self.read_band(cap, ocr, rect, NAME_BAND)  # 이름 줄만 (빠르고 설명 글자와 덜 섞인다)
         self._time("이름 줄", t0)
         offers = find_offers(words, gw, gh, matcher)
+        if len(offers) == 2 and not self.protect:
+            offers = self.reread_missing(cap, ocr, rect, offers, matcher)
         self.offered.update(n for n, _, _ in offers)
         partial = False
         segs = [t for t, cx, y in segments(words, gap=gw * 0.04)

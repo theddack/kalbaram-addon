@@ -218,7 +218,9 @@ def layout(payload, w, h):
         bx, by, anchor = BOX_PRESETS.get(payload.get("boxPos") or "", BOX_PRESETS["left-top"])
         x = w + bx if bx < 0 else bx
         if shop == "dead":
-            items.append(("hud", x, int(h * by), (hud[:1], anchor)))
+            # 죽어 있을 때 = 칼바람에서 아이템을 사는 때: 다음 구매·지금 살 것만 (적 조언 등은 상점 창을 열었을 때).
+            # 첫 줄만 보이던 v0.1.49 는 '지금 살 것'까지 빠지고 다음 구매가 잘려 '나오다 마는' 상자였다 (2026-10-19 퀸 판)
+            items.append(("hud", x, int(h * by), ([l for l in hud if l.startswith(("다음 구매: ", "💰", "✅"))][:2] or hud[:1], anchor)))
         else:
             items.append(("hud", x, int(h * by), (hud, anchor)))
             sw = payload.get("swap")
@@ -232,11 +234,13 @@ def layout(payload, w, h):
 
 
 def hud_fit(lines):
-    """상자 줄 수·글자 수 한도 (UX-05). 머리줄(다음 구매·6칸 완성)은 첫 줄이라 늘 남는다"""
+    """상자 줄 수·글자 수 한도 (UX-05). 머리줄(다음 구매·6칸 완성)은 첫 줄이라 늘 남는다.
+    '다음 구매: a > b > c' 는 그릴 때 아이템마다 한 줄씩 나누니 자르지 않는다 (잘라서 마지막 아이템이 '몰락한 왕의 …'로 보였다)"""
     out = []
     for line in lines[:HUD_MAX_LINES]:
         line = str(line)
-        out.append(line if len(line) <= HUD_MAX_CHARS else line[:HUD_MAX_CHARS - 1] + "…")
+        keep = len(line) <= HUD_MAX_CHARS or line.startswith("다음 구매: ")
+        out.append(line if keep else line[:HUD_MAX_CHARS - 1] + "…")
     return out
 
 

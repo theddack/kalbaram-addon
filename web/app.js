@@ -1780,7 +1780,7 @@ async function applyLcu(api, L) {
 }
 
 // 증강 인식 (윈도우): 게임의 증강 선택 화면에서 읽은 선택지를 채우고, 화면이 닫히면 고른 증강을 넣는다
-let augSeq = 0, augPickSeq = 0;
+let augSeq = 0, augPickSeq = 0, augOpen = false;
 function applyAug(A) {
   if (!A || !state.champ) return;
   const byName = (n) => (n ? state.data.augments.find((a) => a.name === n) || null : null);
@@ -1816,6 +1816,13 @@ function applyAug(A) {
       offersOnly = true;
     }
   }
+  // 선택 화면이 닫혔는데 고른 것이 아직 안 정해짐(카드 클릭을 못 잡음): 게임 화면 카드는 바로 지운다.
+  // 2026-10-19 퀸 판: '못 정함'(20초 뒤)까지 카드 평가가 남고, 카드 위치를 잃어 화면 아래쪽(기본 위치)으로 내려가 있었다
+  if (!A.offers && augOpen && state.offers && !state.offersClosed) {
+    state.offersClosed = true;
+    offersOnly = true;
+  }
+  augOpen = !!A.offers;
   if (A.pickSeq && A.pickSeq !== augPickSeq) {
     augPickSeq = A.pickSeq;
     const a = byName(A.picked);

@@ -669,6 +669,18 @@ test("적 증강도 대응 규칙에: 회복→치유 감소, 체력·방어→�
   assert.deepEqual(p.errors, []);
 });
 
+test("선택 화면이 닫히면 클릭을 못 잡았어도 게임 화면 카드를 바로 지운다 (2026-10-19 퀸 판: 20초 남음)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Quinn", level: 11, items: [] });
+  p.w.applyAug({ offers: ["검을 뽑아라", "거인 학살자", "신비한 주먹"], seq: 5, pickSeq: 0 });
+  assert.ok(sent.at(-1).cards.some(Boolean), "선택지가 뜨면 카드 평가");
+  p.w.applyAug({ offers: null, seq: 5, pickSeq: 0 });  // 닫힘, 고른 것은 아직 모름 ('못 정함'은 20초 뒤)
+  assert.ok(!sent.at(-1).cards.some(Boolean), "닫히면 바로 지운다");
+  assert.deepEqual(p.errors, []);
+});
+
 test("추천 다시 계산 시간을 게임 화면 표시와 같이 보낸다 (기록용)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
