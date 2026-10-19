@@ -1864,6 +1864,7 @@ let liveLast = "";
 let liveEnded = false;
 let liveShop = false, goldDrawnAt = 0;
 let enemyBuildKey = "";
+const BOX_START = 75;  // 초. 상자 '자세히'일 때 게임 시작 후 이 시간까지 띄운다 (처음 아이템을 사는 때)
 function applyLive(L) {
   const el = $("#live-status");
   // 게임 중엔 챔피언 목록(아이콘 173개)을 접는다: 챔피언은 게임에서 정해지고, 화면 엔진 메모리를 덜 쓴다. 검색하면 다시 보인다
@@ -1908,7 +1909,9 @@ function applyLive(L) {
   // 상점 창만 보면 상점 인식이 안 될 때 상자가 한 번도 안 떴다 (2026-10-15 케일 판: 상점을 한 번도 못 알아봄)
   // 시작 직후(BOX_START)에 늘 띄우던 것은 없앴다: 게임 시작 1분 넘게 상자가 떠 있어 방해 (2026-10-19 외부 테스터, 안정화 기획서 UX-03).
   // 죽어 있을 때는 한 줄 요약만 (그리기 쪽 overlay.layout)
-  state.boxWhy = L.aug && L.aug.shop ? "shop" : L.dead ? "dead" : null;
+  // '자세히'(설정)를 고르면 예전처럼 시작 직후(BOX_START)에도 띄운다
+  state.boxWhy = L.aug && L.aug.shop ? "shop" : L.dead ? "dead"
+    : state.boxDetail === "detail" && L.gameTime != null && L.gameTime < BOX_START ? "start" : null;
   const shopOpen = !!state.boxWhy;
   const invChanged = JSON.stringify(state.inventory) !== JSON.stringify((L.items || []).map(String));
   const goldChanged = invChanged || (state.gold !== (L.gold ?? null)
@@ -2010,6 +2013,9 @@ window.addEventListener("pywebviewready", async () => {
     const pos = () => { api.set_overlay_pos(Number($("#ov-y").value), Number($("#ov-spread").value)); sendOverlay(); };
     $("#ov-y").addEventListener("input", pos);
     $("#ov-box").value = st.boxPos || "left-top";
+    state.boxDetail = st.boxDetail || "simple";
+    $("#ov-detail").value = state.boxDetail;
+    $("#ov-detail").addEventListener("change", (e) => { state.boxDetail = e.target.value; api.set_box_detail(e.target.value); sendOverlay(); });
     // 상점 상자 자리: 미리 보기를 켜 두면 예시 상자를 그 자리에 띄운다
     $("#ov-box").addEventListener("change", (e) => { api.set_box_pos(e.target.value); sendOverlay(); });
     $("#ov-spread").addEventListener("input", pos);

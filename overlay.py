@@ -41,6 +41,8 @@ TIMER_X, TIMER_Y = 16, 0.34  # 증강 쿨타임 자리: 게임 창 왼쪽, 상�
 BOX_PRESETS = {"left-top": (BOX_X, BOX_Y, "nw"), "left-middle": (BOX_X, 0.45, "nw"), "right-middle": (-16, 0.30, "ne")}
 # 상자 크기 한도 (UX-05): 줄 수·한 줄 글자 수. 넘으면 줄인다 (길어지면 게임 화면을 덮었다)
 HUD_MAX_LINES, HUD_MAX_CHARS = 7, 44
+# 상자 '자세히' (설정, 2026-10-19 사용자 요청: 간단히가 기본): 죽어 있을 때도 상세, 줄 수 한도만 넓게, 글자는 안 자른다
+HUD_MAX_LINES_DETAIL = 12
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -212,12 +214,13 @@ def layout(payload, w, h):
     # - 상점 창이 열렸을 때만 상세 (다음 구매·조언·바꾸기). 죽어 있기만 하면 한 줄 요약 (죽음 정보가 가려졌다, UX-04)
     # - 상태를 모르면 띄우지 않는다 (시작 75초 동안 늘 띄우던 것은 없앴다, UX-03)
     picking = any(c for c in (payload.get("cards") or []))
-    hud = hud_fit(payload.get("hud") or [])
+    detail = payload.get("boxDetail") == "detail"
+    hud = hud_fit(payload.get("hud") or [], detail)
     shop = payload.get("shop")
     if hud and shop and not picking:
         bx, by, anchor = BOX_PRESETS.get(payload.get("boxPos") or "", BOX_PRESETS["left-top"])
         x = w + bx if bx < 0 else bx
-        if shop == "dead":
+        if shop == "dead" and not detail:
             # 죽어 있을 때 = 칼바람에서 아이템을 사는 때: 다음 구매·지금 살 것만 (적 조언 등은 상점 창을 열었을 때).
             # 첫 줄만 보이던 v0.1.49 는 '지금 살 것'까지 빠지고 다음 구매가 잘려 '나오다 마는' 상자였다 (2026-10-19 퀸 판)
             items.append(("hud", x, int(h * by), ([l for l in hud if l.startswith(("다음 구매: ", "💰", "✅"))][:2] or hud[:1], anchor)))
@@ -233,9 +236,11 @@ def layout(payload, w, h):
     return items
 
 
-def hud_fit(lines):
+def hud_fit(lines, detail=False):
     """상자 줄 수·글자 수 한도 (UX-05). 머리줄(다음 구매·6칸 완성)은 첫 줄이라 늘 남는다.
     '다음 구매: a > b > c' 는 그릴 때 아이템마다 한 줄씩 나누니 자르지 않는다 (잘라서 마지막 아이템이 '몰락한 왕의 …'로 보였다)"""
+    if detail:
+        return [str(line) for line in lines[:HUD_MAX_LINES_DETAIL]]
     out = []
     for line in lines[:HUD_MAX_LINES]:
         line = str(line)
