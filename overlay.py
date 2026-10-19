@@ -223,7 +223,8 @@ def layout(payload, w, h):
         if shop == "dead" and not detail:
             # 죽어 있을 때 = 칼바람에서 아이템을 사는 때: 다음 구매·지금 살 것만 (적 조언 등은 상점 창을 열었을 때).
             # 첫 줄만 보이던 v0.1.49 는 '지금 살 것'까지 빠지고 다음 구매가 잘려 '나오다 마는' 상자였다 (2026-10-19 퀸 판)
-            items.append(("hud", x, int(h * by), ([l for l in hud if l.startswith(("다음 구매: ", "💰", "✅"))][:2] or hud[:1], anchor)))
+            # 짧게 보여 줄 땐 상자도 글자에 맞춰 작게 (compact: 큰 상자 크기를 기억해 두지 않는다, 2026-10-19 사용자 지적)
+            items.append(("hud", x, int(h * by), ([l for l in hud if l.startswith(("다음 구매: ", "💰", "✅"))][:2] or hud[:1], anchor, True)))
         else:
             items.append(("hud", x, int(h * by), (hud, anchor)))
             sw = payload.get("swap")
@@ -367,7 +368,7 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
             canvas.timer_y = max(y, left_bottom + 8) if left_bottom is not None else y  # 쿨타임만 다시 그릴 때도 같은 자리
             draw_timers(canvas, c, x, canvas.timer_y, h, icon_dir)
         elif kind == "hud":
-            lines_list, anchor = c if isinstance(c, tuple) else (c, "ne")
+            lines_list, anchor, compact = (c + (False,))[:3] if isinstance(c, tuple) else (c, "ne", False)
             bw = int(w * BOX_W)
             px = -max(1, round(HUD_PX * scale))
             gap = max(2, round(4 * scale))
@@ -385,10 +386,15 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
             if hb:
                 # 상자 크기를 고정: 폭은 글자 폭 한도 그대로, 높이는 이 게임 창에서 본 가장 큰 높이 (줄 수가 바뀔 때마다
                 # 상자가 커졌다 작아졌다 해서 '창이 움직인다'고 느꼈다, 2026-10-17 로그: 가로 0.20↔0.25 · 세로 0.15~0.30)
-                x0 = hb[0] if anchor == "nw" else hb[2] - bw
-                tall = getattr(canvas, "hud_tall", {})
-                tall[(w, h)] = bh = max(tall.get((w, h), 0), hb[3] - hb[1])
-                canvas.hud_tall = tall
+                if compact:
+                    # 짧은 상자 (죽어 있을 때 다음 구매·지금 살 것): 글자 크기 그대로. 큰 상자 높이를 이어받지 않는다
+                    bw, bh = hb[2] - hb[0], hb[3] - hb[1]
+                    x0 = hb[0]
+                else:
+                    x0 = hb[0] if anchor == "nw" else hb[2] - bw
+                    tall = getattr(canvas, "hud_tall", {})
+                    tall[(w, h)] = bh = max(tall.get((w, h), 0), hb[3] - hb[1])
+                    canvas.hud_tall = tall
                 canvas.create_rectangle(x0 - 10, hb[1] - 8, x0 + bw + 10, hb[1] + bh + 8, fill="#111820", outline="#c8aa6e")
                 box_bottom = left_bottom = hb[1] + bh + 8
             for t, _ in texts:
