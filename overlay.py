@@ -37,6 +37,10 @@ HUD_HEAD = "#e3c06b"  # 머리줄(다음 구매·지금 살 것·6칸 완성) �
 BOX_W = 0.22  # 상자 폭 (게임 창 너비 비율). 증강 인식이 이 안의 글자를 우리 상자로 보고 뺀다 (augocr.OWN_BOX_RIGHT)
 BOX_X, BOX_Y = 16, 0.08  # 상점 옆 상자 자리: 게임 창 왼쪽 위 (픽셀, 높이 비율)
 TIMER_X, TIMER_Y = 16, 0.34  # 증강 쿨타임 자리: 게임 창 왼쪽, 상점 상자 밑 (실제 화면 확인 전 추정)
+# 상자 자리 고르기 (안정화 기획서 UX-06): 이름 → (가로 기준, 세로 비율, 붙는 쪽). 가로 기준이 음수면 오른쪽 끝에서
+BOX_PRESETS = {"left-top": (BOX_X, BOX_Y, "nw"), "left-middle": (BOX_X, 0.45, "nw"), "right-middle": (-16, 0.30, "ne")}
+# 상자 크기 한도 (UX-05): 줄 수·한 줄 글자 수. 넘으면 줄인다 (길어지면 게임 화면을 덮었다)
+HUD_MAX_LINES, HUD_MAX_CHARS = 7, 44
 
 IS_WINDOWS = sys.platform == "win32"
 
@@ -203,19 +207,37 @@ def layout(payload, w, h):
             continue
         cx = round(w * xs[i]) if xs and i < len(xs) and xs[i] is not None else int(w * (0.5 + (i - 1) * pos["spread"]))
         items.append(("card", cx, cy, card))
-    hud = payload.get("hud") or []
-    # 상자는 상점 창이 열려 있을 때만, 게임 창 왼쪽 위 고정 자리에.
-    # 오른쪽 위에 늘 띄우면 게임을 가렸고, 상점 위치를 따라가면 읽을 때마다 위치가 달라 너무 움직였다 (2026-10-14 지적)
-    if hud and payload.get("shop"):
-        items.append(("hud", BOX_X, int(h * BOX_Y), (hud, "nw")))
-        sw = payload.get("swap")
-        if sw and sw.get("sell") and sw.get("buy"):
-            # 아이템 칸이 다 찼을 때 바꾸기: 상자 바로 밑에 아이콘 두 개 (판다 ✕ → 산다). 자리는 상자를 그린 뒤 정한다
-            items.append(("swap", BOX_X, None, (sw["sell"], sw["buy"])))
+    # 상태별 표시 (안정화 기획서 3장, 2026-10-19 외부 테스터 제보): 우선순위 증강 선택 > 상점 열림 > 죽음 > 전투.
+    # - 증강 선택 중엔 카드 밑 평가만 (상자가 카드·새로고침 버튼과 겹쳤다, UX-01)
+    # - 상점 창이 열렸을 때만 상세 (다음 구매·조언·바꾸기). 죽어 있기만 하면 한 줄 요약 (죽음 정보가 가려졌다, UX-04)
+    # - 상태를 모르면 띄우지 않는다 (시작 75초 동안 늘 띄우던 것은 없앴다, UX-03)
+    picking = any(c for c in (payload.get("cards") or []))
+    hud = hud_fit(payload.get("hud") or [])
+    shop = payload.get("shop")
+    if hud and shop and not picking:
+        bx, by, anchor = BOX_PRESETS.get(payload.get("boxPos") or "", BOX_PRESETS["left-top"])
+        x = w + bx if bx < 0 else bx
+        if shop == "dead":
+            items.append(("hud", x, int(h * by), (hud[:1], anchor)))
+        else:
+            items.append(("hud", x, int(h * by), (hud, anchor)))
+            sw = payload.get("swap")
+            if sw and sw.get("sell") and sw.get("buy"):
+                # 아이템 칸이 다 찼을 때 바꾸기: 상자 바로 밑에 아이콘 두 개 (판다 ✕ → 산다). 자리는 상자를 그린 뒤 정한다
+                items.append(("swap", x if anchor == "nw" else int(w * (1 - BOX_W)), None, (sw["sell"], sw["buy"])))
     st = timer_state(payload.get("timers"))
-    if st:
+    if st and not picking:
         items.append(("timers", TIMER_X, int(h * TIMER_Y), tuple(st)))
     return items
+
+
+def hud_fit(lines):
+    """상자 줄 수·글자 수 한도 (UX-05). 머리줄(다음 구매·6칸 완성)은 첫 줄이라 늘 남는다"""
+    out = []
+    for line in lines[:HUD_MAX_LINES]:
+        line = str(line)
+        out.append(line if len(line) <= HUD_MAX_CHARS else line[:HUD_MAX_CHARS - 1] + "…")
+    return out
 
 
 TIMER_ICON = (24, 32, 40)  # 쿨타임 아이콘 크기(픽셀): (가장 작게, 1080p 기준, 가장 크게). 게임 창 높이에 비례 (창 모드면 작아진다)

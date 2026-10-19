@@ -425,13 +425,13 @@ test("적 대응: 적이 산 아이템 때문에 순위가 크게 오른 아이�
   assert.deepEqual(p.errors, []);
 });
 
-test("게임 화면 상자: 상점·죽음·시작 직후에만 띄우라고 보낸다", async () => {
+test("게임 화면 상자: 상점·죽음에만 띄우라고 보낸다 (시작 직후는 안 띄움: 안정화 기획서 UX-03)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
   p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
   const live = (x) => p.w.applyLive({ enabled: true, inGame: true, champion: "Kayle", level: 9, items: [], gold: 100, ...x });
   live({ gameTime: 30 });
-  assert.equal(sent.at(-1).box, "start");
+  assert.equal(sent.at(-1).box, null, "시작 1분 넘게 상자가 떠 있어 방해 (2026-10-19 외부 테스터)");
   live({ gameTime: 300, gold: 120 });
   assert.equal(sent.at(-1).box, null);
   live({ gameTime: 310, dead: true, gold: 130 });
@@ -619,7 +619,7 @@ test("적별 위협·보호막·공격 속도·확인된 적 증강 (산 아이�
   assert.deepEqual(p.errors, []);
 });
 
-test("Tab 점수판에서 읽은 적 증강도 확인된 적 증강으로 (소환사 주문 칸과 합침, 겹치면 한 번)", async () => {
+test("Tab 점수판에서 읽은 적 증강은 정보 줄로만 (대응·상대 능력치엔 안 씀: 2026-10-19 실제 판 3개 중 1개만 맞음)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
   p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
@@ -631,9 +631,10 @@ test("Tab 점수판에서 읽은 적 증강도 확인된 적 증강으로 (소�
     aug: { enemyAugs: { mordekaiser: ["GrowthSpurt"], Lux: [aug.id, "없는증강"] } } });
   p.w.sendOverlay();
   const e = sent.at(-1).enemy;
-  assert.deepEqual(e.builds.find((b) => b.champ === "Mordekaiser").augments, [grow.name], "같은 증강은 한 번");
-  assert.deepEqual(e.builds.find((b) => b.champ === "Lux").augments, [aug.name], "모르는 id 는 버린다");
-  assert.ok(e.advice.some((l) => l.startsWith("적 증강 (확인됨)") && l.includes(`럭스 ${aug.name}`)), e.advice.join("\n"));
+  assert.deepEqual(e.builds.find((b) => b.champ === "Mordekaiser").augments, [grow.name], "소환사 주문 칸 증강만 확인됨");
+  assert.equal(e.builds.find((b) => b.champ === "Lux").augments, undefined, "점수판 증강은 확인된 증강에 안 넣는다");
+  assert.ok(e.advice.some((l) => l.startsWith("적 증강 (점수판 시험, 대응에 안 씀)") && l.includes(`럭스 ${aug.name}`) && !l.includes("모데카이저")), e.advice.join("\n"));
+  assert.ok(!sent.at(-1).hud.some((l) => l.startsWith("적 증강")), "게임 화면 상자엔 안 보낸다");
   assert.deepEqual(p.errors, []);
 });
 
@@ -649,8 +650,9 @@ test("적 증강도 대응 규칙에: 회복→치유 감소, 체력·방어→�
   assert.equal(heal.length + tank.length + cc.length, 6, "데이터에 증강 종류가 있어야");
   const foes = ["Lux", "Ahri", "Xerath", "Ezreal", "Jinx"];  // 회복·탱커가 아닌 적들
   const enemyAugs = { Lux: [heal[0].id], Ahri: [heal[1].id], Xerath: [tank[0].id, tank[1].id], Ezreal: [cc[0].id], Jinx: [cc[1].id] };
+  // 확인된 적 증강으로 넘긴다 (소환사 주문 칸 이름표 자리: 증강 id 그대로도 맞춰진다)
   const live = (augs) => p.w.applyLive({ enabled: true, inGame: true, champion: "Garen", level: 12, items: [], enemies: foes,
-    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })), aug: { enemyAugs: augs } });
+    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [], augments: augs[c] || [] })) });
   live({});
   p.w.renderItemList();
   p.w.sendOverlay();

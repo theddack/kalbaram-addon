@@ -289,7 +289,7 @@ class Desktop(unittest.TestCase):
         api = desktop.Api(desktop.Settings())
         public = [n for n in dir(api) if not n.startswith("_")]
         self.assertTrue(all(callable(getattr(api, n)) for n in public), public)
-        self.assertLessEqual(len(public), 19)  # set_record 추가 (개선용 기록 남기기)
+        self.assertLessEqual(len(public), 22)  # set_board · set_box_pos · card_summary 추가 (2026-10-19 안정화)
 
     def test_version_compare(self):
         self.assertGreater(desktop.version_tuple("0.1.10"), desktop.version_tuple("0.1.9"))
@@ -420,7 +420,9 @@ class Overlay(unittest.TestCase):
         sw = {"sell": "3153", "buy": "3036", "sellName": "몰락한 왕의 검", "buyName": "도미닉 경의 인사"}
         payload = {"cards": [None] * 3, "hud": ["다음 구매: 무한의 대검"], "swap": sw}
         self.assertEqual(overlay.layout(payload, 1600, 900), [], "상자가 안 뜨면 바꾸기도 안 뜬다")
-        items = overlay.layout({**payload, "shop": "dead"}, 1600, 900)
+        self.assertEqual([k for k, *_ in overlay.layout({**payload, "shop": "dead"}, 1600, 900)], ["hud"], "죽어 있기만 하면 한 줄 요약만")
+        shop = {"left": 0.2}
+        items = overlay.layout({**payload, "shop": shop}, 1600, 900)
         self.assertEqual([k for k, *_ in items], ["hud", "swap"])
 
         class C(FakeCanvas):
@@ -429,7 +431,7 @@ class Overlay(unittest.TestCase):
             def tag_lower(self, *a):
                 pass
         c = C()
-        overlay.draw(c, {**payload, "shop": "dead"}, 1600, 900, icon_dir=str(ROOT / "web" / "icons" / "augment"))
+        overlay.draw(c, {**payload, "shop": shop}, 1600, 900, icon_dir=str(ROOT / "web" / "icons" / "augment"))
         swap_rect = [v for v in c.items.values() if len(v) == 4 and v[1] > 900 * overlay.BOX_Y]
         self.assertTrue(swap_rect, "상자 밑에 바꾸기 칸")
         if HAS_IMG:
@@ -976,6 +978,8 @@ class HudIcons(unittest.TestCase):
         import augocr
         r = augocr.Reader(lambda: None, lambda: [])
         r.icon_dir = "x"
+        self.assertFalse(r._board_ready(), "설정에서 켜야 읽는다 (기본 꺼짐)")
+        r.board_on = True
         live = {"inGame": True, "enemies": ["Jinx"]}
         r.live_fn = lambda: live
 
@@ -1515,7 +1519,8 @@ class ShopBox(unittest.TestCase):
         self.assertEqual(len(w.rec.ev), 2, "게임 밖에선 기록하지 않는다")
 
     def test_box_when_dead_or_start(self):
-        # 상점 창을 못 알아봐도 죽어 있을 때·시작 직후엔 상자를 띄운다 (2026-10-15 케일 판: 상점 인식 0번 → 상자가 한 번도 안 뜸)
+        # 상점 창을 못 알아봐도 죽어 있을 땐 한 줄 요약을 띄운다 (2026-10-15 케일 판: 상점 인식 0번 → 상자가 한 번도 안 뜸).
+        # 죽음만으로 상세를 띄우면 죽음 정보가 가려졌다 (2026-10-19 외부 테스터, 안정화 기획서 UX-04)
         import overlay
 
         class Ov:
@@ -1527,8 +1532,10 @@ class ShopBox(unittest.TestCase):
         api = desktop.Api.__new__(desktop.Api)
         api._ov, api._rec, api._reader = Ov(), None, Reader()
         api._settings = {}
-        api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인"], "box": "dead"})
-        self.assertEqual([k for k, *_ in overlay.layout(api._ov.p, 1920, 1080)], ["hud"])
+        api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인", "적 회복 많음 → 치유 감소"], "box": "dead"})
+        items = overlay.layout(api._ov.p, 1920, 1080)
+        self.assertEqual([k for k, *_ in items], ["hud"])
+        self.assertEqual(items[0][3][0], ["다음 구매: 리치베인"], "죽어 있기만 하면 한 줄")
         api.set_overlay({"cards": [None] * 3, "hud": ["다음 구매: 리치베인"], "box": None})
         self.assertEqual(overlay.layout(api._ov.p, 1920, 1080), [], "평소엔 안 띄운다")
 
@@ -1935,3 +1942,30 @@ class ItemAttackCount(unittest.TestCase):
         it = next(i for i in d["items"] if i["id"] == "6672")
         tr = it["effects"][0]["trigger"]
         self.assertEqual((tr["type"], tr.get("n")), ("attacks", 3), "받은 데이터에도 반영")
+
+
+class OverlayStates(unittest.TestCase):
+    """안정화 기획서 3장 상태별 표시: 증강 선택 > 상점 열림 > 죽음 > 전투 (2026-10-19 외부 테스터 제보 UX-01·04·05·06)"""
+
+    HUD = ["다음 구매: 리치베인 > 공허의 지팡이", "적 회복 많음 → 치유 감소", "산 아이템: 루덴의 메아리 ✅"]
+    CARDS = [{"name": "무한 반복", "label": "애매", "tier": "C", "reason": "x"}, None, None]
+    TIMERS = [{"id": "x", "name": "퀸카", "kind": "auto", "period": 30, "base": 0}]
+
+    def test_picking_shows_cards_only(self):
+        import overlay
+        p = {"cards": self.CARDS, "hud": self.HUD, "shop": {"left": 0.2}, "timers": self.TIMERS,
+             "swap": {"sell": "1", "buy": "2"}}
+        self.assertEqual([k for k, *_ in overlay.layout(p, 1920, 1080)], ["card"], "증강 선택 중엔 카드 평가만 (상자·바꾸기·쿨타임 숨김)")
+        self.assertEqual([k for k, *_ in overlay.layout({**p, "cards": [None] * 3}, 1920, 1080)], ["hud", "swap", "timers"])
+
+    def test_box_limits_and_presets(self):
+        import overlay
+        long = ["다음 구매: " + "가" * 80] + [f"줄 {i}" for i in range(12)]
+        items = overlay.layout({"hud": long, "shop": {"left": 0.2}}, 1920, 1080)
+        lines = items[0][3][0]
+        self.assertEqual(len(lines), overlay.HUD_MAX_LINES)
+        self.assertTrue(lines[0].endswith("…") and len(lines[0]) == overlay.HUD_MAX_CHARS)
+        r = overlay.layout({"hud": self.HUD, "shop": {"left": 0.2}, "boxPos": "right-middle"}, 1920, 1080)[0]
+        self.assertEqual((r[1], r[2], r[3][1]), (1920 - 16, int(1080 * 0.30), "ne"))
+        d = overlay.layout({"hud": self.HUD, "shop": {"left": 0.2}, "boxPos": "없는 자리"}, 1920, 1080)[0]
+        self.assertEqual((d[1], d[3][1]), (overlay.BOX_X, "nw"), "모르는 자리면 기본(왼쪽 위)")

@@ -834,6 +834,9 @@ class Api:
         self._watcher = watcher
         self._ov = ov
         self._calc_ms, self._calc_seq = [], None  # 화면 쪽 추천 다시 계산 시간(ms) (한 판 기록 요약)
+        # 선택지마다 단계별 (안정화 기획서 UX-02): 선택지 수 · 이름 3개 다 읽음 · 라벨 3개 다 보냄 · 평가 없음 카드 수
+        self._cards = {"선택지": 0, "3장 읽음": 0, "라벨 3장": 0, "평가 없음": 0}
+        self._cards_seq = None
         self._statcheck_key = None  # 계산 vs 게임 실제 능력치: 레벨·아이템·증강이 바뀔 때만 기록
         self._lcu = lcu_watcher
         self._lock = threading.Lock()
@@ -847,9 +850,13 @@ class Api:
             # 증강 인식이 카드 위치를 읽었으면 그 자리에 붙인다 (짐작한 비율·블리츠 같은 다른 표시와 안 겹치게)
             # 상점 창이 열려 있으면 그 옆에 상자를 (평소엔 상자를 안 띄운다: 게임을 가린다)
             payload["shop"] = self._reader.state.get("shop") if self._reader else None
-            # 상점 인식이 안 돼도 죽어 있을 때·시작 직후엔 상자를 띄운다 (화면이 정해 보낸다: box = "dead"·"start")
+            # 상점 인식이 안 돼도 죽어 있을 땐 한 줄 요약을 띄운다 (화면이 정해 보낸다: box = "dead", 그리기 쪽이 한 줄로)
             if not payload["shop"] and payload.get("box"):
                 payload["shop"] = payload["box"]
+            payload["boxPos"] = self._settings.get("box_pos") or "left-top"
+            # 위치 맞추기 미리 보기 중이면 상자도 그 자리에 보이게 (카드 예시가 없을 때)
+            if getattr(self._ov, "preview", False) and not payload["shop"] and not any(payload.get("cards") or []):
+                payload["shop"] = "preview"
             cards = (self._reader.state.get("pos") if self._reader else None)
             if cards:
                 payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME,
@@ -857,6 +864,16 @@ class Api:
             self._ov.update(payload)
         if self._reader is not None and payload.get("shopMarks") is not None:
             self._reader.shop_targets = list(payload.get("shopMarks") or [])  # 상점 안 아이템 자리 찾기(시험) 대상
+        if payload.get("src") == "cards" and self._reader is not None:
+            st = self._reader.state
+            seq = st.get("seq")
+            if seq is not None and seq != self._cards_seq:  # 같은 선택지는 한 번만 센다
+                self._cards_seq = seq
+                cards = payload.get("cards") or []
+                self._cards["선택지"] += 1
+                self._cards["3장 읽음"] += int(sum(1 for n in (st.get("offers") or []) if n) == 3)
+                self._cards["라벨 3장"] += int(sum(1 for c in cards if c and c.get("label")) == 3)
+                self._cards["평가 없음"] += sum(1 for c in cards if c and str(c.get("label", "")).startswith("평가 없음"))
         ms = payload.get("calcMs")
         if isinstance(ms, (int, float)) and len(self._calc_ms) < 5000 and payload.get("calcSeq") != self._calc_seq:
             self._calc_seq = payload.get("calcSeq")  # 같은 계산 결과를 여러 번 보내도 한 번만 센다
@@ -908,6 +925,12 @@ class Api:
         except Exception as e:  # 기록용이라 실패해도 다른 기능엔 영향 없게
             if self._rec:
                 self._rec.event("timerarea", {"error": str(e)[:100]})
+
+    def card_summary(self):
+        """한 판 동안 증강 선택지 단계별 횟수 (부르면 비운다). 선택지가 없었으면 None"""
+        out, self._cards = self._cards, {k: 0 for k in self._cards}
+        self._cards_seq = None
+        return out if out["선택지"] else None
 
     def calc_summary(self):
         """한 판 동안 화면 쪽 추천 다시 계산 시간 {n, avg, p95, max} (ms). 부르면 비운다"""
@@ -976,7 +999,9 @@ class Api:
                 "overlay": bool(self._settings.get("overlay", True)), "overlaySupported": overlay.IS_WINDOWS,
                 "overlayPos": self._settings.get("overlay_pos") or overlay.DEFAULT_POS,
                 "itemSets": bool(self._settings.get("item_sets", True)),
-                "record": bool(self._settings.get("record", False))}
+                "record": bool(self._settings.get("record", False)),
+                "board": bool(self._settings.get("board", False)),
+                "boxPos": self._settings.get("box_pos") or "left-top"}
 
     def set_record(self, on):
         """개선용 기록 남기기: 한 판 기록(화면 조각 그림·events.json)·5분마다 게임 정보·경기 결과 파일.
@@ -984,6 +1009,20 @@ class Api:
         self._settings.set(record=bool(on))
         apply_record(bool(on), self._rec, self._watcher, self._lcu)
         return bool(on)
+
+    def set_board(self, on):
+        """Tab 점수판 적 증강 읽기 (시험, 기본 꺼짐: 안정화 기획서 '실전 검증 전 기본 OFF')"""
+        self._settings.set(board=bool(on))
+        if self._reader is not None:
+            self._reader.board_on = bool(on)
+        return bool(on)
+
+    def set_box_pos(self, name):
+        """게임 화면 상점 상자 자리 (overlay.BOX_PRESETS 중 하나)"""
+        if name not in overlay.BOX_PRESETS:
+            return False
+        self._settings.set(box_pos=name)
+        return True
 
     def set_item_sets(self, on):
         self._settings.set(item_sets=bool(on))
@@ -1457,6 +1496,7 @@ def main():
         reader.size_save = lambda gh, sz: settings.set(hud_size={**(settings.get("hud_size") or {}), str(gh): sz})
         reader.on_heavy = trim_memory
         reader.live_fn = lambda: watcher.state  # 레벨·죽음 → 증강 선택 화면을 자주 읽을 때
+        reader.board_on = bool(settings.get("board", False))  # Tab 점수판 읽기 (시험, 기본 꺼짐)
         watcher.on_new_game = lambda st: reader.new_game()
         reader.start()
     api = Api(settings, watcher, ov, lw, reader)
@@ -1502,6 +1542,9 @@ def main():
                 # 표시 창 그리기·화면 쪽 추천 계산 시간도 같이 (게임 끊김 원인을 숫자로 보려고)
                 draw = ov.perf_summary() if ov else {}
                 calc = api.calc_summary()
+                cards = api.card_summary()
+                if cards:
+                    perf["증강 카드"] = cards
                 perf.update({f"표시 {k}": v for k, v in draw.items()})
                 if calc:
                     perf["추천 계산"] = calc

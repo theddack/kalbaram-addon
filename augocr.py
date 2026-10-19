@@ -588,6 +588,7 @@ class Reader(threading.Thread):
         self._counts = {}  # 한 판 동안 센 것: 상점 읽기·알아봄, 보호 켬 등 (기록 요약)
         self._bottom_ok = set()  # 상점 아래 버튼 줄로 상점을 알아본 적이 있는 게임 창 크기 (그러면 위쪽 띠는 안 읽는다)
         self.board = None  # Tab 점수판 읽기 (hudicons.BoardReader)
+        self.board_on = False  # 설정 '점수판 적 증강 읽기 (시험)' (기본 꺼짐: 안정화 기획서)
         self.enemy_augs = {}  # 점수판에서 읽은 적 증강 {챔피언 id: [증강 id]}
         self.board_unsure = {}  # 그림이 같은 증강이라 못 정한 것 {챔피언 id: [[이름 목록]]}
         self._board_now = False
@@ -1051,7 +1052,7 @@ class Reader(threading.Thread):
 
     def _board_ready(self):
         """Tab 점수판을 읽을 때인가: 게임 중이고 적을 알고, 직전 읽기에서 BOARD_GAP 이 지났고, 적 증강을 아직 다 못 찾았을 때"""
-        if not self.icon_dir or self._board_busy or getattr(self, "board_error", None) or self.protect:
+        if not self.board_on or not self.icon_dir or self._board_busy or getattr(self, "board_error", None) or self.protect:
             return False
         if time.time() - self._board_at < BOARD_GAP:
             return False

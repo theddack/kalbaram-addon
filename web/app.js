@@ -414,6 +414,8 @@ function enemyAdvice() {
   // 상대 증강: 소환사 주문 칸에 보이는 것만 확인된 정보로 (나머지는 공식 데이터에 없어 추측하지 않는다)
   const seen = (state.enemyBuilds || []).filter((x) => x.augments.length).map((x) => `${x.champ.name} ${x.augments.map((a) => a.name).join("·")}`);
   if (seen.length) out.push(`적 증강 (확인됨): ${seen.join(" · ")}`);
+  const board = (state.enemyBuilds || []).filter((x) => (x.boardAugs || []).length).map((x) => `${x.champ.name} ${x.boardAugs.map((a) => a.name).join("·")}`);
+  if (board.length) out.push(`적 증강 (점수판 시험, 대응에 안 씀): ${board.join(" · ")}`);
   // 적이 산 아이템 때문에 순위가 크게 오른 아이템 (다음 구매를 그린 뒤에 정해진다)
   if (state.counter && state.counter.items.length) {
     const names = state.counter.items.map((id) => (state.data.items.find((i) => i.id === id) || {}).name).filter(Boolean).slice(0, 2);
@@ -1158,7 +1160,8 @@ function pushOverlay(rows, src) {
   overlayCards = [null, null, null];
   for (const x of rows || []) {
     const t = x.t;
-    const [icon, label] = noEffect(t) ? ["⛔", "효과 없음"] : t ? TIER_LABEL[t.tier] : ["", ""];
+    // 등급이 없으면 빈칸으로 보내지 말고 '평가 없음' (2026-10-19 외부 테스터: 무한 반복 카드에 라벨이 안 보였다, 안정화 기획서 UX-02)
+    const [icon, label] = noEffect(t) ? ["⛔", "효과 없음"] : t ? TIER_LABEL[t.tier] : ["❔", "평가 없음"];
     const tag = x.best ? " · 1순위" : x.reroll ? " · 새로고침?" : x.fun ? " · 재미 픽" : "";
     const tr = transform(x.r.a);
     overlayCards[x.r.i] = {
@@ -1849,7 +1852,6 @@ function setAutoChamp() {
 let liveLast = "";
 let liveEnded = false;
 let liveShop = false, goldDrawnAt = 0;
-const BOX_START = 75;  // 초. 게임 시작 후 이 시간까지는 상자를 띄운다 (처음 아이템을 사는 때)
 let enemyBuildKey = "";
 function applyLive(L) {
   const el = $("#live-status");
@@ -1893,7 +1895,9 @@ function applyLive(L) {
   // 그 밖엔 10초에 한 번만 (게임 중 CPU 를 아낀다)
   // 게임 화면 상자(다음 구매·조언)를 띄울 때: 상점 창이 열림 · 죽어 있음(상점에서 사는 때) · 시작 직후(첫 구매).
   // 상점 창만 보면 상점 인식이 안 될 때 상자가 한 번도 안 떴다 (2026-10-15 케일 판: 상점을 한 번도 못 알아봄)
-  state.boxWhy = L.aug && L.aug.shop ? "shop" : L.dead ? "dead" : L.gameTime != null && L.gameTime < BOX_START ? "start" : null;
+  // 시작 직후(BOX_START)에 늘 띄우던 것은 없앴다: 게임 시작 1분 넘게 상자가 떠 있어 방해 (2026-10-19 외부 테스터, 안정화 기획서 UX-03).
+  // 죽어 있을 때는 한 줄 요약만 (그리기 쪽 overlay.layout)
+  state.boxWhy = L.aug && L.aug.shop ? "shop" : L.dead ? "dead" : null;
   const shopOpen = !!state.boxWhy;
   const invChanged = JSON.stringify(state.inventory) !== JSON.stringify((L.items || []).map(String));
   const goldChanged = invChanged || (state.gold !== (L.gold ?? null)
@@ -1915,10 +1919,11 @@ function applyLive(L) {
     kills: x.kills || 0,
     items: (x.items || []).map((id) => d.items.find((i) => i.id === String(id))).filter((i) => i && (i.kind === "legendary" || i.kind === "boots"))
       .filter((it, i, arr) => arr.findIndex((y) => y.name === it.name) === i).slice(0, S.SLOTS),
-    augments: (x.augments || []).map(spellAugment).concat(boardAugs(L, x.champion))
-      .filter((a, i, arr) => a && arr.findIndex((y) => y && y.id === a.id) === i),
+    augments: (x.augments || []).map(spellAugment).filter(Boolean),
+    // Tab 점수판에서 읽은 것 (시험): 대응 조언·상대 능력치에는 쓰지 않는다 (2026-10-19 아크샨 판 3개 중 1개만 맞음, 아군 줄을 적으로 착각)
+    boardAugs: boardAugs(L, x.champion).filter((a) => !(x.augments || []).map(spellAugment).some((s) => s && s.id === a.id)),
   })).filter((x) => x.champ);
-  const ebKey = JSON.stringify(eb.map((x) => [x.champ.id, x.items.map((i) => i.id).sort(), x.augments.map((a) => a.id)]));
+  const ebKey = JSON.stringify(eb.map((x) => [x.champ.id, x.items.map((i) => i.id).sort(), x.augments.map((a) => a.id), x.boardAugs.map((a) => a.id)]));
   if (ebKey !== enemyBuildKey) { enemyBuildKey = ebKey; state.enemyBuilds = eb; applyEnemyTarget(); }
   else if (eb.length) {
     // 레벨만 바뀜: 예상 상대(18레벨)는 그대로, 지금 상대 표시만 새로
@@ -1993,6 +1998,9 @@ window.addEventListener("pywebviewready", async () => {
     $("#ov-spread").value = st.overlayPos.spread;
     const pos = () => { api.set_overlay_pos(Number($("#ov-y").value), Number($("#ov-spread").value)); sendOverlay(); };
     $("#ov-y").addEventListener("input", pos);
+    $("#ov-box").value = st.boxPos || "left-top";
+    // 상점 상자 자리: 미리 보기를 켜 두면 예시 상자를 그 자리에 띄운다
+    $("#ov-box").addEventListener("change", (e) => { api.set_box_pos(e.target.value); sendOverlay(); });
     $("#ov-spread").addEventListener("input", pos);
     $("#ov-preview").addEventListener("change", (e) => {
       api.set_overlay_preview(e.target.checked);
@@ -2007,6 +2015,11 @@ window.addEventListener("pywebviewready", async () => {
     setInterval(async () => { if (!$("#overlay-pos").open) return; const o = await api.overlay_status(); $("#overlay-status").textContent = `(${o.status})`; }, 1500);
   }
   $("#record-wrap").hidden = false;
+  if ($("#board-wrap") && "board" in st) {
+    $("#board-wrap").hidden = false;
+    $("#board-toggle").checked = !!st.board;
+    $("#board-toggle").addEventListener("change", (e) => api.set_board(e.target.checked));
+  }
   $("#record-toggle").checked = !!st.record;
   $("#record-toggle").addEventListener("change", (e) => api.set_record(e.target.checked));
   $("#itemset-toggle").checked = st.itemSets;
