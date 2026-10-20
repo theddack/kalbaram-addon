@@ -661,6 +661,28 @@
       .sort((a, b) => (a.offType ? 1 : 0) - (b.offType ? 1 : 0) || b.score - a.score);
   }
 
+  // 현재 구매 추천 (안정화 기획서 8.2): 완성 빌드 순위(18레벨·6칸)와 따로, '지금 레벨·지금 가진 것'에 더했을 때 당장 얼마나 강해지나.
+  // cands = [{id, name, gold(지금 내야 하는 돈), stats, effects?, uses(이걸 사면 없어지는 가진 부품 id)}], have = 지금 가진 완성 아이템 + 부품(능력치만)
+  // → [{id, gain(지금 강해지는 정도, 완성 빌드 순위와 같은 단위), perGold}] gain 큰 순. 지표 가중치·기준값은 rankItems 와 같게 (레벨만 지금)
+  function buyNowGains(cands, w, chosen, have, rules, champ, statOpts = {}, level = 18) {
+    if (!champ || !champ.spells || !cands.length) return [];
+    champ = withChosenFeatures(champ, chosen, rules);
+    const concept = CONCEPTS.find((c) => c.key === (chosen.length ? "augment" : "balanced"));
+    const ctx = withOfficial(augContext(chosen, rules), champ, officialK(concept));
+    const num = { mw: metricWeights(conceptWeights(w, ctx, concept)), norm: {} };
+    const augStats = augStatsOf(chosen, rules, champ);
+    const L = Math.max(1, Math.min(18, Math.round(level)));
+    const empty = Stats.evaluate(champ, L, [], [], statOpts).m;
+    for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
+    const v0 = valueOf(Stats.evaluate(champ, L, have, augStats, statOpts).m, num);
+    return cands.map((c) => {
+      const used = [...(c.uses || [])];
+      const after = have.filter((h) => { const i = used.indexOf(h.id); if (i < 0) return true; used.splice(i, 1); return false; }).concat([c]);
+      const gain = (valueOf(Stats.evaluate(champ, L, after, augStats, statOpts).m, num) - v0) * NUM_K;
+      return { id: c.id, name: c.name, gold: c.gold, gain, perGold: c.gold > 0 ? gain / c.gold : 0 };
+    }).sort((a, b) => b.gain - a.gain);
+  }
+
   // 점수가 비슷하면(애매하면) 믿을 만한 근거 순서로 (2026-10-19 사용자 결정):
   // 고른 증강이 직접 요구 → 고른 증강과 연계(🔗) → 라이엇 공식 추천(비슷한 챔피언 추천 포함) → 계산 점수.
   // '비슷하다' = 남은 것 중 1위 점수와 TIE_BAND 안. 차이가 크면 계산 순서 그대로 (증강 연계라도 확실히 손해면 안 올린다)
@@ -836,7 +858,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS,
+    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

@@ -1120,3 +1120,19 @@ test("⚙ 팝업은 바깥 클릭·Esc·✕ 로 닫히고, 상태 글은 짧은 
   assert.equal(p.text("#aug-title"), "증강 4개 완료");
   assert.deepEqual(p.errors, []);
 });
+
+// 안정화 기획서 8.2: 완성 빌드 추천(18레벨)과 따로, 지금 레벨·가진 것 기준으로 지금 골드로 살 수 있는 것 중 당장 가장 강해지는 것
+test("현재 구매 추천: 지금 골드로 살 수 있는 것만, 완성 빌드 경로와 다르면 이유를 붙인다", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gold: 1300, gameTime: 400 });
+  const line = p.q("#buy-now .buy-now-current");
+  assert.ok(line, "한 줄이 있다");
+  assert.match(line.textContent, /지금 9레벨에서 바로 강해지는 것: .+ \(([\d,]+)G\)/);
+  const cost = Number(/\(([\d,]+)G\)/.exec(line.textContent)[1].replace(/,/g, ""));
+  assert.ok(cost <= 1300, `지금 골드로 살 수 있는 것: ${cost}`);
+  assert.match(line.textContent, /완성 빌드로 가는 길과 같아요|완성 빌드 기준으로는/);
+  // 골드가 없으면 안 보인다
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gold: 0, gameTime: 420 });
+  assert.equal(p.q("#buy-now .buy-now-current"), null);
+  assert.deepEqual(p.errors, []);
+});
