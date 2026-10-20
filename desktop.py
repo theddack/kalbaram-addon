@@ -180,6 +180,9 @@ def live_url():
 LIVE_URL = live_url()
 LOG_KEEP = 30  # 게임 기록 파일은 최근 30개만 남긴다
 LIVE_INTERVAL = 3  # 초 (게임 중·챔피언 선택 중)
+# 상점이 열려 있거나 죽어 있을 때(아이템을 사는 때)는 1초마다: 3초 + 화면 3초가 겹쳐 산 직후 몇 초 동안
+# 산 아이템을 다시 권하거나 못 사는 아이템을 '지금 살 것'으로 냈다 (2026-10-20 피드백 #12). 레벨 표시도 늦었다 (#16)
+LIVE_FAST_INTERVAL = 1
 CHAMP_SELECT_INTERVAL = 1  # 초 (롤 클라이언트: 챔피언 선택·로딩 중. 상점 추천은 이때 써야 상점에 보인다)
 STALL_EXTRA = 7  # 초. 게임 연동 한 바퀴가 이만큼 더 늦으면 '멈춤'으로 기록 (읽기 제한 2초 + 여유)
 RES_EVERY = 30  # 초. 게임 중 자원 기록 간격
@@ -323,6 +326,10 @@ class LiveWatcher(threading.Thread):
         self._game_key = None
         self._last_snap = 0
         self.beat = time.time()  # 마지막으로 한 바퀴 돈 시각 (멈춤 진단용)
+        self.wake = threading.Event()  # 상점이 열리고 닫힐 때 등: 기다리지 않고 바로 다시 읽는다
+        self.fast = lambda: False  # 상점이 열려 있는가 (desktop 이 증강 인식과 연결)
+        self.on_change = None  # 죽음·레벨·골드·아이템이 바뀌면 화면을 깨운다 (화면은 3초마다만 묻는다)
+        self._last_key = None
 
     def run(self):
         while True:
@@ -335,8 +342,17 @@ class LiveWatcher(threading.Thread):
                     self.poll()
                 except Exception as e:
                     self.state = {"inGame": False, "error": str(e)[:120]}
-            # 게임 중이면 3초마다, 아니면 10초마다 (게임 시작은 최대 10초 늦게 알아챈다)
-            time.sleep(LIVE_INTERVAL if self.state.get("inGame") else IDLE_INTERVAL)
+            # 게임 중이면 3초마다(상점·죽음이면 1초), 아니면 10초마다 (게임 시작은 최대 10초 늦게 알아챈다)
+            if not self.state.get("inGame"):
+                wait = IDLE_INTERVAL
+            else:
+                try:
+                    quick = self.state.get("dead") or self.fast()
+                except Exception:
+                    quick = False
+                wait = LIVE_FAST_INTERVAL if quick else LIVE_INTERVAL
+            self.wake.wait(wait)
+            self.wake.clear()
 
     def watch_resources(self, now, gap):
         """게임 중 자원 기록 (2026-10-15 실게임 '중간에 컴퓨터가 멈춤': 그땐 기록이 없어 원인을 못 봤다).
@@ -386,6 +402,15 @@ class LiveWatcher(threading.Thread):
             self.rec.event("items", {"items": st.get("items"), "level": st.get("level"), "gold": round(st.get("gold") or 0),
                                      "gameTime": round(st.get("gameTime") or 0)})
         self.state = st  # 다 채운 뒤에 내보낸다 (화면이 읽는 도중 바뀌지 않게)
+        key = (st.get("dead"), st.get("level"), tuple(st.get("items") or ()), int(st.get("gold") or 0) // 50)
+        if key != self._last_key:
+            changed = self._last_key is not None
+            self._last_key = key
+            if changed and self.on_change:
+                try:
+                    self.on_change()
+                except Exception:
+                    pass
 
     def _items_changed(self, st):
         cur = tuple(st.get("items") or ())

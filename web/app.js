@@ -1588,7 +1588,8 @@ function renderBuyNow() {
     + (b.done ? `→ <b>지금 ${esc(top.name)} 완성할 수 있어요</b>`
       : b.part ? `→ 지금 <img src="${icon("item", b.part.id)}" alt=""> <b>${esc(b.part.name)}</b> (${fmt(b.part.cost)}G)부터 사세요`
         : `→ 아직 살 수 있는 부품이 없어요 (가장 싼 부품보다 골드가 적어요)`);
-  state.buyNowText = b.done ? `지금 ${top.name} 완성 가능` : b.part ? `지금 ${b.part.name} (${b.part.cost}G)` : "";
+  // 계산에 쓴 골드를 같이 적는다: 산 직후 게임 데이터가 늦게 오면 화면 골드와 달라 바로 알아볼 수 있게 (피드백 #12)
+  state.buyNowText = b.done ? `지금 ${top.name} 완성 가능 (${fmt(g)}G 기준)` : b.part ? `지금 ${b.part.name} (${b.part.cost}G · ${fmt(g)}G 기준)` : "";
 }
 
 // 산 부품으로 만들던 아이템: 순위가 조금 바뀌어도 그대로 1순위로 (중간에 바꾸면 산 부품이 남는다).
@@ -1894,12 +1895,13 @@ function applyLive(L) {
   const items = (L.items || []).map((id) => d.items.find((i) => i.id === id)).filter(Boolean)
     .filter((it, i, arr) => arr.findIndex((x) => x.name === it.name) === i).slice(0, S.SLOTS);
   const level = Math.max(1, Math.min(18, L.level || 1));
-  const statusText = `게임 중 · ${L.championName || L.champion || "?"} ${level}레벨`
-    + (L.augmentFields && L.augmentFields.length ? ` · 증강 필드 발견(${L.augmentFields.length})` : "")
-    // 게임 화면 위 표시가 안 보일 때 이유를 바로 보이게 (윈도우)
-    + (L.overlayStatus ? ` · 게임 화면 표시: ${L.overlayStatus}` : "")
-    // 증강 인식이 안 되면 이유가 바로 보이게 (v0.1.12 는 기록 파일을 열어야만 알 수 있었다)
-    + (L.aug && L.aug.status ? ` · 증강 인식: ${L.aug.status}` : "");
+  // 상태 글은 짧고 쉬운 말로 (좌표·글자 인식 방식 같은 진단 값은 마우스를 올리면 보이는 설명으로, 피드백 #21).
+  // 게임 시작 순간엔 게임 데이터가 1레벨·골드 0을 준다 → '시작 중' (아수라장은 3레벨 시작, 피드백 #16)
+  const starting = (L.gameTime ?? 99) < 3 && level === 1;
+  const preview = $("#ov-preview") && $("#ov-preview").checked;
+  const statusText = `게임 중 · ${L.championName || L.champion || "?"} ${starting ? "시작 중" : `${level}레벨`}`
+    + (L.overlayStatus ? ` · 게임 화면: ${overlayShort(L.overlayStatus)}${preview ? " (미리 보기 켜짐)" : ""}` : "")
+    + (L.aug && L.aug.offers ? " · 증강 카드 읽는 중" : "");
   if (el.textContent !== statusText) el.textContent = statusText;  // 같은 글이면 안 건드린다 (1초마다 다시 그리지 않게)
   el.title = (L.augmentFields && L.augmentFields.length ? "API 증강 필드: " + L.augmentFields.slice(0, 8).join(", ") + "\n" : "")
     + `원본 저장 위치: ${L.logDir}`;
@@ -2101,7 +2103,8 @@ window.addEventListener("pywebviewready", async () => {
     let L = null;
     try { L = await api.get_live(); applyLive(L); applyAug(L && L.aug); } catch (e) { /* 다음에 다시 */ }
     liveBusy = false;
-    const busy = L && L.inGame && L.aug && (L.aug.offers || L.aug.shop);
+    // 죽어 있을 때도 1초마다: 칼바람에서 아이템을 사는 때라 '지금 살 것'이 늦으면 틀린 안내가 된다 (피드백 #12)
+    const busy = L && L.inGame && ((L.aug && (L.aug.offers || L.aug.shop)) || L.dead);
     liveTimer = setTimeout(livePoll, liveAgain ? 0 : busy ? 1000 : 3000);
   };
   window.livePoke = livePoll;

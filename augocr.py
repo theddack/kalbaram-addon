@@ -1045,7 +1045,12 @@ class Reader(threading.Thread):
                                  "image": self.rec.image("card", img, iw, ih) if self.rec else None})
         self._after_pick(before, after)
         self.status = ("증강 선택 화면 읽는 중" if offers else "증강 선택 화면 아님") + f" ({ocr.lang} · {ocr._make})"
-        if offers or partial:
+        if offers:
+            return
+        if partial:
+            # 이름 조각만 보일 때(선택 화면 유지, 최대 PARTIAL_HOLD 초)도 상점은 읽는다: 상점이 열려 있으면 선택 화면이 아니다
+            # (예전엔 상점을 아예 안 읽어 상점 위에 카드 평가가 남았다, 2026-10-20 피드백 #16)
+            self.scan_shop_only(cap, ocr, rect)
             return
         self._hud_tick(rect)
         self.scan_shop_only(cap, ocr, rect)
