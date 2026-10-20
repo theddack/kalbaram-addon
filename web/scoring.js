@@ -666,12 +666,12 @@
   // '비슷하다' = 남은 것 중 1위 점수와 TIE_BAND 안. 차이가 크면 계산 순서 그대로 (증강 연계라도 확실히 손해면 안 올린다)
   const TIE_BAND = 0.05;
   const TIE_WHY = { 0: "고른 증강에 필요", 1: "증강 연계", 2: "라이엇 추천" };
-  function tieOrder(rows, prio) {
+  function tieOrder(rows, prio, bandK = TIE_BAND) {
     const head = rows.filter((r) => !r.offType), tail = rows.filter((r) => r.offType);
     const left = head.slice(), out = [];
     while (left.length) {
       const best = left.reduce((m, x) => (x.score > m.score ? x : m));
-      const band = left.filter((r) => r.score >= best.score - Math.abs(best.score) * TIE_BAND);
+      const band = left.filter((r) => r.score >= best.score - Math.abs(best.score) * bandK);
       const pick = band.reduce((m, x) => (prio(x) < prio(m) || (prio(x) === prio(m) && x.score > m.score) ? x : m));
       if (pick !== best && prio(pick) < prio(best)) pick.tie = `점수 비슷 → ${TIE_WHY[prio(pick)]} 우선`;
       out.push(pick);
