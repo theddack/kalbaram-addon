@@ -2012,8 +2012,11 @@ class OverlayStates(unittest.TestCase):
         lines = items[0][3][0]
         self.assertEqual(len(lines), overlay.HUD_MAX_LINES)
         self.assertTrue(lines[0].endswith("…") and len(lines[0]) == overlay.HUD_MAX_CHARS)
-        r = overlay.layout({"hud": self.HUD, "shop": {"left": 0.2}, "boxPos": "right-middle"}, 1920, 1080)[0]
+        # 오른쪽 가운데: 죽어 있을 때(상점 닫힘)는 오른쪽, 상점이 열려 있으면 상점 창과 겹쳐 왼쪽 위로 (피드백 #19)
+        r = overlay.layout({"hud": self.HUD, "shop": "dead", "dead": True, "boxPos": "right-middle"}, 1920, 1080)[0]
         self.assertEqual((r[1], r[2], r[3][1]), (1920 - 16, int(1080 * 0.30), "ne"))
+        r = overlay.layout({"hud": self.HUD, "shop": {"left": 0.2}, "boxPos": "right-middle"}, 1920, 1080)[0]
+        self.assertEqual((r[1], r[3][1]), (overlay.BOX_X, "nw"))
         d = overlay.layout({"hud": self.HUD, "shop": {"left": 0.2}, "boxPos": "없는 자리"}, 1920, 1080)[0]
         self.assertEqual((d[1], d[3][1]), (overlay.BOX_X, "nw"), "모르는 자리면 기본(왼쪽 위)")
 

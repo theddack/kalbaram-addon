@@ -254,10 +254,14 @@ def layout(payload, w, h):
     shop = payload.get("shop")
     if hud and shop and not picking:
         pos_name = payload.get("boxPos") or "left-top"
+        # 오른쪽 가운데는 상점 창(16:10 에서 게임 폭 약 0.31~0.91)과 겹친다 → 상점이 열려 있으면 왼쪽 위로 (피드백 #19)
+        if pos_name == "right-middle" and isinstance(shop, dict):
+            pos_name = "left-top"
         bx, by, anchor = BOX_PRESETS.get(pos_name, BOX_PRESETS["left-top"])
         x = w + bx if bx < 0 else bx
-        if shop == "dead" and by < DEAD_Y:
-            by = DEAD_Y  # 죽음 정보 창 밑으로
+        # 죽어 있으면 상점이 열려 있어도 죽음 정보 창(왼쪽 위 0~27%) 밑으로 (예전엔 상점 인식 값이 먼저라 창을 덮었다, 피드백 #19)
+        if (shop == "dead" or payload.get("dead")) and by < DEAD_Y:
+            by = DEAD_Y
         if shop == "dead" and not detail:
             # 죽어 있을 때 = 칼바람에서 아이템을 사는 때. 간단히: 다음 구매·지금 살 것 / 보통: 거기에 가장 중요한 적 대응 1줄.
             # 첫 줄만 보이던 v0.1.49 는 '지금 살 것'까지 빠지고 다음 구매가 잘려 '나오다 마는' 상자였다 (2026-10-19 퀸 판).
