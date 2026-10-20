@@ -293,7 +293,8 @@ def hud_fit(lines, detail=False):
     out = []
     for line in lines[:HUD_MAX_LINES]:
         line = str(line)
-        keep = len(line) <= HUD_MAX_CHARS or line.startswith("다음 구매: ")
+        # 살 아이템이 들어 있는 조언 줄(→)은 자르지 않고 줄을 바꾼다 (이름이 '도미닉 경의 인사 또는 세릴…'로 잘렸다, 피드백 #20)
+        keep = len(line) <= HUD_MAX_CHARS or line.startswith("다음 구매: ") or "→" in line
         out.append(line if keep else line[:HUD_MAX_CHARS - 1] + "…")
     return out
 
@@ -422,7 +423,7 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
             gap = max(2, round(4 * scale))
             ty, texts = y, []
             limit = h * BOX_MAX_BOTTOM - abs(px) * 1.4  # 이 밑으로는 글자를 안 쓴다 (채팅·능력치 창을 가리지 않게)
-            for i, (line, head) in enumerate(hud_lines(lines_list)):
+            for i, (line, head) in enumerate(hud_lines([hud_text(str(l)) for l in lines_list])):
                 if head and i:
                     ty += gap * 2  # 묶음 사이를 조금 띄운다
                 if ty > limit and texts:
@@ -442,9 +443,14 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                 # 상자 크기를 고정: 폭은 글자 폭 한도 그대로, 높이는 이 게임 창에서 본 가장 큰 높이 (줄 수가 바뀔 때마다
                 # 상자가 커졌다 작아졌다 해서 '창이 움직인다'고 느꼈다, 2026-10-17 로그: 가로 0.20↔0.25 · 세로 0.15~0.30)
                 if compact:
-                    # 짧은 상자 (죽어 있을 때 다음 구매·지금 살 것): 글자 크기 그대로. 큰 상자 높이를 이어받지 않는다
-                    bw, bh = hb[2] - hb[0], hb[3] - hb[1]
-                    x0 = hb[0]
+                    # 짧은 상자 (죽어 있을 때 다음 구매·지금 살 것): 큰 상자 높이를 이어받지 않되, 짧은 상자끼리는 가장 큰 크기로 고정
+                    # (💰 줄이 골드에 따라 생겼다 없어져 상자가 5초마다 커졌다 작아졌다, 2026-10-20 피드백 #20)
+                    small_box = getattr(canvas, "hud_small", {})
+                    pw, ph = small_box.get((w, h), (0, 0))
+                    bw, bh = max(pw, hb[2] - hb[0]), max(ph, hb[3] - hb[1])
+                    small_box[(w, h)] = (bw, bh)
+                    canvas.hud_small = small_box
+                    x0 = hb[0] if anchor == "nw" else hb[2] - bw
                 else:
                     x0 = hb[0] if anchor == "nw" else hb[2] - bw
                     tall = getattr(canvas, "hud_tall", {})

@@ -1417,6 +1417,18 @@ class Reader(threading.Thread):
             self._rec("shopmiss", {"read": [t for t, _, _ in segments(sw, gap=gw * 0.02)][:40],
                                    "image": self.rec.image("shopmiss", wide, ww, wh)})
         self._shop_probe = 0.0
+        # 죽어 있는 동안(상점을 열어 두고 사는 때)은 한 번 못 읽었다고 닫지 않는다: 열림↔닫힘이 오가며 상자가
+        # 큰 상자↔짧은 상자로 5초마다 바뀌었다 (2026-10-20 피드백 #20). 닫는 키(P·ESC)를 봤거나 살아 있으면 바로 닫는다
+        dead = False
+        try:
+            dead = bool((self.live_fn() or {}).get("dead")) if getattr(self, "live_fn", None) else False
+        except Exception:
+            dead = False
+        if not shop and self.shop and dead and not now_due and getattr(self, "_shop_miss", 0) < 1:
+            self._shop_miss = getattr(self, "_shop_miss", 0) + 1
+            shop = self.shop
+        elif shop or not self.shop:
+            self._shop_miss = 0
         if bool(shop) != bool(self.shop):
             data = {"open": bool(shop), "pos": shop}
             now = time.time()

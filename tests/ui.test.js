@@ -352,7 +352,7 @@ test("적 구성: 받는 피해 비율·회복·탱커 조언이 뜨고 계산�
   assert.match(adv, /적 탱커 많음/);
   assert.notEqual(adv, before);
   p.w.sendOverlay();
-  assert.match(sent.at(-1).hud.join("\n"), /적 구성 추정: 마법/);
+  assert.match(sent.at(-1).hud.join("\n"), /적 마법 \d+%/, "게임 화면 상자는 짧게 (피드백 #20)");
   assert.deepEqual(p.errors, []);
 });
 
@@ -991,7 +991,7 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],
     enemyBuilds: [heal, heal2, { champion: "Aatrox", level: 9, items: [] }] });
   p.w.renderItemList();
-  assert.match(p.text("#next-buy"), /🔁 필멸자의 운명 ← 적 회복 많음 \(소라카·유미\)/);
+  assert.match(p.text("#next-buy"), /🔁 필멸자의 운명 ← 치유 감소/);
   assert.deepEqual(p.errors, []);
 });
 

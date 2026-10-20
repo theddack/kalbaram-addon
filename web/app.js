@@ -1315,7 +1315,11 @@ function sendOverlay(src) {
   const INFO_ONLY = /^(적별|적 증강)/;
   const adv = enemyAdvice();
   // 적 증강 근거 ' (적 증강: …)' 는 애드온 창에만 (게임 화면 상자는 짧게)
-  hud.push(...adv.filter((l) => !INFO_ONLY.test(l)).map((l) => l.replace(/ \(적 증강: [^)]*\)/, "")));
+  // 게임 화면 상자는 짧게: '적 구성 추정: 마법 80% · 물리 20% → 마법 저항 우선: 멜모셔스의 아귀 또는 …' 를
+  // '적 마법 80% → 마법 저항 우선: 멜모셔스의 아귀' 로 (아이템 이름이 잘려 '멜모셔스의 …'로 보였다, 피드백 #20)
+  const shortAdv = (l) => l.replace(/ \(적 증강: [^)]*\)/, "").replace(/^적 구성 (\(산 아이템 반영\)|추정): /, "적 ")
+    .replace(/ · 물리 \d+%/, "").replace(/ \(많이 큼: [^)]*\)/, "").replace(/ 또는 [^·→)]+/g, "");
+  hud.push(...adv.filter((l) => !INFO_ONLY.test(l)).map(shortAdv));
   const v = itemVerdicts();
   if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
   if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
@@ -1678,7 +1682,9 @@ function renderNextBuy(rows) {
   if (prev && changed && now.names.length) {
     // 마지막으로 바뀐 뒤 새로 고른 증강이 여럿이면 가장 최근 것 (먼저 고른 것으로는 안 바뀌었으니)
     const newAug = now.augs.filter((n) => !prev.augs.includes(n)).at(-1);
-    const why = (r) => r.advice ? (adv.find((l) => l.includes(r.item.name)) || adv.find((l) => l.includes(r.advice)) || r.advice).split(" → ")[0]
+    // 조언 때문이면 짧은 이유 이름만 ('마법 저항' 등). 예전엔 그 순간의 '적 구성 … 마법 77% · 물리 23%' 문장을 통째로 붙여
+    // 다음 구매가 바뀔 때까지 옛 %가 남아, 상자에 지금 값 줄(76%)과 같은 줄이 두 번 보였다 (피드백 #20)
+    const why = (r) => r.advice ? r.advice
       : r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
       : now.enemy !== prev.enemy && now.enemy ? `${now.enemy}에 맞춰` : null;
     const added = pick.filter((r) => !prev.names.includes(r.item.name)).map((r) => [r.item.name, why(r)]).filter(([, w]) => w);

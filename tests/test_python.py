@@ -2007,7 +2007,7 @@ class OverlayStates(unittest.TestCase):
 
     def test_box_limits_and_presets(self):
         import overlay
-        long = ["적 회복 많음 " + "가" * 80] + [f"줄 {i}" for i in range(12)]
+        long = ["적 회복 많음 " + "가" * 80] + [f"줄 {i}" for i in range(12)]  # '→' 없는 정보 줄은 자른다
         items = overlay.layout({"hud": long, "shop": {"left": 0.2}}, 1920, 1080)
         lines = items[0][3][0]
         self.assertEqual(len(lines), overlay.HUD_MAX_LINES)
@@ -2139,6 +2139,30 @@ class BoxNoObstruct(unittest.TestCase):
             self.assertGreaterEqual(it[2], int(1080 * overlay.DEAD_Y), mode)
         shop = overlay.layout({"hud": ["다음 구매: 가"], "shop": {"left": 0.2}}, 1920, 1080)[0]
         self.assertEqual(shop[2], int(1080 * overlay.BOX_Y), "상점 창이 열렸을 땐 원래 자리")
+        # 죽은 채 상점을 열어도 죽음 정보 창 밑 (2026-10-20 피드백 #19: 상점 인식 값이 먼저라 창을 덮었다)
+        both = overlay.layout({"hud": ["다음 구매: 가"], "shop": {"left": 0.2}, "dead": True}, 1920, 1080)[0]
+        self.assertGreaterEqual(both[2], int(1080 * overlay.DEAD_Y))
+
+    def test_box_follows_live_state(self):
+        """그릴 때의 상점·죽음으로 상자를 정한다 (피드백 #11: 상점을 닫거나 부활해도 화면이 다시 보낼 때까지 상자가 남았다)"""
+        import overlay
+        sent = {"hud": ["다음 구매: 가"], "shop": {"left": 0.3}, "box": "shop"}  # 보낼 땐 상점이 열려 있었다
+        self.assertFalse(overlay.layout(overlay.with_live(sent, {"shop": None, "dead": False}), 1920, 1080), "닫히고 살아 있으면 상자 없음")
+        dead = overlay.layout(overlay.with_live(sent, {"shop": None, "dead": True}), 1920, 1080)
+        self.assertEqual(dead[0][0], "hud")
+        self.assertTrue(overlay.layout(overlay.with_live({"hud": ["다음 구매: 가"]}, {"shop": {"left": 0.3}, "dead": False}), 1920, 1080),
+                        "보낼 땐 닫혀 있었어도 지금 열려 있으면 띄운다")
+        self.assertEqual(overlay.with_live({"shop": "preview"}, {"shop": None})["shop"], "preview", "미리 보기는 그대로")
+        # 오른쪽 가운데 자리는 상점이 열려 있으면 상점 창과 겹쳐 왼쪽 위로
+        r = overlay.layout({"hud": ["다음 구매: 가"], "shop": {"left": 0.3}, "boxPos": "right-middle"}, 1440, 900)[0]
+        self.assertLess(r[1], 1440 / 2)
+
+    def test_hud_keeps_item_names(self):
+        """살 아이템이 든 조언 줄은 자르지 않고, 컬러 이모지는 기호로 (피드백 #20)"""
+        import overlay
+        line = "적 마법 80% → 마법 저항 우선: 멜모셔스의 아귀 · 관통: 도미닉 경의 인사 · 세릴다의 원한"
+        self.assertEqual(overlay.hud_fit([line]), [line])
+        self.assertEqual(overlay.hud_text("산 아이템: 정수 약탈자 ✅"), "산 아이템: 정수 약탈자 ✔")
 
 
 
