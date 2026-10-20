@@ -4,13 +4,14 @@
     python tools/log_judge.py <...> --md 결과.md                                  표를 파일로
 
 테스터는 '개선용 기록 남기기'를 켜고 한 판 한 뒤 data.zip(또는 logs/games/날짜_챔피언.zip)만 보내면 된다.
-판정은 기록에 남은 시각(t, 초)과 내용으로만 한다. 기록에 없는 것(카드 설명을 가렸는지, 버튼 위치 등 눈으로 볼 것)은
-'확인 못 함 (영상·스크린샷 필요)'으로 남긴다. 결과:
-  해결      기대대로 동작한 사례만 있음
-  재현      기대와 다른 사례가 있음 (근거에 시각)
-  부분      맞은 사례와 틀린 사례가 섞임
-  해당 없음 그 판에 그 상황이 없었음 (예: 한 번도 안 죽음)
-  확인 못 함 기록으로 볼 수 없음
+판정은 기록에 남은 시각(t, 초)과 내용으로만 한다 (기획서 v0.1.55 후속 6.4). 결과:
+  로그 기준 정상  기록된 상태에서는 문제 없음 (기록이 정상이라고 실제 화면까지 확정한 것은 아님)
+  재현 확인       기록에서 문제가 확인됨 (근거에 시각)
+  부분 정상       맞은 사례와 틀린 사례가 섞임
+  확인 불가       필요한 기록이 없음 (예전 버전 기록, 기록이 중간에 끊김, 게임 창이 뒤에 있어 안 그림)
+  영상 확인 필요  로그만으로 판단할 수 없음 (카드 설명을 가렸는지, 버튼 위치 등 눈으로 볼 것)
+  해당 없음       그 판에 그 상황이 없었음 (예: 한 번도 안 죽음)
+화면 단위로 본다: 새로고침 중간(누른 뒤 REROLL_SEC 안)에 2장만 읽힌 순간이나, 선택 화면이 떠서 상자 대신 카드를 그린 죽음은 문제로 세지 않는다.
 기록 항목: shop(상점 열림·닫힘) · dead(죽음·부활, v0.1.55~) · drawn(표시 창이 실제로 그린 것, v0.1.55~) · offers(읽은 선택지) ·
 click(클릭·새로고침 버튼) · shown(화면이 보낸 카드 평가·상자 글) · items(산 아이템·골드) · picked(고른 증강)
 """
@@ -26,6 +27,10 @@ BOX_SHOWN_SEC = 3.0    # 상점 열림·죽음 뒤 이 안에 상자가 떠야 �
 CARD_LABEL_SEC = 3.0   # 선택지를 읽고 이 안에 카드 3장 평가가 떠야 한다
 BUY_SYNC_SEC = 3.0     # 산 뒤 이 안에 상자가 새 골드·아이템으로 바뀌어야 한다
 FLICKER_PER_MIN = 6    # 같은 상태에서 상자 크기가 1분에 이만큼 넘게 바뀌면 흔들림
+REROLL_SEC = 3.0       # 새로고침 버튼을 누르고 이 안은 연출 중 (카드가 2장만 읽혀도 문제로 세지 않는다)
+SCREEN_GAP = 20.0      # 선택지 기록 사이가 이만큼 넘게 벌어지면 다른 선택 화면
+
+OK, BAD, PART, NA, NOREC, VIDEO = "로그 기준 정상", "재현 확인", "부분 정상", "해당 없음", "확인 불가", "영상 확인 필요"
 
 
 def load_games(path):
@@ -55,10 +60,10 @@ def item_names():
 
 def verdict(ok, bad):
     if not ok and not bad:
-        return "해당 없음"
+        return NA
     if bad and ok:
-        return "부분"
-    return "재현" if bad else "해결"
+        return PART
+    return BAD if bad else OK
 
 
 def first_after(events, t, kinds, pred=lambda e: True, within=None):
@@ -70,6 +75,11 @@ def first_after(events, t, kinds, pred=lambda e: True, within=None):
 
 def has_box(e):
     return "상점 상자" in (e.get("kinds") or "")
+
+
+def hidden(e):
+    """안 그린 이유가 '보여 줄 수 없음'(게임 창이 뒤·전체 화면·표시 꺼짐)인 drawn → 상자가 없어도 판정에 쓰지 않는다 (v0.1.56~ 기록)"""
+    return e is not None and e.get("why") in ("게임 창이 뒤에 있음", "전체 화면", "표시 꺼짐", "게임 창 없음")
 
 
 def judge(events):
@@ -91,18 +101,47 @@ def judge(events):
                 v = e.get(key)
         return v
 
-    # ---- 증강 선택
+    def drawn_at(t):
+        """t 시각에 표시 창이 그리고 있던 것 (마지막 drawn)"""
+        d = None
+        for e in ev:
+            if e["t"] > t:
+                break
+            if e["kind"] == "drawn":
+                d = e
+        return d
+
+    # ---- 기록 완결성 (기획서 6.2: 기록 누락을 정상으로 처리하지 않게)
+    ends = [e for e in ev if e["kind"] == "end"]
+    row("기록", "기록 완결성", OK if ends else NOREC,
+        f"{ev[-1]['t'] if ev else 0}초까지 기록 · " + ("끝(end) 있음" if ends else "끝(end) 기록 없음 → 중간에 끊긴 기록일 수 있어 아래 '로그 기준 정상'도 그 시각까지만"))
+
+    # ---- 증강 선택 (화면 단위: 새로고침·다시 읽기로 한 화면 안에서 여러 번 기록된다)
     offers = [e for e in ev if e["kind"] == "offers" and e.get("offers")]
-    ok, bad = [], []
+    rerolls = [e["t"] for e in ev if e["kind"] == "click" and e.get("reroll") is not None]
+    picks = [e["t"] for e in ev if e["kind"] == "picked"]
+    screens = []
     for o in offers:
-        n_read = sum(1 for x in o["offers"] if x)
-        s = first_after(ev, o["t"], {"shown"}, lambda e: any(e.get("cards") or []), CARD_LABEL_SEC)
-        n_lab = sum(1 for c in (s.get("cards") if s else []) or [] if c)
-        (ok if n_read == 3 and n_lab == 3 else bad).append(f"{o['t']}초 읽음 {n_read}·평가 {n_lab}")
-    row("증강", "카드 3장 모두 평가 (#7)", verdict(ok, bad), f"선택지 {len(offers)}번 · " + ("; ".join(bad[:4]) or "모두 3장"))
+        if screens and o["t"] - screens[-1][-1]["t"] <= SCREEN_GAP and not any(screens[-1][-1]["t"] < p <= o["t"] for p in picks):
+            screens[-1].append(o)
+        else:
+            screens.append([o])
+    ok, bad = [], []
+    for sc in screens:
+        full, short = False, []
+        for o in sc:
+            n_read = sum(1 for x in o["offers"] if x)
+            s = first_after(ev, o["t"], {"shown"}, lambda e: any(e.get("cards") or []), CARD_LABEL_SEC)
+            n_lab = sum(1 for c in (s.get("cards") if s else []) or [] if c)
+            if n_read == 3 and n_lab == 3:
+                full = True
+            elif not any(0 <= o["t"] - r <= REROLL_SEC for r in rerolls):
+                short.append(f"{o['t']}초 읽음 {n_read}·평가 {n_lab}")
+        (bad if short or not full else ok).append(f"{sc[0]['t']}초 화면" + (": " + ", ".join(short[:2]) if short else "" if full else ": 3장 평가 없음"))
+    row("증강", "카드 3장 모두 평가 (#7)", verdict(ok, bad), f"선택 화면 {len(screens)}개(기록 {len(offers)}번) · " + ("; ".join(bad[:4]) or "모두 3장"))
 
     if not have_dead:
-        row("증강", "죽어 있을 때 뜬 선택 화면 인식 (#8)", "확인 못 함", "죽음 기록(dead)이 없는 버전의 기록")
+        row("증강", "죽어 있을 때 뜬 선택 화면 인식 (#8)", NOREC, "죽음 기록(dead)이 없는 버전의 기록")
     else:
         ok, bad = [], []
         for o in offers:
@@ -126,45 +165,69 @@ def judge(events):
         stale = bool(card and old_name and card.startswith(old_name + ":"))
         advise = bool(card and "새로고침?" in card)
         (bad if stale or advise else ok).append(f"{c['t']}초 {slot + 1}번 칸" + (" 옛 평가 남음" if stale else "") + (" 새로고침 또 권함" if advise else ""))
-    row("증강", "새로고침 후 옛 평가 지우기·'새로고침 씀' 반영 (#7 #9)", verdict(ok, bad) if clicks else "해당 없음",
+    row("증강", "새로고침 후 옛 평가 지우기·'새로고침 씀' 반영 (#7 #9)", verdict(ok, bad) if clicks else NA,
         f"새로고침 클릭 {len(clicks)}번 · " + ("; ".join(bad[:4]) or "문제 없음"))
     picked = [e for e in ev if e["kind"] == "picked" and e.get("picked")]
-    row("증강", "고른 증강 인식 (참고)", "해결" if picked else "해당 없음", f"고른 증강 {len(picked)}개: " + ", ".join(e["picked"] for e in picked))
-    row("증강", "증강 4개 뒤 추천 영역 전환 (#15)", "확인 못 함", "애드온 창 화면이라 기록에 없음 (스크린샷 필요)")
+    eog = next((e for e in ev if e["kind"] == "eog"), None)
+    truth = (eog or {}).get("augments") or (eog or {}).get("picked")
+    if truth and picked:
+        wrong = [f"{e['t']}초 {e['picked']}" for e in picked if e["picked"] not in truth]
+        row("증강", "고른 증강 인식 (경기 결과 대조)", BAD if wrong else OK,
+            f"고른 증강 {len(picked)}개 · 경기 결과와 다름: {', '.join(wrong)}" if wrong else f"고른 증강 {len(picked)}개 모두 경기 결과와 같음")
+    else:
+        row("증강", "고른 증강 인식 (참고)", NOREC if picked else NA,
+            f"고른 증강 {len(picked)}개: " + ", ".join(e["picked"] for e in picked) + " (경기 결과 기록이 없어 맞는지는 diag.log '경기 결과와 고른 증강 대조')")
+    row("증강", "증강 4개 뒤 추천 영역 전환 (#15)", VIDEO, "애드온 창 화면이라 기록에 없음 (스크린샷 필요)")
 
     # ---- 상점·상자
     shops = [e for e in ev if e["kind"] == "shop"]
     if not have_drawn:
         for n in ("처음 연 상점에 상자 (#10)", "상점 닫으면 상자 바로 사라짐 (#11)", "부활하면 상자 바로 사라짐 (#11)"):
-            row("상점", n, "확인 못 함", "그린 기록(drawn)이 없는 버전의 기록")
+            row("상점", n, NOREC, "그린 기록(drawn)이 없는 버전의 기록")
     else:
         opens = [e for e in shops if e.get("open")]
         if opens:
             o = opens[0]
             d = first_after(ev, o["t"], {"drawn"}, has_box, BOX_SHOWN_SEC)
-            row("상점", "처음 연 상점에 상자 (#10)", "해결" if d else "재현",
+            row("상점", "처음 연 상점에 상자 (#10)", OK if d else BAD,
                 f"{o['t']}초 열림 → " + (f"{round(d['t'] - o['t'], 1)}초 뒤 상자" if d else f"{BOX_SHOWN_SEC:g}초 안에 상자 없음"))
         else:
-            row("상점", "처음 연 상점에 상자 (#10)", "해당 없음", "상점을 연 기록 없음")
+            row("상점", "처음 연 상점에 상자 (#10)", NA, "상점을 연 기록 없음")
         ok, bad = [], []
         for c in (e for e in shops if not e.get("open")):
             if state_at(c["t"], "dead", "dead", False):
                 continue  # 죽어 있으면 상자가 남는 게 맞다
-            gone = first_after(ev, c["t"], {"drawn"}, lambda e: not has_box(e), BOX_GONE_SEC)
+            now = drawn_at(c["t"])
+            gone = (now is not None and not has_box(now)) or first_after(ev, c["t"], {"drawn"}, lambda e: not has_box(e), BOX_GONE_SEC)
             (ok if gone else bad).append(f"{c['t']}초 닫힘" + ("" if gone else f" → {BOX_GONE_SEC:g}초 넘게 상자"))
         row("상점", "상점 닫으면 상자 바로 사라짐 (#11)", verdict(ok, bad), "; ".join(bad[:4]) or f"닫힘 {len(ok)}번 모두 사라짐")
         ok, bad = [], []
         for r in (e for e in ev if e["kind"] == "dead" and not e.get("dead")):
             if state_at(r["t"], "shop", "open", False):
                 continue  # 상점이 열려 있으면 상자가 남는 게 맞다
+            now = drawn_at(r["t"])
+            if now is not None and not has_box(now):
+                ok.append(f"{r['t']}초 부활 (이미 상자 없음)")
+                continue
             gone = first_after(ev, r["t"], {"drawn"}, lambda e: not has_box(e), BOX_GONE_SEC)
             (ok if gone else bad).append(f"{r['t']}초 부활" + ("" if gone else f" → {BOX_GONE_SEC:g}초 넘게 상자"))
-        row("상점", "부활하면 상자 바로 사라짐 (#11)", verdict(ok, bad) if have_dead else "확인 못 함", "; ".join(bad[:4]) or f"부활 {len(ok)}번 모두 사라짐")
-        ok, bad = [], []
+        row("상점", "부활하면 상자 바로 사라짐 (#11)", verdict(ok, bad) if have_dead else NOREC, "; ".join(bad[:4]) or f"부활 {len(ok)}번 모두 사라짐")
+        ok, bad, skip = [], [], []
         for dd in (e for e in ev if e["kind"] == "dead" and e.get("dead")):
-            d = first_after(ev, dd["t"], {"drawn"}, has_box, BOX_SHOWN_SEC + 3)
-            (ok if d else bad).append(f"{dd['t']}초 죽음" + (f" → {round(d['t'] - dd['t'], 1)}초 뒤 상자" if d else " → 상자 없음"))
-        row("상점", "죽어 있을 때 상자 (#10)", verdict(ok, bad) if have_dead else "확인 못 함", "; ".join(bad[:4]) or "; ".join(ok[:3]))
+            win = BOX_SHOWN_SEC + 3
+            d = first_after(ev, dd["t"], {"drawn"}, has_box, win)
+            if d:
+                ok.append(f"{dd['t']}초 죽음 → {round(d['t'] - dd['t'], 1)}초 뒤 상자")
+            elif first_after(ev, dd["t"], {"drawn"}, lambda e: "카드" in (e.get("kinds") or ""), win):
+                ok.append(f"{dd['t']}초 죽음 (선택 화면이 떠 카드 우선)")
+            elif hidden(drawn_at(dd["t"])) or first_after(ev, dd["t"], {"drawn"}, hidden, win):
+                skip.append(f"{dd['t']}초 죽음 (게임 창이 뒤에 있어 안 그림)")
+            else:
+                bad.append(f"{dd['t']}초 죽음 → 상자 없음")
+        res = verdict(ok, bad) if have_dead else NOREC
+        if res == NA and skip:
+            res = NOREC
+        row("상점", "죽어 있을 때 상자 (#10)", res, "; ".join((bad + skip)[:4]) or "; ".join(ok[:3]))
 
     # 산 직후: 상자가 산 아이템을 다시 권하거나, 산 뒤 골드보다 비싼 것을 '지금 살 것'으로 남기지 않는가
     ok, bad = [], []
@@ -194,34 +257,35 @@ def judge(events):
         changes = sum(1 for a, b in zip(boxes, boxes[1:]) if a["where"] != b["where"] and b["t"] - a["t"] < 60)
         span = (boxes[-1]["t"] - boxes[0]["t"]) / 60 if len(boxes) > 1 else 0
         rate = changes / span if span else 0
-        row("화면", "상자 크기·위치 흔들림 (#20)", "해당 없음" if not boxes else ("재현" if rate > FLICKER_PER_MIN else "해결"),
+        row("화면", "상자 크기·위치 흔들림 (#20)", NA if not boxes else (BAD if rate > FLICKER_PER_MIN else OK),
             f"상자 크기·위치 변경 {changes}번 / {round(span, 1)}분")
         on_right = [e for e in ev if e["kind"] == "drawn" and has_box(e) and e.get("where") and e["where"][0] > 0.5
                     and state_at(e["t"], "shop", "open", False)]
-        row("화면", "상점이 열렸을 때 상자가 상점 창을 피함 (#19)", "재현" if on_right else ("해결" if boxes else "해당 없음"),
+        row("화면", "상점이 열렸을 때 상자가 상점 창을 피함 (#19)", BAD if on_right else (OK if boxes else NA),
             f"상점이 열린 채 오른쪽에 그린 상자 {len(on_right)}번")
         dead_top = [e for e in ev if e["kind"] == "drawn" and has_box(e) and e.get("where") and e["where"][1] < 0.27 and e["where"][0] < 0.3
                     and state_at(e["t"], "dead", "dead", False)]
-        row("화면", "죽어 있을 때 죽음 정보 창을 가리지 않음 (#19)", "재현" if dead_top else ("해결" if have_dead else "확인 못 함"),
+        row("화면", "죽어 있을 때 죽음 정보 창을 가리지 않음 (#19)", BAD if dead_top else (OK if have_dead else NOREC),
             f"죽어 있을 때 왼쪽 위 0~27%에 그린 상자 {len(dead_top)}번")
     else:
         for n in ("상자 크기·위치 흔들림 (#20)", "상점이 열렸을 때 상자가 상점 창을 피함 (#19)", "죽어 있을 때 죽음 정보 창을 가리지 않음 (#19)"):
-            row("화면", n, "확인 못 함", "그린 기록(drawn)이 없는 버전의 기록")
+            row("화면", n, NOREC, "그린 기록(drawn)이 없는 버전의 기록")
     cut = [l for s in ev if s["kind"] == "shown" for l in (s.get("box") or []) if "→" in l and l.endswith("…")]
-    row("화면", "상자 아이템 이름 잘림 (#20)", "재현" if cut else "해결", f"잘린 조언 줄 {len(cut)}개" + (f": {cut[0][:40]}" if cut else ""))
+    row("화면", "상자 아이템 이름 잘림 (#20)", BAD if cut else OK, f"잘린 조언 줄 {len(cut)}개" + (f": {cut[0][:40]}" if cut else ""))
     for n, why in (("카드 평가가 카드 설명을 가리지 않음 (#18)", "그린 자리는 있지만 설명 위치는 화면마다 달라 영상·스크린샷 필요"),
                    ("상단 버튼 위치 고정 (#21)", "애드온 창 화면이라 기록에 없음"), ("⚙ 설정 창 닫기 (#22)", "애드온 창 화면이라 기록에 없음")):
-        row("화면", n, "확인 못 함", why)
+        row("화면", n, VIDEO, why)
     perf = next((e for e in ev if e["kind"] == "perf"), None)
     if perf:
         ms = perf.get("ms") or {}
         main_ = {k: v for k, v in ms.items() if isinstance(v, dict) and "p95" in v}
-        row("성능", "처리 시간 (참고)", "해결", " · ".join(f"{k} 평균 {v['avg']}ms/95% {v['p95']}ms" for k, v in list(main_.items())[:5]) or "기록 없음")
+        row("성능", "처리 시간 (참고)", OK, " · ".join(f"{k} 평균 {v['avg']}ms/95% {v['p95']}ms" for k, v in list(main_.items())[:5]) or "기록 없음")
     return rows
 
 
 def markdown(results):
-    L = ["# 한 판 기록 자동 판정", "", "결과: 해결 · 재현 · 부분 · 해당 없음 · 확인 못 함. 근거의 '초'는 기록 시작부터 시각이에요.", ""]
+    L = ["# 한 판 기록 자동 판정", "", f"결과: {OK} · {BAD} · {PART} · {NOREC} · {VIDEO} · {NA}. 근거의 '초'는 기록 시작부터 시각이에요.",
+         "'로그 기준 정상'은 기록된 상태에서 문제가 없다는 뜻이지 실제 화면까지 확인한 것은 아니에요.", ""]
     for name, rows in results:
         L += [f"## {name}", "", "| 영역 | 확인 항목 | 결과 | 근거 |", "|---|---|---|---|"]
         L += [f"| {r['area']} | {r['name']} | {r['result']} | {r['why'].replace('|', '/')} |" for r in rows]
