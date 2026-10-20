@@ -1624,12 +1624,16 @@ function renderBuyNow() {
   }
 }
 
-// 지금 골드로 살 수 있는 것 중 '지금 레벨·가진 것'에 더했을 때 가장 강해지는 것. 후보 = 다음 구매 위 3개와 그 하위 부품
+// 지금 골드로 살 수 있는 것 중 '지금 레벨·가진 것'에 더했을 때 가장 강해지는 것. 후보 = 다음 구매 3개 + 6칸 추천 빌드와 그 하위 부품
 let buyNowMemo = { key: null, value: null };
 function buyNowCurrent(gold) {
   const d = state.data;
   if (!state.champ || gold == null) return null;
-  const tops = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id).filter(Boolean).slice(0, 3);
+  // 후보 = 다음 구매 3개 + 화면의 6칸 추천 빌드(가진 것 빼고)의 부품 트리. v0.1.55 후속 기획 A-①: 상위 3개 트리만 보면
+  // 2026-10-20 신드라 판 구매 시점 48번(산 직후·+600·+1300 골드) 중 18번이 살 수 있는 것 전체 최고보다 못했다
+  // (698초 2052G: 6칸에 있는 그림자불꽃 이득 3.04 대신 방출의 마법봉 0.63). 6칸까지 넓히면 18번 중 9번이 전체 최고와 같아지고,
+  // 나머지는 빌드 밖 아이템·부품(악의·제국의 명령·망각의 구 등)이라 넣지 않는다 (완성 빌드와 어긋나는 구매를 권하지 않게)
+  const tops = [...new Set([...document.querySelectorAll("#next-buy .next-row, #build .item:not(.fixed)")].map((e) => e.dataset.id).filter(Boolean))];
   const inv = state.inventory || [];
   const level = state.liveLevel || state.level || 18;
   const isItem = (id) => d.items.some((i) => i.id === id);
