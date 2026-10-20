@@ -45,6 +45,7 @@
 - 내용: `logs/diag.log`(진단), `logs/games/<날짜_챔피언>/events.json`(+ 그림, 끝나면 zip), `logs/game_*_<초>s.json`(5분마다 게임 연동 원본, 이름 가림), `measure/eog_*.json`(경기 결과), `measure/match_*.json`(전적 10명 증강·아이템·승패, 이름 없음).
 - **적 증강 정답** = `match_*.json` 적 팀 `augments` (번호). 프로그램이 판 끝에 점수판에서 읽은 것과 대조해 diag.log 에 "점수판 적 증강 대조" 를 남긴다.
 - 추천 대조: 롤 클라이언트를 켜고 `python tools/match_review.py` → `node tools/match_check.js` (내 전적 판, `.cache/matches/` 는 커밋 안 함).
+- **계산을 고치면** `node tools/rec_baseline.js` 로 바뀐 추천을 보고, 의도한 개선이면 `--update` 로 기준선을 새로 저장 (안 하면 `tests/baseline.test.js` 실패). 점수 비슷 규칙은 `node tools/tie_check.js`.
 - **고른 증강 정답** = eog `localPlayer.stats.playerAugment1~6` 숫자 → `web/data.json` 증강의 `num` (kiwi AugmentPlatformId). 프로그램이 판 끝에 자동 대조해 diag.log 에 "경기 결과와 고른 증강 대조: 모두 맞음/다름" 을 남긴다.
 - **능력치 대조** = events.json `statcheck` 의 rows `[계산, 실제]`. 잠깐 켜지는 효과(중간에 같아지는 차이)와 계속 남는 차이를 구분한다.
 - 새 판 기록으로 재생 테스트를 만들 땐 `tests/data/games/<챔피언_날짜>/` 에 `live_<초>s.json` + `game.json` (고른 증강·시각, 아는 차이 `known`, 기준 `gaps`).
