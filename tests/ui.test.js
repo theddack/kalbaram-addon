@@ -80,6 +80,9 @@ test("이번 선택지: 3개 비교·추천 1개·새로고침 권장", async ()
   assert.equal(p.qa(".offer-table .mini-build").filter((td) => td.querySelector("img")).length, 3, "몰빵 빌드 아이콘");
   assert.ok(p.qa(".offer-table .chip.fun").length <= 1, "재미 픽은 많아야 하나");
   assert.ok(!rows.find((r) => r.classList.contains("best")).querySelector(".chip.fun"), "재미 픽은 추천과 다른 것");
+  // 강한 선택과 재미있는 선택을 문구로 구분 (안정화 기획서 8.5)
+  assert.match(rows.find((r) => r.classList.contains("best")).textContent, /💪 강한 선택/);
+  assert.match(p.text("#offer-result"), /💪 강한 선택 = 계산상 전투 성능이 가장 좋아요/);
   assert.deepEqual(p.errors, []);
 });
 
@@ -1135,4 +1138,14 @@ test("현재 구매 추천: 지금 골드로 살 수 있는 것만, 완성 빌�
   p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gold: 0, gameTime: 420, aug: { shop: { left: 0.3 } } });
   assert.equal(p.q("#buy-now .buy-now-current"), null);
   assert.deepEqual(p.errors, []);
+});
+
+// 안정화 기획서 8.3: 만드는 중 아이템은 1순위보다 15% 넘게 낮고 남은 골드당 가치도 나쁠 때만 놓아 준다
+test("만드는 중 놓아 주기: 점수 차이가 크고 남은 골드당 가치도 나쁘면 놓아 주고, 거의 다 만들었으면 계속", async () => {
+  const p = await loadPage({ simple: true });
+  const it = (name) => p.data.items.find((i) => i.name === name);
+  const top = { item: it("무한의 대검"), score: 2 };
+  assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: 600, score: 1 }, top), false, "절반 점수 · 남은 돈 많음 → 놓아 줌");
+  assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: it("크라켄 학살자").gold - 300, score: 1 }, top), true, "남은 300G → 계속");
+  assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: 600, score: 1.9 }, top), true, "점수 차이 5% → 계속");
 });
