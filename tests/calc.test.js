@@ -200,9 +200,13 @@ test("기본 빌드는 라이엇 주 피해 유형을 따른다 (이렐리아 AP
   assert.equal(by("Irelia").damageType, "physical");
   assert.ok(!items("Irelia").some(isAP), "이렐리아(물리)에 AP 아이템 없음");
   for (const id of ["Azir", "Teemo"]) assert.ok(!items(id).some((it) => (it.tags.AD || 0) >= 0.5 && !(it.tags.AP >= 0.5)), `${id}(마법)에 AD 아이템 없음`);
-  // 예외: 라이엇 칼바람 추천이 반대 유형 위주인 챔피언 (케일 = 크라켄·몰락한 왕의 검·구인수) → 그 추천을 따른다
+  // 예외: 라이엇 칼바람 추천이 반대 유형 위주인 챔피언 (케일 = 크라켄·몰락한 왕의 검·구인수) → 그 아이템을 반대 유형으로 밀어내지 않는다.
+  // (2026-10-20 E 기본 지속 효과를 평타마다 세면서 케일 기본 빌드는 AP 적중(내셔의 이빨·리치베인)이 앞선다 — 고르는 것은 계산, 밀어내지만 않는다)
   const official = new Set(by("Kayle").officialItems.ranges.flat());
-  assert.ok(items("Kayle").some((it) => official.has(it.id) && (it.tags.AD || 0) >= 0.5), "케일은 라이엇 추천 AD 적중 아이템");
+  const S = require("../web/scoring.js");
+  const kc = by("Kayle");
+  const rows = S.rankItems(p.data.items, S.profile(kc, p.data.tags), [], [], p.data.rules, kc, { aram: true });
+  assert.ok(rows.filter((r) => official.has(r.item.id) && (r.item.tags.AD || 0) >= 0.5).every((r) => !r.offType), "케일 라이엇 추천 AD 적중 아이템은 반대 유형으로 안 밀림");
   for (const id of ["Darius", "Trundle", "Jax"]) assert.ok(!items(id).some(isCrit), `${id}(치명타 못 살리는 근접)에 치명타 없음`);
   assert.ok(items("Jinx").some(isCrit), "원거리 딜러는 치명타 그대로");
   assert.ok(items("Yasuo").some(isCrit), "치명타 특성(야스오)은 그대로");
@@ -495,4 +499,36 @@ test("점수 비슷 폭(tieOrder bandK): 0 이면 계산 순서 그대로 · 기
   assert.deepEqual(S.tieOrder(rows(), (r) => r.p).map((r) => r.item.id), ["b", "a", "c"]);
   assert.deepEqual(S.tieOrder(rows(), (r) => r.p, 0.12).map((r) => r.item.id), ["b", "c", "a"]);
   assert.equal(S.TIE_BAND, 0.05);
+});
+
+// 2026-10-20 증강 원본 대조: 반복 발동 효과에 원본 재사용 대기시간이 빠져 있었다 (골드 강탈을 기본 공격마다 30초짜리 피해로 셈)
+test("반복 발동 증강 효과의 재사용 대기시간: rules effectCooldown 이 모두 적용되고 발동 상한이 걸린다", () => {
+  const ids = Object.entries(d.rules.augments).filter(([, r]) => r.effectCooldown).map(([id]) => id);
+  assert.ok(ids.length >= 4, ids.join(","));
+  for (const id of ids) {
+    const rep = aug(id).effects.filter((e) => ["onhit", "attacks", "cast"].includes(e.trigger.type));
+    assert.ok(rep.length && rep.every((e) => e.cooldown > 0), id);
+  }
+  // 골드 강탈 30초: 평타가 초당 2번이어도 초당 피해는 30초에 1번 꼴
+  const c = champ("Jinx");
+  const m = St.evaluate(c, 18, [], [S.augStatsOf([aug("Goldrend")], d.rules, c)[0]]).m;
+  const e = m.effects.find((x) => x.src === aug("Goldrend").name);
+  assert.ok(m.augDps <= e.hit / 30 + 1e-6, `augDps ${m.augDps} · 한 번 ${e.hit}`);
+});
+
+// 2026-10-20 챔피언 특성: 스킬 '기본 지속 효과' 적중 시 피해는 기본 공격마다 (스킬 콤보 1번으로만 세서 공격 속도 가치를 낮게 봤다)
+test("스킬 기본 지속 효과 적중 시 피해: 케일 E·바루스 W 는 평타 초당 피해에, 베인 W(3회째)·트리스타나 E(처치 시)는 아님", () => {
+  const on = (id, slot) => champ(id).spells.find((s) => s.slot === slot).effects.some((e) => e.onhit);
+  assert.ok(on("Kayle", "E") && on("Varus", "W") && on("Kassadin", "W"));
+  assert.ok(!on("Vayne", "W") && !on("Tristana", "E") && !on("Ivern", "W") && !on("Kalista", "W"));
+  // 공격 속도를 올리면 적중 피해도 같은 비율로 는다
+  const c = champ("Kayle");
+  const m1 = St.evaluate(c, 18, [], []).m, m2 = St.evaluate(c, 18, [item("고속 연사포")], []).m;
+  assert.ok(m1.spellOnhit > 0 && m2.autoDps > m1.autoDps);
+});
+
+test("진 4번째 탄은 항상 치명타: 치명타 0%여도 기본 공격 치명타 기대 확률 25%", () => {
+  const t = St.computeStats(champ("Jhin"), 18, [], []).total;
+  assert.equal(t.CRIT, 0);
+  assert.ok(Math.abs(t.critAuto - 0.25) < 1e-9, String(t.critAuto));
 });

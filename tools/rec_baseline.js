@@ -39,14 +39,36 @@ function rankRows(d, c, chosen, fixed, opts = OPTS) {
   const prio = (r) => (ctx.wanted[r.item.name] ? 0 : r.synergy ? 1 : official[r.item.id] ? 2 : 3);
   return { rows, prio };
 }
+// 아이템 점수 구성: 지표별 수치 이득(gain: 한타 피해·초당 피해·버티는 힘·지원·기동·제어, 맨몸 대비 비율) + 태그 점수.
+// 순위가 바뀌면 어느 항목이 바뀌었는지 비교한다 (기획서 8.2 '변경 원인')
+const PARTS = ["combo", "dps", "ehp", "support", "mobility", "control"];
+const partsOf = (r) => (r.gain ? Object.fromEntries(PARTS.map((k) => [k, r4(r.gain[k] || 0)]).filter(([, v]) => v)) : {});
 function ranking(d, c, chosen, fixed, opts = OPTS) {
   const { rows, prio } = rankRows(d, c, chosen, fixed, opts);
   const raw = rows.filter((r) => r.item.kind === "legendary" && !r.offType).map((r) => r.item.name);
   const ordered = S.tieOrder(rows, prio).filter((r) => r.item.kind === "legendary" && !r.offType);
   return {
-    top: ordered.slice(0, TOP).map((r) => ({ name: r.item.name, score: r4(r.score), ...(r.tie ? { tie: r.tie } : {}) })),
+    top: ordered.slice(0, TOP).map((r) => ({ name: r.item.name, score: r4(r.score), tag: r4(r.tagScore || 0), parts: partsOf(r),
+      ...(r.synergy ? { link: true } : {}), ...(r.tie ? { tie: r.tie } : {}) })),
     raw: raw.slice(0, TOP),  // tieOrder 를 쓰기 전 계산 순서
   };
+}
+
+// 화면(app.js enemyInfo·statOpts)과 같은 적 마법 비율: 적마다 라이엇 주 피해 유형(완성 아이템 2개 이상이면 산 아이템),
+// 킬 1개 +0.1 · 완성 아이템 1개 +0.25 가중, 반영 60%, 0.1 단위
+function enemyMagicOf(d, enemies) {
+  if (!enemies.length) return null;
+  const share = { magic: 1, physical: 0, mixed: 0.5 };
+  let wsum = 0, mag = 0;
+  for (const e of enemies) {
+    const leg = e.items.filter((i) => i.kind === "legendary");
+    const ap = leg.filter((i) => ((i.tags || {}).AP || 0) >= 0.5).length, ad = leg.filter((i) => ((i.tags || {}).AD || 0) >= 0.5).length;
+    const by = leg.length >= 2 && ap + ad ? ap / (ap + ad) : null;
+    const w = 1 + 0.1 * (e.kills || 0) + 0.25 * leg.length;
+    wsum += w;
+    mag += w * (by ?? share[e.champ.damageType] ?? 0.5);
+  }
+  return Math.round((0.5 + (mag / wsum - 0.5) * 0.6) * 10) / 10;
 }
 
 function build(d, c, chosen, key) {
@@ -76,8 +98,13 @@ function gameScenes(d) {
       if (!me) continue;
       const fixed = me.items.map((i) => d.items.find((x) => x.id === String(i.itemID))).filter(Boolean);
       const chosen = game.augments.filter(([, at]) => at <= t).map(([id]) => d.augments.find((a) => a.id === id)).filter(Boolean);
+      const champOf = (p) => d.champions.find((x) => x.id === String(p.rawChampionName || "").replace(/^game_character_displayname_/, ""));
+      const enemies = (raw.allPlayers || []).filter((p) => p.team !== me.team).map((p) => ({ champ: champOf(p), kills: (p.scores || {}).kills || 0,
+        items: (p.items || []).map((i) => d.items.find((x) => x.id === String(i.itemID))).filter(Boolean) })).filter((e) => e.champ);
+      const enemyMagic = enemyMagicOf(d, enemies);
       out.push({ key: `game:${name}:${t}`, champ: c.id, level: ap.level, items: fixed.map((i) => i.name), augs: chosen.map((a) => a.id),
-        c, chosen, fixed });
+        gold: Math.round(ap.currentGold || 0), enemies: enemies.map((e) => e.champ.id), enemyItems: enemies.reduce((n, e) => n + e.items.filter((i) => i.kind === "legendary").length, 0),
+        enemyMagic, c, chosen, fixed });
     }
   }
   return out;
@@ -108,14 +135,34 @@ function snapshot(d) {
     scenes[`tiers:${c.id}`] = { tiers: tierTop };
   }
   for (const g of gameScenes(d)) {
-    const r = ranking(d, g.c, g.chosen, g.fixed);
-    scenes[g.key] = { ...r, input: { champ: g.champ, level: g.level, items: g.items, augs: g.augs } };
+    // 게임 중 화면처럼 적 구성(받는 마법 비율)을 넣는다. 레벨·골드는 순위 계산에 안 쓰여(18레벨 완성 기준) 기록만 한다
+    const opts = g.enemyMagic != null ? { ...OPTS, enemyMagic: g.enemyMagic } : OPTS;
+    const r = ranking(d, g.c, g.chosen, g.fixed, opts);
+    const assume = g.chosen.filter((a) => ((d.rules.augments[a.id] || {}).basis || {}).assume).map((a) => a.id);
+    scenes[g.key] = { ...r, input: { champ: g.champ, level: g.level, items: g.items, augs: g.augs, gold: g.gold,
+      enemies: g.enemies, enemyItems: g.enemyItems, enemyMagic: g.enemyMagic, ...(assume.length ? { assumeAugs: assume } : {}) } };
   }
-  return { dataVersion: d.dataVersion, version: d.version, scenes };
+  // 엔진 버전: 프로그램 버전 + 계산 전체 가정값(기준 상대·ASSUMPTIONS)의 지문. 가정이 바뀌면 지문이 바뀐다
+  const ver = (fs.readFileSync(path.join(__dirname, "..", "desktop.py"), "utf8").match(/APP_VERSION = "([^"]+)"/) || [])[1];
+  const assumeHash = require("crypto").createHash("sha1").update(JSON.stringify([global.Stats.DEFAULT_TARGET, global.Stats.ASSUMPTIONS])).digest("hex").slice(0, 10);
+  return { dataVersion: d.dataVersion, version: d.version, engine: { app: ver, assumptions: assumeHash }, scenes };
 }
 
 const names = (a) => (a || []).map((x) => (typeof x === "string" ? x : x.name));
 const sameSet = (a, b) => a.length === b.length && a.every((x) => b.includes(x));
+
+// 1순위가 바뀐 원인: 새 1순위가 근거 순서로 올라왔는지, 아니면 두 아이템 점수 차이를 가장 크게 바꾼 항목(지표·태그)
+const PART_LABEL = { combo: "한타 피해", dps: "초당 피해", ehp: "버티는 힘", support: "지원", mobility: "기동", control: "제어", tag: "태그 점수" };
+function causeOf(a, b) {
+  const nb = b.top[0], oldInB = b.top.find((x) => x.name === a.top[0].name), na = a.top.find((x) => x.name === nb.name);
+  if (nb.tie && !(na && na.tie)) return ` [근거 순서: ${nb.tie}]`;
+  if (!na || !oldInB || !na.parts || !oldInB.parts) return "";
+  // (새 1순위 − 옛 1순위) 점수 차이의 변화를 항목별로
+  const diff = (s, t) => { const o = {}; for (const k of [...PARTS, "tag"]) o[k] = (k === "tag" ? (s.tag || 0) - (t.tag || 0) : ((s.parts || {})[k] || 0) - ((t.parts || {})[k] || 0)); return o; };
+  const before = diff(na, a.top[0]), after = diff(nb, oldInB);
+  const ch = Object.keys(after).map((k) => [k, after[k] - before[k]]).sort((x, y) => Math.abs(y[1]) - Math.abs(x[1]));
+  return ch[0] && Math.abs(ch[0][1]) > 1e-4 ? ` [${PART_LABEL[ch[0][0]]} ${ch[0][1] > 0 ? "+" : ""}${ch[0][1].toFixed(3)}]` : "";
+}
 
 function compare(base, now) {
   const sum = { scenes: 0, top1: [], top3: [], top6: [], build: [], tiers: [], added: [], removed: [],
@@ -134,7 +181,7 @@ function compare(base, now) {
       continue;
     }
     const ta = names(a.top), tb = names(b.top);
-    if (ta[0] !== tb[0]) sum.top1.push(`${k}: ${ta[0]} → ${tb[0]}`);
+    if (ta[0] !== tb[0]) sum.top1.push(`${k}: ${ta[0]} → ${tb[0]}` + causeOf(a, b));
     if (!sameSet(ta.slice(0, 3), tb.slice(0, 3))) sum.top3.push(k);
     if (!sameSet(ta, tb)) sum.top6.push(k);
     if (a.build && !sameSet(a.build, b.build)) sum.build.push(`${k}: -[${a.build.filter((x) => !b.build.includes(x)).join(", ")}] +[${b.build.filter((x) => !a.build.includes(x)).join(", ")}]`);
@@ -147,7 +194,8 @@ function compare(base, now) {
 }
 
 function report(sum, base, now) {
-  const lines = [`기준선 데이터 ${base.dataVersion} · 지금 ${now.dataVersion}`, `장면 ${sum.scenes}개 비교`];
+  const eng = (x) => (x.engine ? `v${x.engine.app} 가정 ${x.engine.assumptions}` : "엔진 정보 없음");
+  const lines = [`기준선 데이터 ${base.dataVersion} (${eng(base)}) · 지금 ${now.dataVersion} (${eng(now)})`, `장면 ${sum.scenes}개 비교`];
   const n = (label, list, show = 12) => {
     lines.push(`${label}: ${list.length}`);
     for (const x of list.slice(0, show)) lines.push(`  ${x}`);

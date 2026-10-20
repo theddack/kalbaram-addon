@@ -45,3 +45,16 @@ test("기준선 비교: 바뀐 1순위를 찾아낸다", () => {
   assert.strictEqual(sum.build.length, 1);
   assert.strictEqual(R.compare(a, a).top1.length, 0);
 });
+
+test("기준선 비교: 1순위가 바뀐 원인을 항목별로 (근거 순서 / 점수 차이를 가장 크게 바꾼 지표)", () => {
+  const top = (list) => ({ top: list, raw: list.map((x) => x.name) });
+  const A = { name: "A", score: 3, tag: 0.5, parts: { dps: 0.3, ehp: 0.1 } };
+  const B = { name: "B", score: 2.8, tag: 0.5, parts: { dps: 0.2, ehp: 0.1 } };
+  const base = { dataVersion: "x", scenes: { s: top([A, B]) } };
+  // B 의 초당 피해 이득이 커져 1순위가 됨: 두 아이템 차이 (0.45 − 0.3) − (0.2 − 0.3) = +0.25
+  const now = { dataVersion: "x", scenes: { s: top([{ ...B, score: 3.2, parts: { dps: 0.45, ehp: 0.1 } }, A]) } };
+  assert.match(R.compare(base, now).top1[0], /A → B \[초당 피해 \+0\.250\]/);
+  // 근거 순서로 올라옴
+  const tie = { dataVersion: "x", scenes: { s: top([{ ...B, tie: "증강 연계" }, A]) } };
+  assert.match(R.compare(base, tie).top1[0], /\[근거 순서: 증강 연계\]/);
+});

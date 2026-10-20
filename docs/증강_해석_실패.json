@@ -1,0 +1,50 @@
+[
+ {
+  "id": "ARAM_Quest_UrfsChampion",
+  "name": "우르프의 챔피언",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "ARAM_Juiced",
+  "name": "도취",
+  "ref": "Calc_Damage",
+  "why": "모르는 계산식 부품 {2b25a73a}, {e9a3c91d}"
+ },
+ {
+  "id": "ARAM_Multishot",
+  "name": "다중 공격",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "ARAM_SpecializedRecursion",
+  "name": "가속 추구",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "ARAM_BangBang",
+  "name": "초장거리 저격",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "SpecializedEmpowerment",
+  "name": "위력 추구",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "SupportMain",
+  "name": "서포터 주력",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "SupportMain",
+  "name": "서포터 주력",
+  "ref": "QuestProgress",
+  "why": "원본에 이름 없음"
+ }
+]

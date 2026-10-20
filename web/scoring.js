@@ -777,9 +777,11 @@
   }
 
   // 아이템 연계: 고른 증강이 있을 때와 없을 때 점수 차이. 클수록 "증강 때문에 좋아진" 아이템
+  // 같은 기준(균형)끼리 비교한다: 예전엔 '증강 있음'을 몰빵(챔피언 성향 0.35)으로, '없음'을 균형(1)으로 계산해서
+  // 증강 효과가 아니라 기준 차이가 연계 점수로 잡혔다 (2026-10-20: 징크스 + 탄환 세례 → 고속 연사포 −0.93, 라바돈이 연계로 표시)
   function itemSynergy(items, w, chosen, fixed, rules, champ, statOpts = {}) {
     if (!chosen.length) return {};
-    const withA = rankItems(items, w, chosen, fixed, rules, champ, statOpts, "augment");
+    const withA = rankItems(items, w, chosen, fixed, rules, champ, statOpts, "balanced");
     const without = Object.fromEntries(rankItems(items, w, [], fixed, rules, champ, statOpts, "balanced").map((r) => [r.item.id, r.score]));
     return Object.fromEntries(withA.map((r) => [r.item.id, { delta: r.score - (without[r.item.id] || 0), score: r.score, reasons: r.reasons, gain: r.gain }]));
   }
@@ -828,7 +830,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND,
+    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

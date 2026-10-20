@@ -85,3 +85,46 @@ test("연계 표시(🔗)는 그 증강 때문에 점수가 오른 아이템에�
     for (const r of linked) assert.ok(syn[r.item.id].delta > 0, `${id}+${top.name}: ${r.item.name} 연계인데 증강 효과로 오르지 않음`);
   }
 });
+
+// 2026-10-20: 연계 점수가 기준 차이(몰빵 vs 균형)를 증강 효과로 잡아 평타 증강에 공격 속도 아이템이 깎이고 라바돈이 연계로 나왔다
+test("평타 강화 증강(기본 공격마다 터지는 효과, 주문력 계수 없음)은 공격 속도 아이템 연계 점수를 깎지 않는다", () => {
+  const c = champ("Jinx");
+  const w = S.profile(c, d.tags);
+  const as = d.items.find((i) => i.name === "고속 연사포");
+  const augs = d.augments.filter((a) => (a.effects || []).some((e) => ["onhit", "attacks"].includes(e.trigger.type))
+    && !(a.effects || []).some((e) => e.ratios && e.ratios.AP) && !unmet(a, c));
+  assert.ok(augs.length >= 3, augs.map((a) => a.name).join(","));
+  for (const a of augs) {
+    const syn = S.itemSynergy(d.items, w, [a], [], d.rules, c, { aram: true });
+    assert.ok(syn[as.id].delta > -0.25, `${a.name}: 고속 연사포 ${syn[as.id].delta.toFixed(2)}`);
+  }
+});
+
+test("스킬 강화 증강(스킬마다 터지는 효과)은 마법사의 스킬 가속·주문력 아이템 연계 점수를 깎지 않는다", () => {
+  const c = champ("Lux");
+  const w = S.profile(c, d.tags);
+  const augs = d.augments.filter((a) => (a.effects || []).some((e) => e.trigger.type === "cast") && !unmet(a, c));
+  assert.ok(augs.length >= 3);
+  for (const a of augs) {
+    const syn = S.itemSynergy(d.items, w, [a], [], d.rules, c, { aram: true });
+    for (const name of ["라바돈의 죽음모자", "쇼진의 창"]) {
+      const it = d.items.find((i) => i.name === name);
+      assert.ok(syn[it.id].delta > -0.25, `${a.name}: ${name} ${syn[it.id].delta.toFixed(2)}`);
+    }
+  }
+});
+
+test("생존형 증강 두 개: 같은 효과를 두 번 세지 않는다 (같이 고른 이득 ≤ 따로 고른 이득의 합)", () => {
+  const c = champ("Malphite");
+  const w = S.profile(c, d.tags);
+  const surv = d.augments.filter((a) => a.rarity === 1 && !unmet(a, c)
+    && (a.effects || []).some((e) => ["heal", "shield"].includes(e.kind))).slice(0, 6);
+  assert.ok(surv.length >= 2);
+  const gain = (chosen, a) => S.numericAugmentGains([a], d.items, w, chosen, [], d.rules, c, { aram: true }).gains[a.id];
+  for (let i = 0; i + 1 < surv.length; i += 2) {
+    const [a, b] = [surv[i], surv[i + 1]];
+    const alone = gain([], b), withA = gain([a], b);
+    if (!alone || !withA) continue;
+    assert.ok(withA.gain <= alone.gain * 1.05 + 1e-6, `${a.name} + ${b.name}: 같이 ${withA.gain.toFixed(3)} > 따로 ${alone.gain.toFixed(3)}`);
+  }
+});

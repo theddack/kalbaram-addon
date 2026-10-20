@@ -1484,7 +1484,8 @@ function effectBasis(effects) {
     const tr = e.trigger || { type: "once" };
     const freq = tr.type === "attacks" ? `기본 공격 ${tr.n}번마다` : tr.type === "time" ? `${tr.sec}초마다` : TRIGGER_WHY[tr.type];
     return { t: tr.assume ? "assume" : "trigger", text: `${KIND_LABEL[e.kind] || e.kind}: ${freq}`
-      + (tr.from ? ` — 설명의 '${tr.from}'` : " — 발동 문구가 없어 한 번으로 셈"), why: tr.assume || "" };
+      + (tr.from ? ` — 설명의 '${tr.from}'` : " — 발동 문구가 없어 한 번으로 셈")
+      + (tr.cdFrom ? ` · 최대 ${tr.cdFrom}` : ""), why: tr.assume || "" };
   });
 }
 
@@ -1528,7 +1529,7 @@ function renderBuild() {
     el.addEventListener("click", () => addItem(el.dataset.id)));
 }
 
-// 증강을 골랐으면 그 증강과 연계되는 아이템을 위로 (증강 몰빵 기준 점수)
+// 증강을 골랐으면 그 증강과 연계되는 아이템을 위로 (순위는 증강 몰빵 기준 점수, 연계는 증강 있음·없음을 같은 균형 기준으로 비교)
 const LINK_TOP = 6;
 function itemRanking() {
   const d = state.data;

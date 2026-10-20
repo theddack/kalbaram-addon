@@ -160,6 +160,8 @@
       t.AD *= 1 + pct;
       t.bonusAD = t.AD - base.AD;
       t.CRITDMG *= f.critDmgMult || 1;
+      // 4번째 탄은 항상 치명타 (critEvery): 기본 공격의 치명타 기대 확률. 표시하는 치명타 확률(t.CRIT)은 그대로
+      if (f.critEvery) t.critAuto = t.CRIT + (1 - t.CRIT) / f.critEvery;
     }
     // 이동 속도: (기본 + 고정 증가) × (1 + % 증가 합) → 게임의 감속 구간(415·490 초과분 감소)
     const rawMS = (base.MS + add.MS + (conv.HASTEtoMS ? t.HASTE * conv.HASTEtoMS : 0)) * (1 + add.MSP + mult.MSmult);
@@ -290,7 +292,7 @@
 
   function spellTotals(effects, rank, L, t) {
     const { uniq, groups: planGroups, kinds, crit } = spellPlan(effects);
-    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t) }));
+    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}) }));
     const groups = new Map();
     for (const [k, idx] of planGroups) groups.set(k, idx.map((i) => vals[i]));
     const isCritV = new Map(vals.map((v, i) => [v, crit[i]]));
@@ -378,7 +380,7 @@
     const magMit = mitigation(TARGET.MR, t.MPENP, t.MPEN);
     const ranks = ranksAt(L, champ.spells);
     const cv = stats.conv || {};
-    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0 };
+    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, spellOnhit: 0 };
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
     const refund = (h) => {  // 쿨의 f% 를 확률 p 로 돌려받음 → 가속 100 × (1/(1-pf) - 1)
@@ -406,8 +408,14 @@
       const cdBase = sp.cooldown[Math.max(0, Math.min(rank, sp.cooldown.length) - 1)] || 0;
       const cd = cdBase * 100 / (100 + haste);
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
-      let dmg = 0, raw = 0, shield = 0, heal = 0;
+      let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0;
       for (const v of vals) {
+        if (v.onhit && DMG_KINDS.includes(v.kind)) {
+          // 스킬의 '기본 지속 효과' 적중 시 피해: 기본 공격마다 (초당 피해의 평타 쪽). 스킬 피해 증폭은 안 받는다
+          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : 1;
+          onhit += v.value * mit * dealt * (1 + flags.trueBonus);
+          continue;
+        }
         if (DMG_KINDS.includes(v.kind)) {
           const amp = dealt * (1 + flags.skillDmgMult);
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : 1;
@@ -416,7 +424,8 @@
         } else if (v.kind === "shield") shield += v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0));
         else if (v.kind === "heal") heal += v.value * (aram.healing || 1) * (1 + t.HSP);
       }
-      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled });
+      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit });
+      out.spellOnhit += onhit;
       out.combo += dmg;
       out.comboRaw += raw;
       out.shield += shield;
@@ -482,8 +491,8 @@
       out.effects.push({ src: "회복 → 피해", kind: "magic", value: out.heal * cv.healToDamage, hit: hd, trigger: "once" });
     }
     out.combo += out.augCombo;
-    const critMul = 1 + t.CRIT * (t.CRITDMG - 1);
-    out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus);
+    const critMul = 1 + (t.critAuto ?? t.CRIT) * (t.CRITDMG - 1);
+    out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS;
     // ---- 버티는 힘: 체력 × 저항 + 무적·피해 감소(그동안 받을 피해) + 생명선 회복 + 아이템 피해 감소
     const extraHp = (cv.selfHeal || 0) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
     out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
