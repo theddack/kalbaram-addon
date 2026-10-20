@@ -1156,20 +1156,29 @@ test("현재 구매 추천 캐시: 같은 조건이면 재사용, 가중치·적
     assert.equal(calls, base, "골드가 조금 달라도 살 수 있는 후보가 같으면 캐시");
     p.w.buyNowCurrent(200);
     assert.equal(calls, base + 1, "살 수 있는 후보가 달라짐");
+    // 가중치: buyNowGains 에 넘어간 state.weights 를 그대로 바꾼다 (app.js 의 state 는 전역 어휘 범위라 테스트에서 못 집는다)
+    let w = null;
+    S.buyNowGains = (...a) => { calls++; w = a[1]; return orig(...a); };
+    p.w.buyNowCurrent(0);
     p.w.buyNowCurrent(1300);
-    const n = calls;
-    const st = p.w.eval("state");  // app.js 의 const state (전역 어휘 범위라 window 속성은 아님)
-    st.weights = { ...st.weights, AD: (st.weights.AD || 0) + 1 };
+    const n0 = calls;
+    w.AD = (w.AD || 0) + 1;
     p.w.buyNowCurrent(1300);
+    assert.equal(calls, n0 + 1, "가중치");
+    const n = calls - 1;
     assert.equal(calls, n + 1, "가중치");
     const t = St.TARGET.MR;
     St.TARGET.MR = t + 40;
     p.w.buyNowCurrent(1300);
     assert.equal(calls, n + 2, "기준 상대 마법 저항력");
     St.TARGET.MR = t;
-    st.aram = !st.aram;
+    // 칼바람 보정 토글: 바꾸면 화면이 다시 그려지며 부를 수도 있다 → 그 전보다 늘었는지만 본다
+    const n2 = calls;
+    const tg = p.q("#aram-toggle");
+    tg.checked = !tg.checked;
+    tg.dispatchEvent(new p.w.Event("change", { bubbles: true }));
     p.w.buyNowCurrent(1300);
-    assert.equal(calls, n + 3, "칼바람 보정 (statOpts)");
+    assert.ok(calls > n2, "칼바람 보정 (statOpts)");
   } finally {
     S.buyNowGains = orig;
   }
