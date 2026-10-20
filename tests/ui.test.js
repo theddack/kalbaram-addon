@@ -80,6 +80,9 @@ test("이번 선택지: 3개 비교·추천 1개·새로고침 권장", async ()
   assert.equal(p.qa(".offer-table .mini-build").filter((td) => td.querySelector("img")).length, 3, "몰빵 빌드 아이콘");
   assert.ok(p.qa(".offer-table .chip.fun").length <= 1, "재미 픽은 많아야 하나");
   assert.ok(!rows.find((r) => r.classList.contains("best")).querySelector(".chip.fun"), "재미 픽은 추천과 다른 것");
+  // 강한 선택과 재미있는 선택을 문구로 구분 (안정화 기획서 8.5)
+  assert.match(rows.find((r) => r.classList.contains("best")).textContent, /💪 강한 선택/);
+  assert.match(p.text("#offer-result"), /💪 강한 선택 = 계산상 전투 성능이 가장 좋아요/);
   assert.deepEqual(p.errors, []);
 });
 
