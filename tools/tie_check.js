@@ -159,8 +159,13 @@ function buildPart(d, snaps) {
       if (sunk > ((best && best.sunk) || 0)) best = { r, sunk };
     }
     if (!best || best.sunk < BUILD_KEEP_GOLD || best.r === avail[0]) continue;
-    out.push({ key: s.key, kept: best.r.item.name, top1: avail[0].item.name, sunk: best.sunk,
-      gap: +((avail[0].score - best.r.score) / Math.abs(avail[0].score || 1)).toFixed(4) });
+    // 남은 골드 1당 가치 (app.js keepWorth 와 같은 기준: 15% 넘게 낮고 이것도 나쁘면 놓아 준다)
+    const owned = () => parts.reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {});
+    const left = Math.max(1, gold(best.r.item.id) - best.sunk), topLeft = Math.max(1, remain(avail[0].item.id, owned()));
+    const gap = (avail[0].score - best.r.score) / Math.abs(avail[0].score || 1);
+    const perGold = [best.r.score / left, avail[0].score / topLeft];
+    out.push({ key: s.key, kept: best.r.item.name, top1: avail[0].item.name, sunk: best.sunk, gap: +gap.toFixed(4),
+      perGold: perGold.map((v) => +v.toFixed(5)), drop: gap > 0.15 && perGold[0] < perGold[1] });
   }
   return out;
 }
@@ -203,7 +208,8 @@ if (require.main === module) {
   console.log(`D. 근거 순서로 올린 아이템 (기록 ${res.lift.snaps}개, Top6): 넘어선 아이템과의 점수 차이 (1위 점수 대비)`);
   for (const [k, w] of Object.entries(res.lift.why)) console.log(`   ${(L[k] || k).padEnd(10)} ${w.n}번 (1순위로 올린 것 ${w.top1}) · 평균 ${(w.avg * 100).toFixed(1)}% · 최대 ${(w.max * 100).toFixed(1)}%`);
   console.log(`E. 만드는 중으로 1순위를 바꾼 기록 ${res.build.length}개` + (res.build.length ? ":" : ""));
-  for (const b of res.build) console.log(`   ${b.key}: ${b.kept} (부품 ${b.sunk}G) ← 계산 1순위 ${b.top1}, 점수 ${(b.gap * 100).toFixed(1)}% 낮음`);
+  for (const b of res.build) console.log(`   ${b.key}: ${b.kept} (부품 ${b.sunk}G) ← 계산 1순위 ${b.top1}, 점수 ${(b.gap * 100).toFixed(1)}% 낮음`
+    + ` · 남은 골드당 가치 ${b.perGold[0]} vs ${b.perGold[1]} → ${b.drop ? "놓아 줌" : "계속 만듦"}`);
   const st = res.stable;
   console.log(`F. 같은 입력 반복 ${st.same}/${st.snaps} 같음 · 받는 마법 비율 0.5→0.6 에 1순위 바뀜 ${st.flip}/${st.snaps}` + (st.flip ? ": " + st.flips.join(", ") : ""));
   console.log("   레벨·골드는 순위 계산에 안 들어가요 (18레벨 완성 기준) → 레벨·골드만 바뀌어 1순위가 흔들리는 일은 구조상 없음");
