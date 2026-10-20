@@ -576,3 +576,14 @@ test("서포터 아이템: 아군을 돕는 챔피언이면 월석 재생기·�
   const m = St.evaluate(champ("Lulu"), 18, [item("헬리아의 메아리"), item("라바돈의 죽음모자")], []).m;
   assert.ok(m.allySupport <= 250 * 1.5 + 1e-6, String(m.allySupport));
 });
+
+// v0.1.55 후속 기획 A-③: 균열 생성기 고유 효과가 통째로 빠져 있었다 (공식 추천 차이 '계산 누락 의심' 5명의 핵심 아이템)
+test("균열 생성기: 추가 체력의 2% 주문력 + 주는 피해 증가 (콤보 평균 5%)", () => {
+  const rift = item("균열 생성기"), c = champ("Ekko");
+  const a = St.computeStats(c, 18, [rift], [], { aram: true }).total;
+  const plain = { ...rift, passiveStats: undefined };
+  const b = St.computeStats(c, 18, [plain], [], { aram: true }).total;
+  assert.ok(Math.abs(a.AP - b.AP - a.bonusHP * 0.02) < 0.01, `주문력 ${a.AP} vs ${b.AP} (추가 체력 ${a.bonusHP})`);
+  const ma = St.evaluate(c, 18, [rift], [], { aram: true }).m, mb = St.evaluate(c, 18, [plain], [], { aram: true }).m;
+  assert.ok(ma.combo > mb.combo * 1.05, `콤보 ${ma.combo} vs ${mb.combo}`);
+});
