@@ -1266,6 +1266,13 @@ def main():
             c["asCapLv"] = rc["asCap"]
         if rc and rc.get("asFixed"):  # 공격 속도 고정·추가 공격 속도는 공격력으로 (진)
             c["asFixed"] = rc["asFixed"]
+        if rc and rc.get("fight"):  # 한타 기준 능력치·스킬 효과 (게임 계산식에 없는 설명 수치): 추천 점수에만
+            c["fightStats"] = rc["fight"]
+        if rc and rc.get("rangeAt18"):  # 레벨이 오르면 원거리가 되는 챔피언 (케일 6레벨 525 · 16레벨 625)
+            c["range"] = rc["rangeAt18"]
+            c["melee"] = False
+        if rc and (rc.get("fight") or rc.get("rangeAt18")):
+            c["fightBasis"] = rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and (rc.get("stats") or rc.get("stacks")):  # 중첩형 패시브·스킬: 게임 중반 평균 중첩
             c["stackStats"] = rc.get("stats") or {}
             c["stacks"] = rc.get("stacks", 0)

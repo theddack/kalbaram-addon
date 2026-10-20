@@ -68,7 +68,10 @@
     const { attack, magic, defense } = champ.info;
     const infoAd = attack + magic > 0 ? attack / (attack + magic) : 0.5;
     // 스킬의 실제 피해 유형 비율이 있으면 라이엇 성향 점수와 반반 섞는다
-    const ad = champ.magicShare == null ? infoAd : 0.5 * infoAd + 0.5 * (1 - champ.magicShare);
+    // 단 라이엇 주 피해 유형(damageType)과 스킬 비율이 반대면(물리인데 마법 비율 0.5 초과: 바루스·이즈리얼·잭스 등 8명) 섞지 않는다.
+    // 스킬 비율은 주문력 계수가 붙은 스킬을 마법으로 세서 커진다. 라이엇 칼바람 추천도 바루스는 전부 물리 아이템
+    const against = (champ.damageType === "physical" && champ.magicShare > 0.5) || (champ.damageType === "magic" && champ.magicShare < 0.5);
+    const ad = champ.magicShare == null || against ? infoAd : 0.5 * infoAd + 0.5 * (1 - champ.magicShare);
     w.AD = ad;
     w.AP = 1 - ad;
     for (const [t, v] of Object.entries(BASELINE)) w[t] = Math.max(w[t], v);
@@ -268,20 +271,35 @@
   };
   // 치명타 아이템은 원거리 딜러·원거리 물리 챔피언·치명타 특성이 있는 챔피언(야스오·요네·트린다미어)만.
   // 다리우스·트런들·볼리베어 같은 전사 기본 빌드에 윤 탈 야생화살이 들어가던 것을 막는다
+  // 치명타가 능력치 줄에만 있고 태그엔 없는 아이템이 있다 (윤 탈 야생화살: 치명타 0 에서 기본 지속 효과로 쌓임)
+  const critTags = (item, convert = {}) => {
+    const t = convertTags(item.tags || {}, convert);
+    const st = item.stats || {};
+    if (Array.isArray(st) ? st.includes("CRIT") : "CRIT" in st) t.CRIT = Math.max(t.CRIT || 0, 1);
+    return t;
+  };
   const critUser = (champ) => champ.tags.includes("Marksman") || !champ.melee || ((champ.traits || {}).CRIT || 0) > 0;
-  function offTypeFilter(champ, ctx, concept) {
+  // 라이엇 칼바람 공식 추천(상황별 묶음 제외)의 절반 이상이 반대 유형이면 그 챔피언은 막지 않는다:
+  // 케일(마법)은 크라켄·몰락한 왕의 검·구인수, 카이사(물리)는 주문력 아이템 위주인데 반대 유형이라 맨 뒤로 밀렸다
+  const officialAgainst = (champ, rule, pool) => {
+    const o = champ.officialItems;
+    if (!o || !o.ranges || o.ranges.length < 2) return false;
+    const ids = [...new Set(o.ranges.slice(0, -1).flat())];
+    const isOff = (t) => rule.off.some((k) => (t[k] || 0) >= 0.5) && !rule.own.some((k) => (t[k] || 0) >= 0.5);
+    const items = ids.map((id) => (pool || []).find((i) => i.id === id)).filter((i) => i && i.kind === "legendary");
+    return items.length > 0 && items.filter((i) => isOff(critTags(i))).length * 2 >= items.length;
+  };
+  function offTypeFilter(champ, ctx, concept, pool = null) {
     const rule = champ && OFF_TYPE[champ.damageType];
     if (!rule || (concept && concept.flip)) return null;
+    if (officialAgainst(champ, rule, pool)) return null;
     // 치명타 아이템은 공격력이 같이 붙어 있어도 뺀다 (치명타를 못 살리는 챔피언)
     const lift = ctx.lift || ctx.tags;
     const noCrit = champ.damageType === "physical" && !critUser(champ) && !((lift.CRIT || 0) >= 0.5);
     if (Object.keys(ctx.convert || {}).some((t) => rule.off.includes(ctx.convert[t]) || rule.off.includes(t))) return null;
     if (rule.off.some((t) => (lift[t] || 0) >= 0.5)) return null;
     return (item) => {
-      const t = convertTags(item.tags || {}, ctx.convert || {});
-      // 치명타가 능력치 줄에만 있고 태그엔 없는 아이템이 있다 (윤 탈 야생화살: 치명타 0 에서 기본 지속 효과로 쌓임)
-      const st = item.stats || {};
-      if (Array.isArray(st) ? st.includes("CRIT") : "CRIT" in st) t.CRIT = Math.max(t.CRIT || 0, 1);
+      const t = critTags(item, ctx.convert || {});
       if (noCrit && (t.CRIT || 0) >= 0.5) return true;
       return rule.off.some((k) => (t[k] || 0) >= 0.5) && !rule.own.some((k) => (t[k] || 0) >= 0.5);
     };
@@ -599,7 +617,7 @@
     for (const k of Object.keys(inv)) inv[k] /= invSum;
     return CONCEPTS.filter((c) => !keys || keys.includes(c.key)).map((c) => {
       const iw = conceptWeights(w, ctx, c);
-      const off = offTypeFilter(champ, ctx, c);
+      const off = offTypeFilter(champ, ctx, c, items);
       const octx = withOfficial(ctx, champ, officialK(c));
       const cctx = c.focus ? { ...octx, must: [...ctx.must, ...tagMust(items, chosen, rules, ctx, off)] } : octx;
       if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: null, focus: c.focus, off }) };
@@ -618,7 +636,7 @@
     const concept = CONCEPTS.find((c) => c.key === conceptKey) || CONCEPTS[1];
     const ctx = withOfficial(augContext(chosen, rules), champ, officialK(concept));
     const iw = conceptWeights(w, ctx, concept);
-    const off = offTypeFilter(champ, ctx, concept);
+    const off = offTypeFilter(champ, ctx, concept, items);
     const covered = {};
     for (const it of fixed) addCovered(covered, convertTags(it.tags, ctx.convert));
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts, mw: metricWeights(iw) } : null;

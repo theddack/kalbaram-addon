@@ -69,7 +69,7 @@
     for (const it of items) for (const [k, v] of Object.entries(it.stats || {})) if (k in add) addTo(k, v);
     const goldAug = augStats.reduce((a, s) => a + (Number((s || {}).goldValue) || 0), 0);
     if (goldAug) {
-      const main = (champ.magicShare ?? 0.5) >= 0.5 ? "AP" : "AD";
+      const main = apMain(champ) ? "AP" : "AD";
       add[main] += goldAug * 0.5 / GOLD_VALUE[main];
       add.HP += goldAug * 0.3 / GOLD_VALUE.HP;
       add.ARMOR += goldAug * 0.1 / GOLD_VALUE.ARMOR;
@@ -79,7 +79,9 @@
     const flags = { dmgDealtMult: 0, skillDmgMult: 0, trueBonus: 0, ultHaste: 0, slotHaste: {}, noUlt: false };
     const conv = {};
     // 중첩형 패시브·스킬(베이가·쓰레쉬 등)의 게임 중반 평균 능력치도 항상 들어간다
-    const mods = [...augStats, ...items.map((it) => it.passiveStats).filter(Boolean), ...(champ.stackStats ? [champ.stackStats] : [])];
+    // 한타 기준 능력치·스킬 효과(징크스 미니건 3중첩, 베인 은화살 등 rules champions fight)는 추천 점수에만: 게임 중 지금 능력치 비교(opts.now)엔 넣지 않는다
+    const fight = champ.fightStats && !(opts && opts.now) ? [champ.fightStats] : [];
+    const mods = [...augStats, ...items.map((it) => it.passiveStats).filter(Boolean), ...(champ.stackStats ? [champ.stackStats] : []), ...fight];
     // 효과 출처: 챔피언 패시브, 아이템 고유 효과 (증강 효과는 augStats 의 _effects 로 들어온다)
     const effects = [...withSrc(champ.passive, "패시브")];
     for (const it of items) effects.push(...withSrc(it, it.name));
@@ -105,7 +107,7 @@
     let AP = add.AP;
     // 적응형은 게임 규칙대로: 추가 공격력과 주문력 중 큰 쪽, 같으면(둘 다 0 등) 스킬이 마법 위주면 주문력.
     // 챔피언 성향만 보면 공격력을 쌓은 트리스타나(마법 비중 높음)가 주문력을 받았다 (2026-10-17 판: 계산 주문력 18.75 · 실제 공격력 +11.25)
-    const adaptiveAP = () => AP !== bonusAD ? AP > bonusAD : (champ.magicShare ?? 0.5) >= 0.5;
+    const adaptiveAP = () => AP !== bonusAD ? AP > bonusAD : apMain(champ);
     // 적응형 능력치 증가
     if (mult.adaptiveMult) {
       if (adaptiveAP()) AP *= 1 + mult.adaptiveMult;
@@ -190,6 +192,14 @@
       if (out[slot] < (spells[slot] ? spells[slot].ranks : 5)) { out[slot]++; pts--; }
     }
     return basic4 ? out : [out[0], out[1], out[2], r];
+  }
+
+  // 주 피해 유형이 마법인가: 라이엇 damageType(물리/마법)이 있으면 그것, 혼합·없음이면 스킬 마법 비율.
+  // 스킬 계수만 보면 바루스(W·R 마법)·이즈리얼이 마법 쪽(0.67·0.8)이라 즉시 골드 증강을 주문력으로 바꿨다
+  function apMain(champ) {
+    if (champ.damageType === "magic") return true;
+    if (champ.damageType === "physical") return false;
+    return (champ.magicShare ?? 0.5) >= 0.5;
   }
 
   function statFor(key, t) {
@@ -453,10 +463,10 @@
         if (e.kind === "shield") out.shield += amt; else out.heal += amt;
         continue;
       }
-      const kind = e.kind === "adaptive" ? ((champ.magicShare ?? 0.5) >= 0.5 ? "magic" : "physical") : e.kind;
+      const kind = e.kind === "adaptive" ? (apMain(champ) ? "magic" : "physical") : e.kind;
       row.kind = kind;
       const mit = kind === "magic" ? magMit : kind === "physical" ? physMit : 1;
-      const hit = v * mit * dealt * (1 + flags.trueBonus) * (e.src !== "패시브" ? 1 + (cv.effectDmgMult || 0) : 1);
+      const hit = v * mit * dealt * (1 + flags.trueBonus) * (e.src !== "패시브" && !e.champ ? 1 + (cv.effectDmgMult || 0) : 1);
       row.hit = hit;
       if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / Math.max(tr.sec, e.cooldown || 0); }
       else if (tr.type === "attacks") out.augDps += hit * rate(t.AS / tr.n);
