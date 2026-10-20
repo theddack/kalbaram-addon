@@ -1,7 +1,7 @@
 {
  "version": "16.20.8248524+branch.releases-16-20.content.release",
  "dataVersion": "16.20.8248524+branch.releases-16-20.content.release",
- "builtAt": "2026-10-19 00:23",
+ "builtAt": "2026-10-20 12:56",
  "augments": 215,
  "disabled": [
   "인내심",
@@ -500,13 +500,12 @@
    "ref": "BleedDamagePerSecond ⚠해시",
    "kind": "수치",
    "source": "계산식 (상수)",
-   "applied": null,
-   "how": "-",
-   "key": null,
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
    "hashed": true,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -) · 빌드 계산기가 못 풀어 설명에 '?' (해시 이름 계산식 {d5b286d1} (해시로 찾으면 풀림))",
-   "buildFail": "해시 이름 계산식 {d5b286d1} (해시로 찾으면 풀림)"
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_InfernalConduit",
@@ -1036,8 +1035,7 @@
    "key": null,
    "hashed": true,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -) · 빌드 계산기가 못 풀어 설명에 '?' (해시 이름 계산식 {90a024ae} (해시로 찾으면 풀림))",
-   "buildFail": "해시 이름 계산식 {90a024ae} (해시로 찾으면 풀림)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -)"
   },
   {
    "id": "ARAM_TankEngine",
@@ -1277,8 +1275,7 @@
    "how": "이름 참조 (계산식 안의 값)",
    "key": "HASTEtoMS",
    "state": "일치",
-   "why": "빌드 계산기가 못 풀어 설명에 '?' (모르는 능력치 코드 mStat 11)",
-   "buildFail": "모르는 능력치 코드 mStat 11"
+   "why": ""
   },
   {
    "id": "Nightstalking",
@@ -2070,7 +2067,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic, trigger.sec)"
   },
   {
    "id": "Goldrend",
@@ -2082,7 +2079,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic, trigger.sec)"
   },
   {
    "id": "Goldrend",
@@ -2094,7 +2091,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic, trigger.sec)"
   },
   {
    "id": "Goldrend",
@@ -2102,11 +2099,11 @@
    "ref": "TimerDuration",
    "kind": "발동 주기",
    "source": 30,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic)"
+   "applied": 30,
+   "how": "자동 추출 (발동 간격)",
+   "key": "trigger.sec",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_ADAPt",
@@ -2803,8 +2800,7 @@
    "key": null,
    "hashed": true,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: HP) · 빌드 계산기가 못 풀어 설명에 '?' (해시 이름 계산식 {37029355} (해시로 찾으면 풀림))",
-   "buildFail": "해시 이름 계산식 {37029355} (해시로 찾으면 풀림)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: HP)"
   },
   {
    "id": "GrowthSpurt",
@@ -2948,7 +2944,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
   },
   {
    "id": "ARAM_EmpoweredByTheFaithful",
@@ -2960,7 +2956,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
   },
   {
    "id": "ARAM_EmpoweredByTheFaithful",
@@ -2968,12 +2964,11 @@
    "ref": "Calc_Damage",
    "kind": "수치",
    "source": "계산식 (상수)",
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영) · 빌드 계산기가 못 풀어 설명에 '?' (모르는 능력치 코드 mStat 34)",
-   "buildFail": "모르는 능력치 코드 mStat 34"
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_EmpoweredByTheFaithful",
@@ -2985,8 +2980,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영) · 빌드 계산기가 못 풀어 설명에 '?' (모르는 능력치 코드 mStat 34)",
-   "buildFail": "모르는 능력치 코드 mStat 34"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
   },
   {
    "id": "Twinfire",
@@ -2998,7 +2992,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic, CRIT)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic, trigger.sec, CRIT)"
   },
   {
    "id": "Twinfire",
@@ -3034,7 +3028,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, physical)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, physical, trigger.sec)"
   },
   {
    "id": "ARAM_InfernoTriggered",
@@ -3058,7 +3052,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, physical)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, physical, trigger.sec)"
   },
   {
    "id": "ARAM_InfernoTriggered",
@@ -3078,11 +3072,11 @@
    "ref": "Cooldown",
    "kind": "발동 주기",
    "source": 5,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, physical)"
+   "applied": 5,
+   "how": "자동 추출 (발동 간격)",
+   "key": "trigger.sec",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_InfernoTriggered",
@@ -3094,7 +3088,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, physical)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, physical, trigger.sec)"
   },
   {
    "id": "ARAM_Dropkick",
@@ -3395,7 +3389,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, trigger.sec)"
   },
   {
    "id": "ARAM_FanTheHammer",
@@ -3419,7 +3413,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, trigger.sec)"
   },
   {
    "id": "ARAM_FanTheHammer",
@@ -3427,11 +3421,11 @@
    "ref": "Cooldown",
    "kind": "발동 주기",
    "source": 8,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical)"
+   "applied": 8,
+   "how": "자동 추출 (발동 간격)",
+   "key": "trigger.sec",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_FanTheHammer",
@@ -3443,7 +3437,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, trigger.sec)"
   },
   {
    "id": "ARAM_DropBear",
@@ -3451,12 +3445,11 @@
    "ref": "AOEDamage",
    "kind": "수치",
    "source": "계산식 (FlatPenConversion=2, PercentPenConversion=5)",
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: controlSec) · 빌드 계산기가 못 풀어 설명에 '?' (모르는 능력치 코드 mStat 22, 23)",
-   "buildFail": "모르는 능력치 코드 mStat 22, 23"
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_DropBear",
@@ -3830,8 +3823,7 @@
    "key": null,
    "hashed": true,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic, magic, magic, magic) · 빌드 계산기가 못 풀어 설명에 '?' (해시 이름 계산식 {166093f6} (해시로 찾으면 풀림))",
-   "buildFail": "해시 이름 계산식 {166093f6} (해시로 찾으면 풀림)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic, magic, magic, magic)"
   },
   {
    "id": "DarkWind",
@@ -4746,8 +4738,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영) · 빌드 계산기가 못 풀어 설명에 '?' (모르는 능력치 코드 mStat 34)",
-   "buildFail": "모르는 능력치 코드 mStat 34"
+   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
   },
   {
    "id": "MercysStrike",
@@ -5098,8 +5089,7 @@
    "key": null,
    "hashed": true,
    "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영) · 빌드 계산기가 못 풀어 설명에 '?' (해시 이름 계산식 {41353c52} (해시로 찾으면 풀림))",
-   "buildFail": "해시 이름 계산식 {41353c52} (해시로 찾으면 풀림)"
+   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
   },
   {
    "id": "Upgrade_Ravenous",
@@ -6837,7 +6827,7 @@
    "value": 5,
    "dv": "Cooldown",
    "kind": "발동 주기",
-   "used": null
+   "used": "자동 추출 (발동 간격)"
   },
   {
    "id": "Twinfire",
@@ -9219,9 +9209,9 @@
    "auto": false,
    "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 2,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -10469,9 +10459,9 @@
    "auto": false,
    "items": 5,
    "states": {
-    "일치": 1,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 4,
+    "미구현": 3,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -11081,9 +11071,9 @@
    "auto": false,
    "items": 4,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 4,
+    "미구현": 3,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -11143,9 +11133,9 @@
    "auto": false,
    "items": 6,
    "states": {
-    "일치": 2,
+    "일치": 3,
     "불일치": 0,
-    "미구현": 4,
+    "미구현": 3,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -11431,9 +11421,9 @@
    "auto": false,
    "items": 5,
    "states": {
-    "일치": 1,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 4,
+    "미구현": 3,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -11449,9 +11439,9 @@
    "auto": false,
    "items": 2,
    "states": {
-    "일치": 1,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12651,58 +12641,19 @@
   }
  ],
  "count": {
-  "일치": 147,
+  "일치": 153,
   "불일치": 0,
-  "미구현": 187,
+  "미구현": 181,
   "가정": 62,
   "원본 확인 불가": 7,
   "계산 제외": 29
  },
  "fails": [
   {
-   "id": "ARAM_InfernalConduit",
-   "name": "지옥의 전도체",
-   "ref": "BleedDamagePerSecond",
-   "hashed": "{d5b286d1}",
-   "why": "해시 이름 계산식 {d5b286d1} (해시로 찾으면 풀림)"
-  },
-  {
    "id": "ARAM_Quest_UrfsChampion",
    "name": "우르프의 챔피언",
    "ref": "QuestRequirement",
    "why": "원본에 이름 없음"
-  },
-  {
-   "id": "ARAM_SpinToWin",
-   "name": "승리를 위한 회전",
-   "ref": "SpinDamageAmp_Ult",
-   "hashed": "{90a024ae}",
-   "why": "해시 이름 계산식 {90a024ae} (해시로 찾으면 풀림)"
-  },
-  {
-   "id": "ARAM_WithHaste",
-   "name": "속행",
-   "ref": "AbilityHasteToMSConversionCalc",
-   "why": "모르는 능력치 코드 mStat 11"
-  },
-  {
-   "id": "SoulEater",
-   "name": "영혼의 포식자",
-   "ref": "StartingHPIfSecondAugmentTT",
-   "hashed": "{37029355}",
-   "why": "해시 이름 계산식 {37029355} (해시로 찾으면 풀림)"
-  },
-  {
-   "id": "ARAM_EmpoweredByTheFaithful",
-   "name": "신념을 통한 강화",
-   "ref": "Calc_Damage",
-   "why": "모르는 능력치 코드 mStat 34"
-  },
-  {
-   "id": "ARAM_EmpoweredByTheFaithful",
-   "name": "신념을 통한 강화",
-   "ref": "Calc_Execute_Threshold",
-   "why": "모르는 능력치 코드 mStat 34"
   },
   {
    "id": "ARAM_Juiced",
@@ -12711,23 +12662,10 @@
    "why": "모르는 계산식 부품 {2b25a73a}, {e9a3c91d}"
   },
   {
-   "id": "ARAM_DropBear",
-   "name": "곰 투하",
-   "ref": "AOEDamage",
-   "why": "모르는 능력치 코드 mStat 22, 23"
-  },
-  {
    "id": "ARAM_Multishot",
    "name": "다중 공격",
    "ref": "QuestRequirement",
    "why": "원본에 이름 없음"
-  },
-  {
-   "id": "ChainReaction",
-   "name": "연쇄 반응",
-   "ref": "Ult_DamageAmp",
-   "hashed": "{166093f6}",
-   "why": "해시 이름 계산식 {166093f6} (해시로 찾으면 풀림)"
   },
   {
    "id": "ARAM_SpecializedRecursion",
@@ -12748,12 +12686,6 @@
    "why": "원본에 이름 없음"
   },
   {
-   "id": "MercysStrike",
-   "name": "자비의 일격",
-   "ref": "MaxHealthDamage",
-   "why": "모르는 능력치 코드 mStat 34"
-  },
-  {
    "id": "SupportMain",
    "name": "서포터 주력",
    "ref": "QuestRequirement",
@@ -12764,16 +12696,27 @@
    "name": "서포터 주력",
    "ref": "QuestProgress",
    "why": "원본에 이름 없음"
-  },
-  {
-   "id": "Upgrade_Ravenous",
-   "name": "굶주린 히드라 업그레이드",
-   "ref": "LifeStealTT",
-   "hashed": "{41353c52}",
-   "why": "해시 이름 계산식 {41353c52} (해시로 찾으면 풀림)"
   }
  ],
  "overcount": [
+  {
+   "id": "ARAM_InfernalConduit",
+   "name": "지옥의 전도체",
+   "effect": "magic BleedDamagePerSecond",
+   "trigger": "cast",
+   "dv": "FlatCooldownRefundPerTick",
+   "sec": 0.07999999821186066,
+   "desc": "모든 화상 효과가 적 챔피언에게 피해를 입힐 때마다 기본 스킬의 재사용 대기시간을 0"
+  },
+  {
+   "id": "ARAM_InfernalConduit",
+   "name": "지옥의 전도체",
+   "effect": "magic BleedDamagePerSecond",
+   "trigger": "cast",
+   "dv": "ProcCooldown",
+   "sec": 1,
+   "desc": "모든 화상 효과가 적 챔피언에게 피해를 입힐 때마다 기본 스킬의 재사용 대기시간을 0"
+  },
   {
    "id": "ARAM_MagicMissile",
    "name": "마법 미사일",
@@ -12784,42 +12727,6 @@
    "desc": ""
   },
   {
-   "id": "Goldrend",
-   "name": "골드 강탈",
-   "effect": "magic ReaperDamage",
-   "trigger": "onhit",
-   "dv": "TimerDuration",
-   "sec": 30,
-   "desc": "(챔피언별 재사용 대기시간 30초)입힌 피해량: (게임 중 집계)획득한 골드: (게임 중 집계)"
-  },
-  {
-   "id": "Twinfire",
-   "name": "쌍둥이 불꽃",
-   "effect": "magic Damage",
-   "trigger": "cast",
-   "dv": "Cooldown",
-   "sec": 5,
-   "desc": ""
-  },
-  {
-   "id": "ARAM_InfernoTriggered",
-   "name": "지옥불 난사 발동",
-   "effect": "physical Calc_Damage_Per_Shot",
-   "trigger": "cast",
-   "dv": "Cooldown",
-   "sec": 5,
-   "desc": "이 효과는 5초의 재사용 대기시간이 적용됩니다"
-  },
-  {
-   "id": "ARAM_InfernoTriggered",
-   "name": "지옥불 난사 발동",
-   "effect": "physical Calc_Crit_Damage_Per_Shot",
-   "trigger": "cast",
-   "dv": "Cooldown",
-   "sec": 5,
-   "desc": "이 효과는 5초의 재사용 대기시간이 적용됩니다"
-  },
-  {
    "id": "CriticalMissile",
    "name": "치명적 미사일",
    "effect": "magic Damage",
@@ -12827,15 +12734,6 @@
    "dv": "Cooldown",
    "sec": 4,
    "desc": ""
-  },
-  {
-   "id": "ARAM_FanTheHammer",
-   "name": "탄환 세례",
-   "effect": "physical DamagePerBolt",
-   "trigger": "onhit",
-   "dv": "Cooldown",
-   "sec": 8,
-   "desc": "방향마다 8초의 재사용 대기시간이 적용됩니다"
   }
  ]
 }
