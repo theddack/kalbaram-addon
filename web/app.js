@@ -638,14 +638,15 @@ function renderChampCard() {
 const ARAM_NAME = { dmg_dealt: "가하는 피해", dmg_taken: "받는 피해", healing: "회복", shielding: "보호막",
   ability_haste: "스킬 가속", tenacity: "강인함", total_as: "공격 속도", energyregen_mod: "기력 회복" };
 function aramChips(c) {
-  if (!c.aram) return `<div><span class="muted small">칼바람 보정 없음</span></div>`;
+  const off = c.aramOff ? ` <span class="muted small" title="${esc(c.aramOffWhy || "")}">(실게임 대조로 뺌: ${Object.keys(c.aramOff).map((k) => esc(ARAM_NAME[k] || k)).join(", ")})</span>` : "";
+  if (!c.aram) return `<div><span class="muted small">칼바람 보정 없음</span>${off}</div>`;
   const chips = Object.entries(c.aram).map(([k, v]) => {
     const pct = k === "ability_haste" ? `+${Number(v)}` : `${Math.round(Number(v) * 100)}%`;
     const good = k === "dmg_taken" ? v < 1 : k === "ability_haste" ? v > 0 : v > 1;
     const neutral = k !== "ability_haste" && v === 1;
     return `<span class="chip ${neutral ? "" : good ? "syn" : "bad"}">${esc(ARAM_NAME[k] || k)} ${pct}</span>`;
   });
-  return `<div><span class="muted small">${c.aramSource === "칼바람 + 증강 모드" ? "칼바람 + 증강 모드 보정" : "칼바람 보정"} (위키)</span> ${chips.join("")}</div>`;
+  return `<div><span class="muted small">${c.aramSource === "칼바람 + 증강 모드" ? "칼바람 + 증강 모드 보정" : "칼바람 보정"} (위키)</span> ${chips.join("")}${off}</div>`;
 }
 
 function renderStats() {
@@ -1623,16 +1624,18 @@ function renderBuyNow() {
   }
 }
 
-// 지금 골드로 살 수 있는 것 중 '지금 레벨·가진 것'에 더했을 때 가장 강해지는 것. 후보 = 다음 구매 위 3개와 그 하위 부품
+// 지금 골드로 살 수 있는 것 중 '지금 레벨·가진 것'에 더했을 때 가장 강해지는 것. 후보 = 다음 구매 3개 + 6칸 추천 빌드와 그 하위 부품
 let buyNowMemo = { key: null, value: null };
 function buyNowCurrent(gold) {
   const d = state.data;
   if (!state.champ || gold == null) return null;
-  const tops = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id).filter(Boolean).slice(0, 3);
+  // 후보 = 다음 구매 3개 + 화면의 6칸 추천 빌드(가진 것 빼고)의 부품 트리. v0.1.55 후속 기획 A-①: 상위 3개 트리만 보면
+  // 2026-10-20 신드라 판 구매 시점 48번(산 직후·+600·+1300 골드) 중 18번이 살 수 있는 것 전체 최고보다 못했다
+  // (698초 2052G: 6칸에 있는 그림자불꽃 이득 3.04 대신 방출의 마법봉 0.63). 6칸까지 넓히면 18번 중 9번이 전체 최고와 같아지고,
+  // 나머지는 빌드 밖 아이템·부품(악의·제국의 명령·망각의 구 등)이라 넣지 않는다 (완성 빌드와 어긋나는 구매를 권하지 않게)
+  const tops = [...new Set([...document.querySelectorAll("#next-buy .next-row, #build .item:not(.fixed)")].map((e) => e.dataset.id).filter(Boolean))];
   const inv = state.inventory || [];
   const level = state.liveLevel || state.level || 18;
-  const key = JSON.stringify([state.champ.id, level, state.items.map((i) => i.id), inv, Math.floor(gold / 25), state.chosen.map((a) => a.id), tops]);
-  if (buyNowMemo.key === key) return buyNowMemo.value;
   const isItem = (id) => d.items.some((i) => i.id === id);
   const owned = () => inv.filter((id) => partOf(id) && !isItem(id)).reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {});
   // 이걸 사면 없어지는 가진 부품 (트리 안에서 가진 것)
@@ -1653,6 +1656,11 @@ function buyNowCurrent(gold) {
   };
   const walkAll = (id) => { add(id); for (const c of partFrom(id)) walkAll(c); };
   for (const id of tops) walkAll(id);
+  // 결과를 바꾸는 것은 모두 키에: 살 수 있는 후보(골드는 이걸로), 가중치·칼바람·적 마법 비율(statOpts)·기준 상대 방어
+  // (v0.1.55 후속 기획 A-②: 예전 키엔 가중치·statOpts·기준 상대가 없어 적 구성이 바뀌어도 옛 추천이 남을 수 있었다)
+  const key = JSON.stringify([state.champ.id, level, state.items.map((i) => i.id), inv, [...cands.values()].map((c) => [c.id, c.gold]),
+    state.chosen.map((a) => a.id), tops, state.weights, statOpts(), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
+  if (buyNowMemo.key === key) return buyNowMemo.value;
   const have = [...state.items, ...inv.filter((id) => partOf(id) && !isItem(id)).map((id) => ({ id, name: partOf(id).name, stats: partOf(id).stats || {} }))];
   const ranked = S.buyNowGains([...cands.values()], state.weights, state.chosen, have, d.rules, state.champ, statOpts(), level);
   const best = ranked.find((r) => r.gain > 0) || null;

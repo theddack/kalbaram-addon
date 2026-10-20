@@ -2089,12 +2089,15 @@ class CardsAndBox0150(unittest.TestCase):
         t.feed(["가", "나", "다"], pos)
         self.assertEqual(augocr.reroll_at(pos, 0.71, 0.71), 2, "1440×900 영상의 새로고침 버튼 높이")
         self.assertIsNone(augocr.reroll_at(pos, 0.71, 0.50), "카드 몸통은 새로고침 아님")
+        seq = t.state["seq"]
         t.reroll(2)
         self.assertEqual(t.state["rerolled"], [False, False, True])
-        seq = t.state["seq"]
-        t.feed(["가", "나", None], pos)  # 새 카드 이름을 아직 못 읽음
-        self.assertEqual(t.state["offers"], ["가", "나", None], "옛 이름 '다'를 남기지 않는다")
+        self.assertEqual(t.state["offers"], ["가", "나", None], "누르는 즉시 옛 이름 '다'를 지운다")
         self.assertGreater(t.state["seq"], seq)
+        t.feed(["가", "나", "다"], pos)  # 새로고침 연출 중 옛 카드가 다시 읽힘
+        self.assertEqual(t.state["offers"], ["가", "나", None], "연출 중 옛 이름은 무시")
+        t.feed(["가", "나", None], pos)  # 새 카드 이름을 아직 못 읽음
+        self.assertEqual(t.state["offers"], ["가", "나", None])
         t.feed(["가", "나", "라"], pos)
         self.assertEqual(t.state["offers"], ["가", "나", "라"])
         self.assertEqual(t.state["rerolled"], [False, False, True], "같은 선택 화면에선 그대로")
@@ -2106,6 +2109,34 @@ class CardsAndBox0150(unittest.TestCase):
         t.feed(None)
         t.feed(None)
         self.assertEqual(t.state["rerolled"], [False, False, False])
+
+    def test_reroll_all_then_pick_unread_slot_is_unknown(self):
+        """2026-10-20 v0.1.55 신드라 판: 세 칸 다 새로고침 → 새 이름 1개('처형 시간')만 읽힘 → 첫 칸 클릭.
+        예전엔 옛 이름 '마법 명사수'로 골랐다고 기록했다. 이제 읽힌 칸은 채우고, 못 읽은 칸을 고르면 '못 정함'"""
+        import augocr
+        t = augocr.Tracker()
+        pos = {"xs": [0.29, 0.50, 0.71], "nameY": 0.41}
+        t.feed(["마법 명사수", "신난다!", "범람"], pos)
+        for i in (1, 2, 0):
+            t.reroll(i)
+        self.assertEqual(t.state["offers"], [None, None, None])
+        self.assertTrue(t.update_slot(1, "처형 시간"), "이름 하나만 읽혀도 빈 칸이면 채운다")
+        self.assertFalse(t.update_slot(0, "마법 명사수"), "연출 중 옛 이름으로는 안 채운다")
+        self.assertEqual(t.state["offers"], [None, "처형 시간", None])
+        t.click(0)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["pickSeq"], 1)
+        self.assertIsNone(t.state["picked"], "새 이름을 못 읽은 칸은 옛 이름으로 고르지 않는다")
+        # 읽힌 칸을 골랐으면 그 이름
+        t = augocr.Tracker()
+        t.feed(["마법 명사수", "신난다!", "범람"], pos)
+        t.reroll(1)
+        t.update_slot(1, "처형 시간")
+        t.click(1)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["picked"], "처형 시간")
 
     def test_shop_button_click(self):
         """닫힌 상점: 아래 골드 버튼 클릭이면 바로 상점을 읽는다 (피드백 #10). 게임 창 1440×900 이 화면 (240, 90) 에"""
@@ -2366,7 +2397,7 @@ class LogJudge(unittest.TestCase):
         r = self.judge(ev)
         for k in ("카드 3장 모두 평가 (#7)", "새로고침 후 옛 평가 지우기·'새로고침 씀' 반영 (#7 #9)", "처음 연 상점에 상자 (#10)",
                   "상점 닫으면 상자 바로 사라짐 (#11)", "부활하면 상자 바로 사라짐 (#11)", "죽어 있을 때 죽음 정보 창을 가리지 않음 (#19)"):
-            self.assertEqual(r[k]["result"], "해결", (k, r[k]))
+            self.assertEqual(r[k]["result"], "로그 기준 정상", (k, r[k]))
 
     def test_bad_game(self):
         ev = [
@@ -2383,14 +2414,98 @@ class LogJudge(unittest.TestCase):
             {"t": 61, "kind": "drawn", "kinds": "상점 상자", "where": [0.01, 0.08, 0.25, 0.4]},
         ]
         r = self.judge(ev)
-        self.assertEqual(r["카드 3장 모두 평가 (#7)"]["result"], "재현")
-        self.assertEqual(r["새로고침 후 옛 평가 지우기·'새로고침 씀' 반영 (#7 #9)"]["result"], "재현")
-        self.assertEqual(r["상점 닫으면 상자 바로 사라짐 (#11)"]["result"], "재현")
+        self.assertEqual(r["카드 3장 모두 평가 (#7)"]["result"], "재현 확인")
+        self.assertEqual(r["새로고침 후 옛 평가 지우기·'새로고침 씀' 반영 (#7 #9)"]["result"], "재현 확인")
+        self.assertEqual(r["상점 닫으면 상자 바로 사라짐 (#11)"]["result"], "재현 확인")
         self.assertIn("40초", r["상점 닫으면 상자 바로 사라짐 (#11)"]["why"])
-        self.assertEqual(r["죽어 있을 때 죽음 정보 창을 가리지 않음 (#19)"]["result"], "재현")
+        self.assertEqual(r["죽어 있을 때 죽음 정보 창을 가리지 않음 (#19)"]["result"], "재현 확인")
 
     def test_old_record_says_unknown(self):
         """그린 기록(drawn)·죽음 기록(dead)이 없는 예전 버전 기록은 '확인 못 함' (해결로 세지 않는다)"""
         r = self.judge([{"t": 0, "kind": "start"}, {"t": 3, "kind": "shop", "open": True}])
-        self.assertEqual(r["상점 닫으면 상자 바로 사라짐 (#11)"]["result"], "확인 못 함")
-        self.assertEqual(r["죽어 있을 때 뜬 선택 화면 인식 (#8)"]["result"], "확인 못 함")
+        self.assertEqual(r["상점 닫으면 상자 바로 사라짐 (#11)"]["result"], "확인 불가")
+        self.assertEqual(r["죽어 있을 때 뜬 선택 화면 인식 (#8)"]["result"], "확인 불가")
+
+    # ---- 기획서 v0.1.55 후속 6.3: 합성 기록 8가지
+    def test_case1_three_cards(self):
+        r = self.judge([{"t": 0, "kind": "start"}, {"t": 5, "kind": "offers", "offers": ["가", "나", "다"]},
+                        {"t": 5.4, "kind": "shown", "cards": ["가: 무난", "나: 추천", "다: 도전"]}, {"t": 99, "kind": "end"}])
+        self.assertEqual(r["카드 3장 모두 평가 (#7)"]["result"], "로그 기준 정상")
+
+    def test_case2_one_card_missing(self):
+        """새로고침과 상관없이 한 장을 끝내 못 읽음 → 재현 확인. 새로고침 직후 잠깐 2장은 문제로 세지 않는다"""
+        r = self.judge([{"t": 5, "kind": "offers", "offers": ["가", "나", None]},
+                        {"t": 5.4, "kind": "shown", "cards": ["가: 무난", "나: 추천", None]}, {"t": 99, "kind": "end"}])
+        self.assertEqual(r["카드 3장 모두 평가 (#7)"]["result"], "재현 확인")
+        self.assertIn("5초", r["카드 3장 모두 평가 (#7)"]["why"])
+        r = self.judge([{"t": 5, "kind": "offers", "offers": ["가", "나", "다"]},
+                        {"t": 5.4, "kind": "shown", "cards": ["가: 무난", "나: 추천", "다: 도전"]},
+                        {"t": 7, "kind": "click", "slot": None, "reroll": 0},
+                        {"t": 8, "kind": "offers", "offers": [None, "나", "다"]},
+                        {"t": 8.2, "kind": "shown", "cards": [None, "나: 추천", "다: 도전"]}, {"t": 99, "kind": "end"}])
+        self.assertEqual(r["카드 3장 모두 평가 (#7)"]["result"], "로그 기준 정상", "새로고침 중간(2026-10-20 신드라 381·568초)")
+
+    def test_case3_shop_close_box_removed(self):
+        r = self.judge([{"t": 30, "kind": "shop", "open": True}, {"t": 30.3, "kind": "drawn", "kinds": "상점 상자", "where": [0, 0.4, 0.2, 0.5]},
+                        {"t": 40, "kind": "shop", "open": False}, {"t": 40.3, "kind": "drawn", "kinds": "", "where": None, "why": "표시할 내용 없음"},
+                        {"t": 99, "kind": "end"}])
+        self.assertEqual(r["상점 닫으면 상자 바로 사라짐 (#11)"]["result"], "로그 기준 정상")
+
+    def test_case4_shop_close_box_stays(self):
+        r = self.judge([{"t": 30, "kind": "shop", "open": True}, {"t": 30.3, "kind": "drawn", "kinds": "상점 상자", "where": [0, 0.4, 0.2, 0.5]},
+                        {"t": 40, "kind": "shop", "open": False}, {"t": 45, "kind": "drawn", "kinds": "", "where": None},
+                        {"t": 99, "kind": "end"}])
+        self.assertEqual(r["상점 닫으면 상자 바로 사라짐 (#11)"]["result"], "재현 확인")
+        self.assertIn("40초", r["상점 닫으면 상자 바로 사라짐 (#11)"]["why"])
+
+    def test_case5_gold_delay_vs_error(self):
+        """산 직후 BUY_SYNC_SEC 안의 옛 골드는 처리 지연 (문제 아님), 그 뒤에도 옛 골드면 오류"""
+        base = [{"t": 1, "kind": "items", "items": [], "gold": 3000}, {"t": 20, "kind": "items", "items": ["3089"], "gold": 400}]
+        late_ok = [{"t": 21, "kind": "shown", "box": ["💰 지금 마법공학 (1250G · 3,000G 기준)"]},
+                   {"t": 23.5, "kind": "shown", "box": ["💰 지금 증폭의 고서 (400G · 400G 기준)"]}]
+        r = self.judge(base + late_ok + [{"t": 99, "kind": "end"}])
+        self.assertEqual(r["산 직후 골드·아이템 반영 (#12)"]["result"], "로그 기준 정상")
+        late_bad = [{"t": 23.5, "kind": "shown", "box": ["💰 지금 마법공학 (1250G · 3,000G 기준)"]}]
+        r = self.judge(base + late_bad + [{"t": 99, "kind": "end"}])
+        self.assertEqual(r["산 직후 골드·아이템 반영 (#12)"]["result"], "재현 확인")
+
+    def test_case6_record_cut(self):
+        """기록이 중간에 끊김(end 없음) → 완결성 '확인 불가'. 죽음 뒤 게임 창이 뒤에 있어 안 그렸으면 '상자 없음'으로 세지 않는다"""
+        r = self.judge([{"t": 0, "kind": "start"}, {"t": 10, "kind": "dead", "dead": True},
+                        {"t": 10.1, "kind": "drawn", "kinds": "", "where": None, "why": "게임 창이 뒤에 있음"}])
+        self.assertEqual(r["기록 완결성"]["result"], "확인 불가")
+        self.assertEqual(r["죽어 있을 때 상자 (#10)"]["result"], "확인 불가")
+
+    def test_case7_events_out_of_order(self):
+        """기록 순서가 뒤바뀌어 있어도 시각으로 정렬해서 같은 판정"""
+        ev = [{"t": 30, "kind": "shop", "open": True}, {"t": 30.3, "kind": "drawn", "kinds": "상점 상자", "where": [0, 0.4, 0.2, 0.5]},
+              {"t": 40, "kind": "shop", "open": False}, {"t": 40.3, "kind": "drawn", "kinds": "", "where": None},
+              {"t": 60, "kind": "dead", "dead": True}, {"t": 60.5, "kind": "drawn", "kinds": "상점 상자", "where": [0, 0.3, 0.2, 0.45]},
+              {"t": 70, "kind": "dead", "dead": False}, {"t": 70.2, "kind": "drawn", "kinds": "", "where": None}, {"t": 99, "kind": "end"}]
+        a = self.judge(ev)
+        b = self.judge(list(reversed(ev)))
+        self.assertEqual({k: v["result"] for k, v in a.items()}, {k: v["result"] for k, v in b.items()})
+        self.assertEqual(b["부활하면 상자 바로 사라짐 (#11)"]["result"], "로그 기준 정상")
+
+    def test_case8_needs_video(self):
+        """눈으로 볼 항목은 기록이 아무리 정상이어도 '영상 확인 필요' (정상으로 올리지 않는다)"""
+        r = self.judge([{"t": 5, "kind": "offers", "offers": ["가", "나", "다"]},
+                        {"t": 5.4, "kind": "shown", "cards": ["가: 무난", "나: 추천", "다: 도전"]},
+                        {"t": 5.4, "kind": "drawn", "kinds": "카드", "where": [0.2, 0.5, 0.8, 0.6]}, {"t": 99, "kind": "end"}])
+        for k in ("카드 평가가 카드 설명을 가리지 않음 (#18)", "상단 버튼 위치 고정 (#21)", "⚙ 설정 창 닫기 (#22)", "증강 4개 뒤 추천 영역 전환 (#15)"):
+            self.assertEqual(r[k]["result"], "영상 확인 필요", k)
+
+    def test_revive_box_already_gone_and_dead_while_picking(self):
+        """2026-10-20 신드라 판 오탐: 부활 때 이미 상자가 없음 → 정상, 죽은 채 선택 화면이 떠 카드를 그림 → 정상, 고른 증강 경기 결과 대조"""
+        r = self.judge([{"t": 42, "kind": "dead", "dead": True}, {"t": 42.2, "kind": "drawn", "kinds": "상점 상자", "where": [0, 0.43, 0.17, 0.57]},
+                        {"t": 48, "kind": "drawn", "kinds": "", "where": None},
+                        {"t": 53, "kind": "dead", "dead": False},
+                        {"t": 376.3, "kind": "dead", "dead": True}, {"t": 376.9, "kind": "drawn", "kinds": "카드", "where": [0.2, 0.54, 0.8, 0.64]},
+                        {"t": 383.7, "kind": "picked", "picked": "불여우"},
+                        {"t": 20.9, "kind": "picked", "picked": "마법 명사수"},
+                        {"t": 1385, "kind": "eog", "augments": ["처형 시간", "불여우"]}, {"t": 1385, "kind": "end"}])
+        self.assertEqual(r["부활하면 상자 바로 사라짐 (#11)"]["result"], "로그 기준 정상")
+        self.assertEqual(r["죽어 있을 때 상자 (#10)"]["result"], "로그 기준 정상")
+        self.assertEqual(r["고른 증강 인식 (경기 결과 대조)"]["result"], "재현 확인")
+        self.assertIn("마법 명사수", r["고른 증강 인식 (경기 결과 대조)"]["why"])
+

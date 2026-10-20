@@ -712,11 +712,14 @@ class Overlay(threading.Thread):
                     win.place(PARK[0], PARK[1], 1, 1)
                     shown, last, placed = False, None, None
                     last_main, last_tim = None, None
-                self._report_drawn(None)
                 if rect and self.mode == "전체 화면":
                     self.status = "전체 화면이라 표시할 수 없어요 → 롤 설정 > 비디오 > 창 모드를 '테두리 없음'으로"
                 else:
                     self.status = "게임 창 없음" if not rect else ("게임 창이 뒤에 있음" if not front else "표시할 내용 없음")
+                # 안 그린 이유도 기록 (한 판 기록 판정: 게임 창이 뒤에 있어 안 그린 것을 '상자 없음'으로 보지 않게)
+                why = ("표시 꺼짐" if not self.enabled else "게임 창 없음" if not rect else "전체 화면" if self.mode == "전체 화면"
+                       else "게임 창이 뒤에 있음" if not (front or self.preview) else "표시할 내용 없음")
+                self._report_drawn({"kinds": "", "where": None, "why": why})
             else:
                 x, y, w, h = rect
                 key = (w, h, repr(entries))

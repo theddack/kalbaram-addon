@@ -325,6 +325,7 @@ class Tracker:
         self.state = {"offers": None, "picked": None, "seq": 0, "pickSeq": 0, "rerolled": [False] * 3}
         self._miss = 0
         self._reroll_wait = set()  # 새로고침 버튼을 누른 칸: 새 이름을 읽기 전엔 옛 이름(평가)을 남기지 않는다
+        self._reroll_old = {}  # 칸 → (새로고침 전 이름, 누른 시각)
         self._click = None  # 이번 선택 화면에서 처음 클릭한 카드 칸
         self._last = None
         self._full_at = 0.0  # 이름을 2개 이상 읽은 마지막 시각
@@ -340,15 +341,36 @@ class Tracker:
         if self._last is not None and slot is not None and self._click is None:
             self._click = slot
 
+    REROLL_ANIM = 2.5  # 초. 새로고침 연출 중엔 옛 카드가 잠깐 보여 옛 이름이 다시 읽힌다 → 이 안에 읽힌 옛 이름은 무시
+
     def reroll(self, slot):
-        """새로고침 버튼 클릭 (2026-10-20 피드백 #9: 써 버린 새로고침을 또 권했다). 그 칸은 이번 선택 화면에서 '새로고침 씀'"""
+        """새로고침 버튼 클릭 (2026-10-20 피드백 #9: 써 버린 새로고침을 또 권했다). 그 칸은 이번 선택 화면에서 '새로고침 씀'.
+        그 칸 이름은 바로 비운다: 새 이름을 못 읽은 채 그 칸을 누르면 옛 이름으로 골랐다 (2026-10-20 v0.1.55 신드라 판:
+        세 칸을 다 새로고침한 뒤 '처형 시간'을 골랐는데 옛 이름 '마법 명사수'로 기록, 한 판 내내 틀린 증강으로 계산)"""
         if self._last is None or slot is None:
             return
         self._reroll_wait.add(slot)
         rr = list(self.state.get("rerolled") or [False] * 3)
-        if not rr[slot]:
-            rr[slot] = True
+        rr[slot] = True
+        if self._last[slot] is not None:
+            self._reroll_old[slot] = (self._last[slot], time.time())
+            self._last = [None if i == slot else n for i, n in enumerate(self._last)]
+            self.state = {**self.state, "offers": list(self._last), "seq": self.state["seq"] + 1, "rerolled": rr}
+        else:
             self.state = {**self.state, "rerolled": rr}
+
+    def update_slot(self, slot, name):
+        """선택 화면이 떠 있는데 이름이 하나만 읽혔을 때: 그 자리가 비어 있는 칸(새로고침·못 읽음)이면 채운다. 채웠으면 True"""
+        if self._last is None or slot is None or self._last[slot] is not None or name in self._last:
+            return False
+        old = self._reroll_old.get(slot)
+        if old and old[0] == name and time.time() - old[1] < self.REROLL_ANIM:
+            return False
+        self._last = [name if i == slot else n for i, n in enumerate(self._last)]
+        self._reroll_wait.discard(slot)
+        self._reroll_old.pop(slot, None)
+        self.state = {**self.state, "offers": list(self._last), "seq": self.state["seq"] + 1}
+        return True
 
     def feed(self, offers3, pos=None, partial=False):
         """partial: 이름이 하나라도 보이면 True → 아직 선택 화면 (마우스를 올려 카드가 바뀌는 동안 닫혔다고 착각하지 않게.
@@ -362,6 +384,13 @@ class Tracker:
             if not offers3 or offers3 != frm:  # 안 돌아왔거나 다른 선택지(다음 선택 화면)가 떴다 → 그때 못 정함으로
                 self.state = {**self.state, "picked": None, "pickedFrom": frm, "replaces": None, "by": "click",
                               "pickSeq": self.state["pickSeq"] + 1}
+        if offers3 and self._reroll_old:
+            # 새로고침 연출 중 다시 읽힌 옛 이름은 빈칸으로 (REROLL_ANIM 초 안)
+            offers3 = [None if (i in self._reroll_old and n == self._reroll_old[i][0] and now - self._reroll_old[i][1] < self.REROLL_ANIM) else n
+                       for i, n in enumerate(offers3)]
+            if not any(offers3):
+                self._miss = 0  # 옛 카드만 보였다 = 아직 선택 화면 (닫힘으로 세지 않는다)
+                return
         if offers3:
             self._full_at = now
             self._miss = 0
@@ -393,6 +422,7 @@ class Tracker:
                               "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
             self._last, self._click, self._miss = None, None, 0
             self._reroll_wait = set()
+            self._reroll_old = {}
             self.state = {**self.state, "rerolled": [False] * 3}
 
 
@@ -931,7 +961,7 @@ class Reader(threading.Thread):
         rr = None if slot is not None else reroll_at(self.tracker.state.get("pos"), rx, ry)
         if rr is not None:
             self.tracker.reroll(rr)
-            self._reread_n = 0  # 새로고침한 칸 이름을 다시 읽을 수 있게
+            self._reread_n = self._frag_n = 0  # 새로고침한 칸 이름을 다시 읽을 수 있게 (조각 글자 횟수도 새로)
             self._changed()
         self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot, **({"reroll": rr} if rr is not None else {})})
 
@@ -1086,6 +1116,13 @@ class Reader(threading.Thread):
             self._reread_n = 0  # 선택 화면도 아니고 곧 뜰 때도 아니면 횟수를 새로
             self._frag_n = 0
         offers = self.reread_cards(cap, ocr, rect, offers, matcher, scores, words)
+        if len(offers) == 1 and self.tracker.showing:
+            # 선택 화면이 떠 있는데 이름이 하나만 읽힘: 그 자리가 빈 칸(새로고침·못 읽음)이면 채운다
+            pos = self.tracker.state.get("pos") or self._card_hint.get((gw, gh))
+            xs = (pos or {}).get("xs") or []
+            near_ = [i for i, cx in enumerate(xs) if cx is not None and abs(offers[0][1] / gw - cx) <= CARD_HALF_W]
+            if near_ and self.tracker.update_slot(near_[0], offers[0][0]):
+                self._changed()
         if len(offers) < 2:
             offers = []  # 다시 읽고도 1개뿐이면 선택 화면으로 보지 않는다 (예전처럼 2개 이상)
         self.offered.update(n for n, _, _ in offers)
