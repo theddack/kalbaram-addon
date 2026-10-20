@@ -589,6 +589,8 @@ class Overlay(threading.Thread):
         self.icon_dir = None  # 증강 아이콘 폴더 (쿨타임 표시)
         self._perf = {}  # 그리기 처리 시간(ms): 전체 다시 그리기 · 쿨타임만 (한 판 기록에 요약)
         self.live_fn = None  # 지금 상점 열림·죽음 {"shop", "dead"} (desktop 이 연결). 그릴 때마다 묻는다 (with_live)
+        self.on_drawn = None  # 실제로 그린 것이 바뀌면 {"kinds", "where"} 로 알린다 (한 판 기록 drawn: 상자가 몇 초 만에 사라졌나)
+        self._drawn = None
 
     def _perf_add(self, kind, t0):
         v = self._perf.setdefault(kind, [])
@@ -614,6 +616,15 @@ class Overlay(threading.Thread):
             self.payload = v or {}
         else:
             setattr(self, k, v)
+
+    def _report_drawn(self, d):
+        if d != self._drawn:
+            self._drawn = d
+            if self.on_drawn:
+                try:
+                    self.on_drawn(d or {"kinds": "", "where": None})
+                except Exception:
+                    pass
 
     def update(self, payload):
         self._send("payload", payload)
@@ -701,6 +712,7 @@ class Overlay(threading.Thread):
                     win.place(PARK[0], PARK[1], 1, 1)
                     shown, last, placed = False, None, None
                     last_main, last_tim = None, None
+                self._report_drawn(None)
                 if rect and self.mode == "전체 화면":
                     self.status = "전체 화면이라 표시할 수 없어요 → 롤 설정 > 비디오 > 창 모드를 '테두리 없음'으로"
                 else:
@@ -749,6 +761,7 @@ class Overlay(threading.Thread):
                 r5 = lambda v: f"{round(v * 20) / 20:.2f}"
                 where_txt = f"가로 {r5(bx0 / w)}~{r5((bx0 + bw) / w)} 세로 {r5(by0 / h)}~{r5((by0 + bh) / h)}"
                 self.status = f"표시 중 · {self.mode or '화면 모드 확인 못 함'} {w}×{h} · {kinds} ({where_txt})"
+                self._report_drawn({"kinds": kinds, "where": [round(bx0 / w, 3), round(by0 / h, 3), round((bx0 + bw) / w, 3), round((by0 + bh) / h, 3)]})
             return rect
 
         root.after(200, tick)
