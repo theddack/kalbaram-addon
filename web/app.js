@@ -1759,7 +1759,7 @@ function renderWeights() {
   }));
 }
 
-// ---- 상점 추천 등록 (아이템 세트): 챔피언이 정해지면 한 번. 블록 = 기본 / 첫 증강 상위 3개별 / 변칙
+// ---- 상점 추천 등록 (아이템 세트): 챔피언이 정해지면 한 번. 블록 = 기본 빌드 한 줄 (v0.1.12 부터)
 let itemSetDone = null;
 function itemSetBlocks(champ) {
   // 상점 추천은 기본 빌드 한 줄만: 증강별 후보를 여러 줄 넣으면 뭘 사야 할지 모른다 (2026-10-14 지적).
@@ -1797,7 +1797,9 @@ async function applyLcu(api, L) {
     let blocks;
     try { blocks = itemSetBlocks(champ); } finally { if (prev) setTargetChamp(prev); }
     const r = await api.write_item_set(champ.key, `칼바람 증강 Addon · ${champ.name}`, blocks);
-    el.textContent = r && r.ok ? `· ${champ.name} 상점 추천 등록됨 (${r.blocks}개 블록)` : `· 등록 실패: ${(r && r.error) || "알 수 없음"}`;
+    // '1개 블록'은 실패로 오해했다 (2026-10-20 피드백 #17) → 무엇이 등록됐는지로
+    el.textContent = r && r.ok ? `· 상점 추천: ${champ.name} 기본 빌드 등록됨` : `· 등록 실패: ${(r && r.error) || "알 수 없음"}`;
+    el.title = el.textContent;
     if (!r || !r.ok) itemSetDone = null;
   } catch (e) {
     el.textContent = `· 등록 실패: ${String(e && e.message || e).slice(0, 80)}`;
@@ -1894,6 +1896,24 @@ let liveEnded = false;
 let liveShop = false, goldDrawnAt = 0, boxSent = null;
 let enemyBuildKey = "";
 const BOX_START = 75;  // 초. 상자 '자세히'일 때 게임 시작 후 이 시간까지 띄운다 (처음 아이템을 사는 때)
+// ⚙ 표시 설정·⚙ 더보기 팝업: 바깥을 누르거나 Esc 로 닫는다 (summary 를 다시 누르는 것 말고는 닫을 방법이 없어
+// 4분 넘게 열린 채 오른쪽 '다음에 살 아이템'을 가렸다, 2026-10-20 피드백 #22)
+function closeMenusOnOutside() {
+  const menus = () => ["#ov-settings", "#more-menu"].map((q) => $(q)).filter((m) => m && m.open);
+  document.addEventListener("click", (e) => { for (const m of menus()) if (!m.contains(e.target)) m.open = false; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") for (const m of menus()) m.open = false; });
+  const x = $("#ov-close");
+  if (x) x.addEventListener("click", () => { $("#ov-settings").open = false; });
+}
+
+// 표시 창 상태 → 짧은 말: '표시 중 · 테두리 없음 1440×900 · 상점 상자 (가로 …)' → '상점 상자'
+function overlayShort(st) {
+  const m = /^표시 중 · .*? · ([^(]+?)(?: \(|$)/.exec(st || "");
+  if (m) return m[1].trim();
+  if (/전체 화면/.test(st)) return "전체 화면이라 표시 못 함";
+  return String(st || "").replace(/\s*\(.*$/, "");
+}
+
 function applyLive(L) {
   const el = $("#live-status");
   // 게임 중엔 챔피언 목록(아이콘 173개)을 접는다: 챔피언은 게임에서 정해지고, 화면 엔진 메모리를 덜 쓴다. 검색하면 다시 보인다
@@ -1930,7 +1950,10 @@ function applyLive(L) {
     + (L.overlayStatus ? ` · 게임 화면: ${overlayShort(L.overlayStatus)}${preview ? " (미리 보기 켜짐)" : ""}` : "")
     + (L.aug && L.aug.offers ? " · 증강 카드 읽는 중" : "");
   if (el.textContent !== statusText) el.textContent = statusText;  // 같은 글이면 안 건드린다 (1초마다 다시 그리지 않게)
-  el.title = (L.augmentFields && L.augmentFields.length ? "API 증강 필드: " + L.augmentFields.slice(0, 8).join(", ") + "\n" : "")
+  el.title = statusText + "\n"
+    + (L.overlayStatus ? `게임 화면 표시: ${L.overlayStatus}\n` : "")
+    + (L.aug && L.aug.status ? `증강 인식: ${L.aug.status}\n` : "")
+    + (L.augmentFields && L.augmentFields.length ? "API 증강 필드: " + L.augmentFields.slice(0, 8).join(", ") + "\n" : "")
     + `원본 저장 위치: ${L.logDir}`;
   // 골드·부품은 3초마다 바뀌어도 순위는 그대로라 '지금 살 것'만 다시 그린다.
   // 골드는 칼바람에서 1초마다 오른다 → 상점이 열려 있을 때(게임 화면 상자에 보일 때)·부품이 바뀌었을 때만 바로,
@@ -2180,3 +2203,4 @@ window.addEventListener("pywebviewready", async () => {
 });
 
 init();
+closeMenusOnOutside();
