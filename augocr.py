@@ -239,6 +239,38 @@ def default_card_pos(width, height):
     return {"xs": [round(0.5 + r * height / width, 4) for r in CARD_REL_X], "nameY": CARD_NAME_Y}
 
 
+# 새로고침 버튼: 카드 밑 (이름 줄 기준). 16:10 실제 화면(2026-10-20 영상, 1440×900): 이름 0.41 · 카드 아래 끝 0.66 · 버튼 0.71,
+# 16:9 기록: 이름 0.46 · 버튼 0.70 → 이름 + 0.22 ~ 이름 + 0.36 (카드 몸통 CARD_Y 와 겹치는 부분은 카드로 본다)
+REROLL_BELOW = (0.22, 0.36)
+
+
+def reroll_at(pos, x, y):
+    """클릭 위치 (게임 창 비율) → 새로고침 버튼을 누른 카드 칸 번호, 아니면 None"""
+    if not pos or pos.get("nameY") is None:
+        return None
+    y0, y1 = max(CARD_Y[1], pos["nameY"] + REROLL_BELOW[0]), pos["nameY"] + REROLL_BELOW[1]
+    if not (y0 < y <= y1):
+        return None
+    for i, cx in enumerate(pos.get("xs") or []):
+        if cx is not None and abs(x - cx) <= CARD_HALF_W:
+            return i
+    return None
+
+
+# 아래 골드(상점) 버튼: 게임 창 비율 (2026-10-20 영상 1440×900: 가로 0.62 · 세로 0.98). 능력치 창 옆이라 넉넉히
+SHOP_BUTTON = ((0.56, 0.68), (0.93, 1.0))
+
+
+def shop_button_at(rect, hit):
+    """화면 클릭 좌표 → 아래 골드(상점 여는) 버튼을 누른 것인가"""
+    if not rect or not hit:
+        return False
+    gx, gy, gw, gh = rect
+    rx, ry = (hit[0] - gx) / gw, (hit[1] - gy) / gh
+    (x0, x1), (y0, y1) = SHOP_BUTTON
+    return x0 <= rx <= x1 and y0 <= ry <= y1
+
+
 def card_at(pos, x, y):
     """클릭 위치 (게임 창 비율) → 카드 칸 번호. 카드 밖(새로고침 버튼 등)이면 None"""
     if not pos or not (CARD_Y[0] <= y <= CARD_Y[1]):
@@ -290,8 +322,9 @@ class Tracker:
     REOPEN_WAIT = 20
 
     def __init__(self):
-        self.state = {"offers": None, "picked": None, "seq": 0, "pickSeq": 0}
+        self.state = {"offers": None, "picked": None, "seq": 0, "pickSeq": 0, "rerolled": [False] * 3}
         self._miss = 0
+        self._reroll_wait = set()  # 새로고침 버튼을 누른 칸: 새 이름을 읽기 전엔 옛 이름(평가)을 남기지 않는다
         self._click = None  # 이번 선택 화면에서 처음 클릭한 카드 칸
         self._last = None
         self._full_at = 0.0  # 이름을 2개 이상 읽은 마지막 시각
@@ -306,6 +339,16 @@ class Tracker:
         # (2026-10-17 카이사: 광휘의 검을 누르고 0.6초 뒤 옆 카드를 또 눌러 '빵과 치즈'로 잘못 알림. 예전 기록 3판도 첫 클릭이 맞았다)
         if self._last is not None and slot is not None and self._click is None:
             self._click = slot
+
+    def reroll(self, slot):
+        """새로고침 버튼 클릭 (2026-10-20 피드백 #9: 써 버린 새로고침을 또 권했다). 그 칸은 이번 선택 화면에서 '새로고침 씀'"""
+        if self._last is None or slot is None:
+            return
+        self._reroll_wait.add(slot)
+        rr = list(self.state.get("rerolled") or [False] * 3)
+        if not rr[slot]:
+            rr[slot] = True
+            self.state = {**self.state, "rerolled": rr}
 
     def feed(self, offers3, pos=None, partial=False):
         """partial: 이름이 하나라도 보이면 True → 아직 선택 화면 (마우스를 올려 카드가 바뀌는 동안 닫혔다고 착각하지 않게.
@@ -324,12 +367,18 @@ class Tracker:
             self._miss = 0
             if pos and pos != self.state.get("pos"):
                 self.state = {**self.state, "pos": pos}
-            if (self._last is not None and offers3 != self._last and None in offers3
+            rerolling = any(offers3[i] is None for i in self._reroll_wait)
+            if (self._last is not None and offers3 != self._last and None in offers3 and not rerolling
                     and all(n is None or n == old for n, old in zip(offers3, self._last))):
                 return  # 일부 칸만 못 읽음(설명 창·마우스가 가림) → 같은 선택지 그대로 (클릭도 그대로)
             if offers3 != self._last:  # 새 선택지 (새로고침 포함): 그 전 클릭은 무효
+                # 새로고침한 칸을 아직 못 읽었으면 그 칸은 비운다 (예전엔 바뀌기 전 카드 평가가 새 카드 위에 남았다, 피드백 #7)
+                self._reroll_wait = {i for i in self._reroll_wait if offers3[i] is None}
+                rr = self.state.get("rerolled") or [False] * 3
+                if self._last is not None and not rerolling and sum(1 for a, b in zip(offers3, self._last) if a and b and a != b) == 3:
+                    rr = [False] * 3  # 세 칸이 다 바뀐 다른 선택 화면 (다음 증강 레벨)
                 self._last, self._click = offers3, None
-                self.state = {**self.state, "offers": offers3, "seq": self.state["seq"] + 1}
+                self.state = {**self.state, "offers": offers3, "seq": self.state["seq"] + 1, "rerolled": list(rr)}
             return
         if self._last is None:
             return
@@ -343,6 +392,8 @@ class Tracker:
                 self.state = {**self.state, "offers": None, "pos": None, "picked": self._last[self._click], "pickedFrom": self._last,
                               "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
             self._last, self._click, self._miss = None, None, 0
+            self._reroll_wait = set()
+            self.state = {**self.state, "rerolled": [False] * 3}
 
 
 # ---------------------------------------------------------------- 윈도우: 화면 잡기 + 글자 인식
@@ -877,7 +928,12 @@ class Reader(threading.Thread):
         rx, ry = (hit[0] - gx) / gw, (hit[1] - gy) / gh
         slot = card_at(self.tracker.state.get("pos"), rx, ry)
         self.tracker.click(slot)
-        self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot})
+        rr = None if slot is not None else reroll_at(self.tracker.state.get("pos"), rx, ry)
+        if rr is not None:
+            self.tracker.reroll(rr)
+            self._reread_n = 0  # 새로고침한 칸 이름을 다시 읽을 수 있게
+            self._changed()
+        self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot, **({"reroll": rr} if rr is not None else {})})
 
     def wait_shop_keys(self, mouse, end, active=True):
         """end 까지 쉬되, 상점 여닫기(P·ESC·왼쪽 클릭)를 보면 SHOP_KEY_DELAY 뒤 바로 돌아가 상점 창을 읽게 한다"""
@@ -946,7 +1002,14 @@ class Reader(threading.Thread):
                  or (scores.get(it[0], 1.0) < 1.0 and key not in self._verified)]
         if not check:
             return offers
-        self._reread_n += 1
+        # 선택 화면이 뜨기 전 조각 글자(0~1개)로 다시 읽은 것은 횟수를 쓰지 않는다: 증강 레벨을 찍고 고르기 전까지(최대 240초)
+        # 횟수가 안 돌아와서, 정작 선택 화면이 떴을 때 다시 읽기를 건너뛰었다 (2026-10-20 피드백 #7: 5번 중 4번 한 장 빠짐)
+        if len(offers) >= 2:
+            self._reread_n += 1
+        else:
+            self._frag_n = getattr(self, "_frag_n", 0) + 1
+            if self._frag_n > REREAD_TRIES:
+                return offers
         self._verified.add(key)
         have = {o[0] for o in offers}
         for i in check:
@@ -1019,6 +1082,7 @@ class Reader(threading.Thread):
             self._card_hint[(gw, gh)] = card_pos(offers, gw, gh)  # 다음에 못 읽은 칸을 다시 읽을 자리
         if not offers and not self.selection_likely():
             self._reread_n = 0  # 선택 화면도 아니고 곧 뜰 때도 아니면 횟수를 새로
+            self._frag_n = 0
         offers = self.reread_cards(cap, ocr, rect, offers, matcher, scores, words)
         if len(offers) < 2:
             offers = []  # 다시 읽고도 1개뿐이면 선택 화면으로 보지 않는다 (예전처럼 2개 이상)
@@ -1039,6 +1103,10 @@ class Reader(threading.Thread):
         self.tracker.feed(slots(offers, gw) if offers else None, card_pos(offers, gw, gh) if offers else None, partial)
         after = self.tracker.state
         if (after.get("seq"), after.get("pickSeq"), bool(after.get("offers"))) != (before.get("seq"), before.get("pickSeq"), bool(before.get("offers"))):
+            self._changed()
+        if after.get("seq") != before.get("seq"):
+            self._reread_n = 0  # 새 선택지마다 빈 칸 다시 읽기 횟수를 새로 (한 장이 빠진 채 남지 않게, 피드백 #7)
+        if after.get("rerolled") != before.get("rerolled") and after.get("seq") == before.get("seq"):
             self._changed()
         if after.get("seq") != before.get("seq"):  # 새 선택지 (새로고침 포함): 읽은 글자 원문과 카드 이름 줄 그림
             self._rec("offers", {"read": segs, "offers": after.get("offers"), "pos": after.get("pos"),

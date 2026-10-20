@@ -1823,10 +1823,17 @@ function applyAug(A) {
       full = true;
     }
     if (state.chosen.length < 4) {
-      state.offers = A.offers.map(byName);
+      // 새로고침 씀: 증강 인식이 새로고침 버튼 클릭을 본 칸 + 같은 선택 화면이면 직접 체크한 칸 (다른 화면이면 새로, 피드백 #9)
+      const next = A.offers.map(byName);
+      const same = state.offers.some((a, i) => a && next[i] && a.id === next[i].id);
+      state.rerolled = [0, 1, 2].map((i) => !!(A.rerolled && A.rerolled[i]) || (same && state.rerolled[i]));
+      state.offers = next;
       state.offersClosed = false;
       offersOnly = true;
     }
+  } else if (A.offers && A.rerolled && A.rerolled.some((v, i) => v && !state.rerolled[i])) {
+    state.rerolled = state.rerolled.map((v, i) => v || !!A.rerolled[i]);  // 새로고침을 눌렀는데 새 이름은 아직 못 읽음
+    offersOnly = true;
   }
   // 선택 화면이 닫혔는데 고른 것이 아직 안 정해짐(카드 클릭을 못 잡음): 게임 화면 카드는 바로 지운다.
   // 2026-10-19 퀸 판: '못 정함'(20초 뒤)까지 카드 평가가 남고, 카드 위치를 잃어 화면 아래쪽(기본 위치)으로 내려가 있었다

@@ -2046,6 +2046,62 @@ class CardsAndBox0150(unittest.TestCase):
         self.assertEqual(grabs[0][4], grabs[0][2] * 2, "2배로 키워 읽는다")
         self.assertEqual(r._counts.get("이름 다시 읽어 찾음"), 1)
 
+    def test_reread_budget_not_spent_before_screen(self):
+        """선택 화면 전 조각 글자(0~1개)로 다시 읽어도 화면이 뜬 뒤 빈 칸 다시 읽기 횟수는 남는다 (피드백 #7)"""
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.selection_likely = lambda: True
+        m = augocr.Matcher(["궁극의 각성", "최상급 조준경 부착", "주문 분산"])
+
+        class Cap:
+            def grab(self, *a):
+                return b""
+
+        class Ocr:
+            def words(self, img, w, h):
+                return [("주문", 10, 5, 40, 20), ("분산", 60, 5, 40, 20)]
+        gw, gh = 1440, 900
+        for _ in range(5):  # 조각 하나만 읽힌 회차 (증강 레벨을 찍고 고르기 전)
+            r._verified = set()
+            r.reread_cards(Cap(), Ocr(), (0, 0, gw, gh), [("궁극의 각성", 0.29 * gw, 0.41 * gh)], m, {"궁극의 각성": 0.8})
+        self.assertEqual(r._reread_n, 0, "화면 전 조각으로는 횟수를 안 쓴다")
+        offers = [("궁극의 각성", 0.291 * gw, 0.41 * gh), ("최상급 조준경 부착", 0.504 * gw, 0.41 * gh)]
+        got = r.reread_cards(Cap(), Ocr(), (0, 0, gw, gh), offers, m, {"궁극의 각성": 1.0, "최상급 조준경 부착": 1.0})
+        self.assertEqual(len(got), 3)
+
+    def test_reroll_click_marks_slot_and_clears_old_name(self):
+        """새로고침 버튼 클릭 → 그 칸 '새로고침 씀', 새 이름을 읽기 전엔 옛 카드 평가를 남기지 않는다 (피드백 #7·#9)"""
+        import augocr
+        t = augocr.Tracker()
+        pos = {"xs": [0.29, 0.50, 0.71], "nameY": 0.41}
+        t.feed(["가", "나", "다"], pos)
+        self.assertEqual(augocr.reroll_at(pos, 0.71, 0.71), 2, "1440×900 영상의 새로고침 버튼 높이")
+        self.assertIsNone(augocr.reroll_at(pos, 0.71, 0.50), "카드 몸통은 새로고침 아님")
+        t.reroll(2)
+        self.assertEqual(t.state["rerolled"], [False, False, True])
+        seq = t.state["seq"]
+        t.feed(["가", "나", None], pos)  # 새 카드 이름을 아직 못 읽음
+        self.assertEqual(t.state["offers"], ["가", "나", None], "옛 이름 '다'를 남기지 않는다")
+        self.assertGreater(t.state["seq"], seq)
+        t.feed(["가", "나", "라"], pos)
+        self.assertEqual(t.state["offers"], ["가", "나", "라"])
+        self.assertEqual(t.state["rerolled"], [False, False, True], "같은 선택 화면에선 그대로")
+        # 설명 창이 가린 칸(새로고침 안 함)은 예전처럼 같은 선택지로
+        seq = t.state["seq"]
+        t.feed([None, "나", "라"], pos)
+        self.assertEqual(t.state["seq"], seq)
+        # 닫히면 새로
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["rerolled"], [False, False, False])
+
+    def test_shop_button_click(self):
+        """닫힌 상점: 아래 골드 버튼 클릭이면 바로 상점을 읽는다 (피드백 #10). 게임 창 1440×900 이 화면 (240, 90) 에"""
+        import augocr
+        rect = (240, 90, 1440, 900)
+        self.assertTrue(augocr.shop_button_at(rect, (240 + int(1440 * 0.62), 90 + int(900 * 0.98))))
+        self.assertFalse(augocr.shop_button_at(rect, (240 + 720, 90 + 450)), "화면 가운데 클릭은 아님")
+
     def test_dead_box_shows_next_buy_and_buy_now(self):
         import overlay
         hud = ["다음 구매: 삼위일체(만드는 중) > 크라켄 학살자 > 몰락한 왕의 검", "💰 지금 탐식의 망치 (1100G)",
