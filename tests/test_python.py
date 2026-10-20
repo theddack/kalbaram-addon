@@ -2337,3 +2337,60 @@ class DisplaySettings(unittest.TestCase):
         self.assertTrue(api.set_box_font("large"))
         self.assertFalse(api.set_box_font("huge"))
         self.assertEqual(store["box_font"], "large")
+
+
+class LogJudge(unittest.TestCase):
+    """한 판 기록 자동 판정 (tools/log_judge.py): 실게임 확인 항목을 기록 시각으로 해결/재현으로 나눈다"""
+    def judge(self, events):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import log_judge
+        return {r["name"]: r for r in log_judge.judge(events)}
+
+    def test_good_game(self):
+        ev = [
+            {"t": 0, "kind": "start"},
+            {"t": 5, "kind": "offers", "offers": ["가", "나", "다"]},
+            {"t": 5.5, "kind": "shown", "cards": ["가: 무난", "나: 추천", "다: 도전"], "box": []},
+            {"t": 7, "kind": "click", "x": 0.71, "y": 0.71, "slot": None, "reroll": 2},
+            {"t": 8, "kind": "offers", "offers": ["가", "나", "라"]},
+            {"t": 8.4, "kind": "shown", "cards": ["가: 무난", "나: 추천", "라: 추천"], "box": []},
+            {"t": 30, "kind": "shop", "open": True},
+            {"t": 30.8, "kind": "drawn", "kinds": "상점 상자", "where": [0, 0.05, 0.25, 0.4]},
+            {"t": 40, "kind": "shop", "open": False},
+            {"t": 40.6, "kind": "drawn", "kinds": "", "where": None},
+            {"t": 60, "kind": "dead", "dead": True},
+            {"t": 61, "kind": "drawn", "kinds": "상점 상자", "where": [0, 0.3, 0.25, 0.45]},
+            {"t": 75, "kind": "dead", "dead": False},
+            {"t": 75.5, "kind": "drawn", "kinds": "", "where": None},
+        ]
+        r = self.judge(ev)
+        for k in ("카드 3장 모두 평가 (#7)", "새로고침 후 옛 평가 지우기·'새로고침 씀' 반영 (#7 #9)", "처음 연 상점에 상자 (#10)",
+                  "상점 닫으면 상자 바로 사라짐 (#11)", "부활하면 상자 바로 사라짐 (#11)", "죽어 있을 때 죽음 정보 창을 가리지 않음 (#19)"):
+            self.assertEqual(r[k]["result"], "해결", (k, r[k]))
+
+    def test_bad_game(self):
+        ev = [
+            {"t": 0, "kind": "start"},
+            {"t": 5, "kind": "offers", "offers": ["가", "나", None]},
+            {"t": 5.5, "kind": "shown", "cards": ["가: 무난", "나: 추천", None], "box": []},
+            {"t": 7, "kind": "click", "x": 0.29, "y": 0.71, "slot": None, "reroll": 0},
+            {"t": 8, "kind": "shown", "cards": ["가: 무난 · 새로고침?", "나: 추천", None], "box": []},
+            {"t": 30, "kind": "shop", "open": True},
+            {"t": 30.5, "kind": "drawn", "kinds": "상점 상자", "where": [0, 0.05, 0.25, 0.4]},
+            {"t": 40, "kind": "shop", "open": False},
+            {"t": 50, "kind": "drawn", "kinds": "", "where": None},
+            {"t": 60, "kind": "dead", "dead": True},
+            {"t": 61, "kind": "drawn", "kinds": "상점 상자", "where": [0.01, 0.08, 0.25, 0.4]},
+        ]
+        r = self.judge(ev)
+        self.assertEqual(r["카드 3장 모두 평가 (#7)"]["result"], "재현")
+        self.assertEqual(r["새로고침 후 옛 평가 지우기·'새로고침 씀' 반영 (#7 #9)"]["result"], "재현")
+        self.assertEqual(r["상점 닫으면 상자 바로 사라짐 (#11)"]["result"], "재현")
+        self.assertIn("40초", r["상점 닫으면 상자 바로 사라짐 (#11)"]["why"])
+        self.assertEqual(r["죽어 있을 때 죽음 정보 창을 가리지 않음 (#19)"]["result"], "재현")
+
+    def test_old_record_says_unknown(self):
+        """그린 기록(drawn)·죽음 기록(dead)이 없는 예전 버전 기록은 '확인 못 함' (해결로 세지 않는다)"""
+        r = self.judge([{"t": 0, "kind": "start"}, {"t": 3, "kind": "shop", "open": True}])
+        self.assertEqual(r["상점 닫으면 상자 바로 사라짐 (#11)"]["result"], "확인 못 함")
+        self.assertEqual(r["죽어 있을 때 뜬 선택 화면 인식 (#8)"]["result"], "확인 못 함")

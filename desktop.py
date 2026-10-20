@@ -403,6 +403,9 @@ class LiveWatcher(threading.Thread):
                                      "gameTime": round(st.get("gameTime") or 0)})
         self.state = st  # 다 채운 뒤에 내보낸다 (화면이 읽는 도중 바뀌지 않게)
         key = (st.get("dead"), st.get("level"), tuple(st.get("items") or ()), int(st.get("gold") or 0) // 50)
+        if self._last_key is not None and key[0] != self._last_key[0] and getattr(self, "rec", None) and self.rec.active:
+            # 죽음·부활 시각 (한 판 기록 판정: 부활 뒤 상자가 몇 초 만에 사라졌나, 죽어 있을 때 뜬 선택 화면을 언제 알아봤나)
+            self.rec.event("dead", {"dead": bool(st.get("dead")), "gameTime": round(st.get("gameTime") or 0), "gold": round(st.get("gold") or 0)})
         if key != self._last_key:
             changed = self._last_key is not None
             self._last_key = key
@@ -1562,6 +1565,8 @@ def main():
     rec = gamelog.GameRecorder(user_dir() / "logs" / "games")
     api._rec = rec
     watcher.rec = rec
+    # 표시 창이 실제로 그린 것 (화면이 보낸 것 shown 과 다를 수 있다: 그릴 때의 상점·죽음으로 다시 정한다)
+    ov.on_drawn = lambda dd: rec.event("drawn", dd) if rec.active else None
     apply_record(bool(settings.get("record", False)), rec, watcher, lw)
     if reader:
         reader.rec = rec
