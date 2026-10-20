@@ -155,7 +155,12 @@ function audit() {
     const spec = raw.stats || {};
     const res = rule.statsResolved || {};
     const assumes = (raw.basis && raw.basis.assume) || [];
+    // 효과 횟수·재사용 대기시간 규칙이 쓰는 원본 값 (탄환 세례 AdditionalBolts, 골드 강탈 TimerDuration …)
+    for (const [k, sp] of [["effectCount", raw.effectCount], ["effectCooldown", raw.effectCooldown]]) {
+      for (const n of [sp && sp.dv, sp && sp.calc18, sp && sp.critPer].filter(Boolean)) use(String(n).toLowerCase(), "이름 참조", k, null);
+    }
     for (const [k, v] of Object.entries(spec)) {
+      if (v && typeof v === "object" && "calcRatio" in v) { useCalc(v.calcRatio, "이름 참조", k, res[k]); continue; }
       if (typeof v === "string") use(v.replace(/^-/, "").toLowerCase(), "이름 참조", k, res[k]);
       else if (v && typeof v === "object" && "dv" in v) use(v.dv.toLowerCase(), (v.times ?? 1) !== 1 ? "배수 가정" : "이름 참조", k, res[k]);
       else if (v && typeof v === "object" && ("calc18" in v || "calc" in v)) useCalc(v.calc18 || v.calc, v.stacks ? "배수 가정" : "이름 참조", k, res[k]);

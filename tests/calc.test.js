@@ -532,3 +532,33 @@ test("진 4번째 탄은 항상 치명타: 치명타 0%여도 기본 공격 치�
   assert.equal(t.CRIT, 0);
   assert.ok(Math.abs(t.critAuto - 0.25) < 1e-9, String(t.critAuto));
 });
+
+// 2026-10-20 미구현 정리: 한 번에 여러 발·능력치 비례 값·아이템 효과 치명타 (원본 값 이름으로)
+test("효과 횟수(effectCount): 탄환 세례 5발·마법 미사일 3발·쌍둥이 불꽃 1 + 치명타 × 3 · 검무는 한타 1번 8회", () => {
+  const fx = (id) => aug(id).effects[0];
+  assert.equal(fx("ARAM_FanTheHammer").count, 5);
+  assert.equal(fx("ARAM_MagicMissile").count, 3);
+  assert.deepEqual([fx("ARAM_BladeWaltz").count, fx("ARAM_BladeWaltz").trigger.type], [8, "once"]);
+  assert.deepEqual([fx("Twinfire").count, fx("Twinfire").countCrit], [1, 3]);
+  // 치명타 확률이 오르면 쌍둥이 불꽃 한 번 피해도 는다 (1 + 치명타 × 3 발)
+  const c = champ("Lux");
+  const hit = (items) => St.evaluate(c, 18, items, S.augStatsOf([aug("Twinfire")], d.rules, c)).m.effects.find((e) => e.src === aug("Twinfire").name).value;
+  assert.ok(hit([item("무한의 대검")]) > hit([]) * 1.5);
+});
+
+test("능력치 비례 값: 범람 10% + 마나 비례 · 프로틴 음료 25% + 추가 방어·마저 비례 · 마도사의 주스 상자 10% + 주문력 비례", () => {
+  const st = (id, cid, items = []) => St.computeStats(champ(cid), 18, items, S.augStatsOf([aug(id)], d.rules, champ(cid)));
+  const o = st("ARAM_Overflow", "Lux");
+  assert.ok(Math.abs(o.flags.skillDmgMult - (0.1 + 0.00005 * o.total.MANA)) < 1e-9);
+  const p = st("ARAM_ProteinShake", "Malphite", [item("가시 갑옷")]);
+  assert.ok(Math.abs(p.total.HSP - (0.25 + 0.0035 * (p.total.bonusARMOR + p.total.bonusMR))) < 1e-9);
+  const w = st("WarlockJuicebox", "Lux", [item("라바돈의 죽음모자")]);
+  assert.ok(w.total.OMNIVAMP > 0.1 && Math.abs(w.total.OMNIVAMP - (0.1 + 0.00035 * w.total.AP)) < 1e-9);
+});
+
+test("취약: 아이템 효과도 치명타 → 치명타 확률이 높을수록 아이템 효과 피해가 커진다", () => {
+  const c = champ("Tristana");
+  const eff = (augs) => St.evaluate(c, 18, [item("몰락한 왕의 검"), item("무한의 대검")], S.augStatsOf(augs, d.rules, c)).m.effects
+    .filter((e) => e.src === "몰락한 왕의 검").reduce((t, e) => t + (e.hit || 0), 0);
+  assert.ok(eff([aug("ARAM_Vulnerability")]) > eff([]) * 1.3);
+});
