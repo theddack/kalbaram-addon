@@ -1484,7 +1484,8 @@ function effectBasis(effects) {
     const tr = e.trigger || { type: "once" };
     const freq = tr.type === "attacks" ? `기본 공격 ${tr.n}번마다` : tr.type === "time" ? `${tr.sec}초마다` : TRIGGER_WHY[tr.type];
     return { t: tr.assume ? "assume" : "trigger", text: `${KIND_LABEL[e.kind] || e.kind}: ${freq}`
-      + (tr.from ? ` — 설명의 '${tr.from}'` : " — 발동 문구가 없어 한 번으로 셈"), why: tr.assume || "" };
+      + (tr.from ? ` — 설명의 '${tr.from}'` : " — 발동 문구가 없어 한 번으로 셈")
+      + (tr.cdFrom ? ` · 최대 ${tr.cdFrom}` : ""), why: tr.assume || "" };
   });
 }
 

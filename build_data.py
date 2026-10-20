@@ -666,6 +666,31 @@ def rule_effects(rules, aug_spells, out_augs, warn):
             by_id[aid]["effects"].append({"kind": spec["kind"], "name": spec["calc"], **expr_json([e]), "trigger": trig})
 
 
+def rule_effect_cooldowns(rules, aug_spells, out_augs, warn):
+    """rules.json effectCooldown: 기본 공격·스킬마다 터지는 효과에 원본 재사용 대기시간을 건다 (발동 횟수 상한).
+
+    설명에 '챔피언별 재사용 대기시간 30초'(골드 강탈)처럼 적혀 있거나 아예 없어서(쌍둥이 불꽃) 자동으로 못 읽은 것.
+    없으면 기본 공격마다 터지는 것으로 세어 초당 피해가 수십 배로 부풀었다 (docs/증강_원본_대조_결과.md).
+    """
+    by_id = {a["id"]: a for a in out_augs}
+    for aid, r in rules["augments"].items():
+        spec = r.get("effectCooldown")
+        if not spec or aid not in by_id or aid not in aug_spells:
+            continue
+        sec = Calc(aug_spells[aid]).value(spec["dv"], 1)
+        if not sec:
+            warn.append(f"{aid}: effectCooldown 데이터 값 '{spec['dv']}' 없음")
+            continue
+        hit = 0
+        for e in by_id[aid]["effects"]:
+            if (e.get("trigger") or {}).get("type") in ("onhit", "attacks", "cast") and not e.get("cooldown"):
+                e["cooldown"] = sec
+                e["trigger"]["cdFrom"] = f"재사용 대기시간 {sec:g}초 — 게임 데이터 값 '{spec['dv']}'"
+                hit += 1
+        if not hit:
+            warn.append(f"{aid}: effectCooldown 을 걸 반복 발동 효과가 없음")
+
+
 # 자동 규칙: rules.json 에 없는 증강(새 증강 등)은 설명의 '조건 없는 능력치 문장'만 능력치로 읽는다.
 # 설명은 매번 게임 데이터 수치로 다시 채우므로 패치로 숫자가 바뀌어도 따라간다. 화면에 '자동 추정'으로 표시.
 AUTO_STAT = [  # (설명 속 능력치 이름, 키, % 일 때 키, 나눌 값). 긴 이름부터 (체력 회복 및 보호막 효과 > 체력)
@@ -1326,6 +1351,7 @@ def main():
                 print("  [규칙] 없는 아이템:", aid, n)
     rule_warn = resolve_rule_stats(rules, aug_spells)
     rule_effects(rules, aug_spells, out_augs, rule_warn)
+    rule_effect_cooldowns(rules, aug_spells, out_augs, rule_warn)
     auto_rules = {}  # rules.json 에 능력치 규칙이 없는 증강 → 설명에서 자동 추정
     for a in out_augs:
         if (rules["augments"].get(a["id"]) or {}).get("stats"):

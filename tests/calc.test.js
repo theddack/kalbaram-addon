@@ -496,3 +496,18 @@ test("점수 비슷 폭(tieOrder bandK): 0 이면 계산 순서 그대로 · 기
   assert.deepEqual(S.tieOrder(rows(), (r) => r.p, 0.12).map((r) => r.item.id), ["b", "c", "a"]);
   assert.equal(S.TIE_BAND, 0.05);
 });
+
+// 2026-10-20 증강 원본 대조: 반복 발동 효과에 원본 재사용 대기시간이 빠져 있었다 (골드 강탈을 기본 공격마다 30초짜리 피해로 셈)
+test("반복 발동 증강 효과의 재사용 대기시간: rules effectCooldown 이 모두 적용되고 발동 상한이 걸린다", () => {
+  const ids = Object.entries(d.rules.augments).filter(([, r]) => r.effectCooldown).map(([id]) => id);
+  assert.ok(ids.length >= 4, ids.join(","));
+  for (const id of ids) {
+    const rep = aug(id).effects.filter((e) => ["onhit", "attacks", "cast"].includes(e.trigger.type));
+    assert.ok(rep.length && rep.every((e) => e.cooldown > 0), id);
+  }
+  // 골드 강탈 30초: 평타가 초당 2번이어도 초당 피해는 30초에 1번 꼴
+  const c = champ("Jinx");
+  const m = St.evaluate(c, 18, [], [S.augStatsOf([aug("Goldrend")], d.rules, c)[0]]).m;
+  const e = m.effects.find((x) => x.src === aug("Goldrend").name);
+  assert.ok(m.augDps <= e.hit / 30 + 1e-6, `augDps ${m.augDps} · 한 번 ${e.hit}`);
+});

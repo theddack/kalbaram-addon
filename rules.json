@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
+  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -975,6 +975,10 @@
     "Twinfire": {
       "stats": {
         "CRIT": "CrtiChance"
+      },
+      "effectCooldown": {
+        "dv": "Cooldown",
+        "why": "위키 'Twin Fire': 5초 재사용 대기시간 (설명에는 없고 게임 데이터 Cooldown 5). 스킬마다 터지는 것으로 세면 발동이 부풀었다"
       }
     },
     "CriticalMissile": {
@@ -1714,7 +1718,23 @@
         "CRIT": 0.6,
         "ONHIT": 0.6
       },
-      "_why": "방향마다 8초 재사용 대기시간은 스킬 가속과 무관해서 HASTE 태그를 뺐다 (2026-10-17 그레이브즈 판: 세릴다·히드라·그림자 검이 추천됨)"
+      "_why": "방향마다 8초 재사용 대기시간은 스킬 가속과 무관해서 HASTE 태그를 뺐다 (2026-10-17 그레이브즈 판: 세릴다·히드라·그림자 검이 추천됨)",
+      "effectCooldown": {
+        "dv": "Cooldown",
+        "why": "설명 '방향마다 8초의 재사용 대기시간' (위키는 5초로 옛 값). 한 상대를 계속 칠 때는 8초에 1번"
+      }
+    },
+    "Goldrend": {
+      "effectCooldown": {
+        "dv": "TimerDuration",
+        "why": "설명·위키 '챔피언별 재사용 대기시간 30초'. 한 상대 기준 30초에 1번 (기본 공격마다 세면 수십 배로 부풀었다)"
+      }
+    },
+    "ARAM_InfernoTriggered": {
+      "effectCooldown": {
+        "dv": "Cooldown",
+        "why": "설명 '이 효과는 5초의 재사용 대기시간이 적용됩니다'. 스타일 S 등급을 채우는 시간은 따로 세지 않아 최대 빈도(5초에 1번)"
+      }
     }
   },
   "items": {
