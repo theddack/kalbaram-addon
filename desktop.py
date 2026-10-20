@@ -891,8 +891,10 @@ class Api:
                     and not getattr(self._ov, "preview", False):
                 payload["cards"] = [None] * 3  # 선택 화면이 닫혔다: 남은 카드 평가를 엉뚱한 자리(기본 위치)에 그리지 않게
             if cards:
-                payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME,
-                                  "bottom": cards["nameY"] + overlay.CARD_BOTTOM}
+                # ⚙ 세로 위치 설정은 게임 중에도 기본값과의 차이만큼 옮긴다 (예전엔 카드를 읽으면 덮어써서 설정이 듣지 않았다, 피드백 #18)
+                off = float(payload["pos"].get("y", overlay.DEFAULT_POS["y"])) - overlay.DEFAULT_POS["y"]
+                payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME + off,
+                                  "bottom": cards["nameY"] + overlay.CARD_EDGE + off, "edge": cards["nameY"] + overlay.CARD_EDGE + off}
             self._ov.update(payload)
         if self._reader is not None and payload.get("shopMarks") is not None:
             self._reader.shop_targets = list(payload.get("shopMarks") or [])  # 상점 안 아이템 자리 찾기(시험) 대상

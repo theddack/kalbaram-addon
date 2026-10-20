@@ -29,6 +29,9 @@ BELOW_NAME = 0.15
 # 카드 밑 표시는 이름 줄 + 이만큼 위에서 끝낸다 (그 밑은 새로고침 버튼. 실제 화면: 이름 0.46 · 새로고침 0.70).
 # 이유가 길면 글자를 줄여 이 안에 맞춘다 (2026-10-15 지적: 설명이 커서 새로고침 버튼이 안 보임)
 CARD_BOTTOM = 0.22
+# 카드 아래 끝 (이름 줄 + 이만큼). 평가 상자는 이 위에 바닥을 맞춰 쌓는다: 이름 밑에서부터 내려 쓰면 설명 줄이 많은 카드에서
+# 설명을 덮었다 (2026-10-20 피드백 #18). 실제 화면: 16:10 이름 0.41 · 카드 끝 0.66, 16:9 이름 0.46 · 빈 곳 ~0.69
+CARD_EDGE = 0.23
 FONT_PX = (20, 15, 11)  # 글자 크기(픽셀, 1080p 기준): 제목, 이유·상자, 가장 작게.
 # 포인트로 주면 화면 배율(150% 등)만큼 한 번 더 커졌다 (게임 창 크기 비례 + 배율 = 두 번 키움)
 # 상점 상자 글자(픽셀, 1080p 기준). 이유 글자(15)와 같이 쓰면 작아서 읽기 어려웠다 (2026-10-19 지적)
@@ -386,12 +389,14 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                                        font=(font, big, "bold"), fill="#111111", anchor="n")
             tb = canvas.bbox(title)  # 글자가 비면 None
             y2 = tb[3] if tb else y
-            reason = canvas.create_text(x, y2 + 12, text=c.get("reason", ""), width=int(w * 0.18),
+            # 이유 글 폭은 카드 안쪽 (카드 폭 ≈ 창 너비 18%에서 상자 여백을 뺀 만큼. 넘쳐서 옆 카드·설명을 덮었다)
+            reason = canvas.create_text(x, y2 + 12, text=c.get("reason", ""), width=max(80, int(w * 0.18) - 28),
                                         font=(font, small), fill="#ffffff", anchor="n")
             # 1순위 카드는 금색 굵은 테두리로 한눈에 (선택 순간 3초 안에 보이게)
             edge, ew = (BEST_EDGE, 3) if c.get("best") else ("", 0)
+            parts = [title, reason]
             if tb:
-                canvas.create_rectangle(tb[0] - 10, tb[1] - 4, tb[2] + 10, tb[3] + 4, fill=color, outline=edge, width=ew)
+                parts.append(canvas.create_rectangle(tb[0] - 10, tb[1] - 4, tb[2] + 10, tb[3] + 4, fill=color, outline=edge, width=ew))
             rb = canvas.bbox(reason)
             # 새로고침 버튼을 가리지 않게: 넘치면 이유 글자를 한 픽셀씩 줄인다 (가장 작게까지)
             size = small
@@ -409,9 +414,15 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                 canvas.itemconfig(reason, text=text)
                 rb = canvas.bbox(reason)
             if rb:
-                canvas.create_rectangle(rb[0] - 8, rb[1] - 4, rb[2] + 8, rb[3] + 4, fill="#111820", outline=edge or color, width=ew or 1)
+                parts.append(canvas.create_rectangle(rb[0] - 8, rb[1] - 4, rb[2] + 8, rb[3] + 4, fill="#111820", outline=edge or color, width=ew or 1))
             canvas.tag_raise(title)
             canvas.tag_raise(reason)
+            # 카드 아래 끝에 바닥을 맞춘다 (pos.edge). 위로 올라가도 이름 밑(y)보다는 위로 가지 않는다
+            edge_y = int(h * pos["edge"]) if pos.get("edge") else None
+            low = max([b[3] for b in (canvas.bbox(title), canvas.bbox(reason)) if b] or [0])
+            if edge_y and low and low + 4 < edge_y:
+                for it in parts:
+                    canvas.move(it, 0, edge_y - (low + 4))
         elif kind == "timers":
             # 상자 글자가 커져 길어지면 쿨타임 아이콘과 겹친다 → 상자(·바꾸기) 밑으로 내린다
             canvas.timer_y = max(y, left_bottom + 8) if left_bottom is not None else y  # 쿨타임만 다시 그릴 때도 같은 자리

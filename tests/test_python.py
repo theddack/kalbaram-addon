@@ -322,6 +322,10 @@ class FakeCanvas:
     def tag_raise(self, *a):
         pass
 
+    def move(self, i, dx, dy):
+        v = self.items[i]
+        self.items[i] = (v[0] + dx, v[1] + dy, v[2]) if len(v) == 3 else (v[0] + dx, v[1] + dy, v[2] + dx, v[3] + dy)
+
 
 class Overlay(unittest.TestCase):
     def test_draw_handles_empty_label(self):
@@ -413,6 +417,14 @@ class Overlay(unittest.TestCase):
         overlay.draw(c, {"cards": [short], "pos": pos}, W, H, scale=H / 1080)
         self.assertIn(("Malgun Gothic" if overlay.IS_WINDOWS else "Apple SD Gothic Neo", -round(overlay.FONT_PX[1] * H / 1080)),
                       c.fonts.values(), "짧으면 줄이지 않는다")
+        # 카드 아래 끝(edge)에 바닥을 맞춘다: 짧은 이유는 설명을 덮지 않게 아래로 (2026-10-20 피드백 #18)
+        edge = {**pos, "edge": name_y + overlay.CARD_EDGE, "bottom": name_y + overlay.CARD_EDGE}
+        c = FontCanvas()
+        overlay.draw(c, {"cards": [short], "pos": edge}, W, H, scale=H / 1080)
+        texts = [i for i, v in c.items.items() if len(v) == 3 and v[2]]
+        low = max(c.bbox(i)[3] for i in texts)
+        self.assertEqual(low + 4, int(H * edge["edge"]), "바닥이 카드 아래 끝")
+        self.assertGreaterEqual(min(c.items[i][1] for i in texts), int(H * edge["y"]), "이름 밑보다 위로 가지 않는다")
 
     def test_swap_marker_below_box(self):
         """아이템 칸이 다 찼을 때 바꾸기: 상자가 뜰 때만, 상자 밑에 아이콘 (판다 ✕ → 산다)"""
