@@ -43,7 +43,7 @@
 ## 로그 분석 (사용자가 data.zip 을 보내면)
 
 - **증강 원본 대조**: 매일 갱신(refresh.yml)이 `node tools/aug_audit.js --check` 로 저장된 대조(`docs/증강_원본_대조.json`)에 없던 문제를 '데이터 확인' 이슈에 덧붙인다. 처리했으면 `python tools/aug_resolve_check.py --json && node tools/aug_audit.js --write` 로 대조를 새로 저장
-- **먼저 자동 판정**: `python tools/log_judge.py <data.zip>` → 실게임 확인 항목(카드 3장·사망 중 인식·상점 상자 표시/제거·산 직후 반영·상자 자리/흔들림/잘림)을 해결/재현/부분/해당 없음/확인 못 함으로 (근거 시각). `drawn`(그린 것)·`dead`(죽음·부활)는 v0.1.55 기록부터
+- **먼저 자동 판정**: `python tools/log_judge.py <data.zip>` → 실게임 확인 항목(카드 3장·사망 중 인식·상점 상자 표시/제거·산 직후 반영·상자 자리/흔들림/잘림)을 로그 기준 정상/재현 확인/부분 정상/확인 불가/영상 확인 필요/해당 없음으로 (근거 시각, 화면 단위). `drawn`(그린 것)·`dead`(죽음·부활)는 v0.1.55 기록부터, 안 그린 이유 `drawn.why` 는 v0.1.56 기록부터
 - 내용: `logs/diag.log`(진단), `logs/games/<날짜_챔피언>/events.json`(+ 그림, 끝나면 zip), `logs/game_*_<초>s.json`(5분마다 게임 연동 원본, 이름 가림), `measure/eog_*.json`(경기 결과), `measure/match_*.json`(전적 10명 증강·아이템·승패, 이름 없음).
 - **적 증강 정답** = `match_*.json` 적 팀 `augments` (번호). 프로그램이 판 끝에 점수판에서 읽은 것과 대조해 diag.log 에 "점수판 적 증강 대조" 를 남긴다.
 - 추천 대조: 롤 클라이언트를 켜고 `python tools/match_review.py` → `node tools/match_check.js` (내 전적 판, `.cache/matches/` 는 커밋 안 함).
@@ -54,6 +54,10 @@
 - '개선용 기록 남기기'(⚙ 더보기)를 켜야 기록이 쌓인다 (v0.1.42 부터 기본 꺼짐).
 
 ## 지금 상태 (2026-10-20, v0.1.55 배포)
+
+main 에 머지됐지만 미배포 (v0.1.56 후보, 릴리스는 허락 후): 서포터 아이템 지원 지표(PR #27), v0.1.55 신드라 판 로그 결함 + 후속 기획 PART A(PR #28, `docs/v0.1.55_후속_결과_보고.md`):
+새로고침 뒤 옛 이름으로 고르던 결함(`Tracker.reroll`·`update_slot`), 신드라 칼바람 가속 +5 제거(rules champions `aramOff`), 결투의 대가·축소 엔진 uptime,
+현재 구매 후보를 6칸 빌드 경로까지, buyNowMemo 키 보완, 균열 생성기 규칙(`conv.bonusHPtoAP`), log_judge 오탐 수정. 실게임 미확인: 새로고침 수정·후보 확대. '범람' 2글자 미인식은 원인 모름.
 
 v0.1.55 에 들어간 것 (안정화 기획서, 실제 게임 미확인): 현재 구매 추천(`scoring.buyNowGains`, app `buyNowCurrent`, '⚡ 지금 N레벨에서 바로 강해지는 것'),
 만드는 중 놓아 주기 안전장치(`keepWorth`, 15% · 남은 골드당 가치), 강한 선택·재미있는 선택 문구, 미구현 P0(`effectCount`·능력치 비례 `{"calc"}`·`effectCritDmg`),
