@@ -42,6 +42,7 @@
 
 ## 로그 분석 (사용자가 data.zip 을 보내면)
 
+- **증강 원본 대조**: 매일 갱신(refresh.yml)이 `node tools/aug_audit.js --check` 로 저장된 대조(`docs/증강_원본_대조.json`)에 없던 문제를 '데이터 확인' 이슈에 덧붙인다. 처리했으면 `python tools/aug_resolve_check.py --json && node tools/aug_audit.js --write` 로 대조를 새로 저장
 - **먼저 자동 판정**: `python tools/log_judge.py <data.zip>` → 실게임 확인 항목(카드 3장·사망 중 인식·상점 상자 표시/제거·산 직후 반영·상자 자리/흔들림/잘림)을 해결/재현/부분/해당 없음/확인 못 함으로 (근거 시각). `drawn`(그린 것)·`dead`(죽음·부활)는 v0.1.55 기록부터
 - 내용: `logs/diag.log`(진단), `logs/games/<날짜_챔피언>/events.json`(+ 그림, 끝나면 zip), `logs/game_*_<초>s.json`(5분마다 게임 연동 원본, 이름 가림), `measure/eog_*.json`(경기 결과), `measure/match_*.json`(전적 10명 증강·아이템·승패, 이름 없음).
 - **적 증강 정답** = `match_*.json` 적 팀 `augments` (번호). 프로그램이 판 끝에 점수판에서 읽은 것과 대조해 diag.log 에 "점수판 적 증강 대조" 를 남긴다.

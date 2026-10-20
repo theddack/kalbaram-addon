@@ -1,6 +1,7 @@
 // 증강 원본 대조: 게임 데이터(CommunityDragon kiwi.bin.json)의 증강 효과 값과 우리가 계산에 넣는 값을 효과 항목마다 맞춰 본다.
 //   node tools/aug_audit.js            요약 (상태별 개수)
 //   node tools/aug_audit.js --write    docs/증강_원본_대조_결과.md + docs/증강_원본_대조.json 생성
+//   node tools/aug_audit.js --check    저장된 대조 결과(docs/증강_원본_대조.json)와 비교해 새로 생긴 문제만 마크다운으로 (매일 갱신이 web/review.md 에 덧붙여 이슈로)
 // 원본: .cache/kiwi.bin.json · .cache/lol.stringtable.json (build_data.py 가 받아 둔 것, 버전은 .cache/content-metadata.json)
 // 비교 대상: web/data.json (증강 effects = 툴팁에서 자동으로 뽑은 효과, rules.augments.*.statsResolved = 계산에 쓰는 값) + rules.json (사람이 적은 규칙 원문)
 //
@@ -22,7 +23,7 @@ const read = (f) => JSON.parse(fs.readFileSync(f, "utf8"));
 const STATES = ["일치", "불일치", "미구현", "가정", "원본 확인 불가", "계산 제외"];
 // 효과 항목 종류 (기획서 4.3): 원본 값 이름으로 나눈다
 const KINDS = [
-  ["발동 주기", /cooldown|(^|_)cd|icd|timer|interval|every|period|rate$/i],
+  ["발동 주기", /^(?!.*refund).*(cooldown|(^|_)cd|icd|timer|interval|every|period|rate$)/i],
   ["지속 시간", /duration|time|seconds|window|linger/i],
   ["중첩", /stack|max(count|num)|count|charges|cap/i],
   ["거리·범위", /range|radius|distance|size/i],
@@ -326,8 +327,31 @@ function markdown(r) {
   return L.join("\n");
 }
 
+// 새로 생긴 문제: 불일치 · 빌드가 못 푸는 자리표시자 · 쿨다운 빠진 반복 효과 · 새 증강의 미구현 (저장된 대조 결과에 없던 것만)
+function newProblems(r, base) {
+  const key = (x) => `${x.id}|${x.ref || x.effect || ""}|${x.dv || ""}`;
+  const had = (list) => new Set((list || []).map(key));
+  const out = [];
+  const add = (title, list, fmtRow) => { if (list.length) out.push(`### ${title} (${list.length})`, "", ...list.map((x) => `- ${fmtRow(x)}`), ""); };
+  add("불일치 (계산 값 ≠ 원본)", r.rows.filter((x) => x.state === "불일치" && !had(base.rows.filter((y) => y.state === "불일치")).has(key(x))),
+    (x) => `${x.name} (${x.id}) ${x.ref}: ${x.why}`);
+  add("설명에 '?' (빌드 계산기가 못 품)", (r.fails || []).filter((x) => !had(base.fails).has(key(x))), (x) => `${x.name} (${x.id}) ${x.ref}: ${x.why}`);
+  add("반복 발동 효과에 원본 재사용 대기시간이 빠짐", r.overcount.filter((x) => !had(base.overcount).has(key(x))),
+    (x) => `${x.name} (${x.id}) ${x.effect} — 원본 ${x.dv} = ${x.sec}초 → rules.json effectCooldown 검토`);
+  const oldAugs = new Set(base.perAug.map((x) => x.id));
+  add("새 증강의 계산 안 되는 수치", r.rows.filter((x) => !oldAugs.has(x.id) && ["미구현", "원본 확인 불가"].includes(x.state)),
+    (x) => `${x.name} (${x.id}) ${x.ref} = ${fmt(x.source)}: ${x.state}`);
+  return out.length ? ["## 증강 원본 대조 (tools/aug_audit.js --check)", "", `게임 데이터 ${r.version} · 저장된 대조 ${base.version}`, "", ...out].join("\n") : "";
+}
+
 if (require.main === module) {
   const r = audit();
+  if (process.argv.includes("--check")) {
+    let base = null;
+    try { base = read(path.join(ROOT, "docs", "증강_원본_대조.json")); } catch (e) { base = null; }
+    if (base) process.stdout.write(newProblems(r, base));
+    process.exit(0);
+  }
   if (process.argv.includes("--write")) {
     fs.writeFileSync(path.join(ROOT, "docs", "증강_원본_대조_결과.md"), markdown(r) + "\n");
     fs.writeFileSync(path.join(ROOT, "docs", "증강_원본_대조.json"), JSON.stringify(r, null, 1) + "\n");
@@ -336,4 +360,4 @@ if (require.main === module) {
   for (const s of STATES) console.log(`  ${s}: ${r.count[s]}`);
   console.log(`  규칙에 직접 적은 숫자 ${r.literals.length} · 툴팁 밖 원본 값 ${r.hidden.length} · 쿨다운 빠진 반복 효과 ${r.overcount.length}`);
 }
-module.exports = { audit };
+module.exports = { audit, newProblems };
