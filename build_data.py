@@ -592,8 +592,9 @@ def aug_refs(en_name, wa, patch_url):
 def resolve_rule_stats(rules, aug_spells):
     """rules.json 의 stats 값을 숫자로 바꾼다.
 
-    값 형식: 숫자 / "DataValue이름" / "-DataValue이름"(부호 반대) / {"calc": "계산식이름"}(레벨 비례 가능)
-    게임 데이터 이름으로 적어 두면 패치로 수치가 바뀌어도 자동으로 따라간다.
+    값 형식: 숫자 / "DataValue이름" / "-DataValue이름"(부호 반대) / {"calc": "계산식이름"}(레벨 비례·능력치 비례 가능)
+    / {"calcRatio": "계산식이름", "stat": "MANA"} (계산식 안의 능력치 계수만). scale = 단위 맞추기(게임이 % 숫자로 적은 값 → 0.01),
+    times(가정 배수)와 다르다. 게임 데이터 이름으로 적어 두면 패치로 수치가 바뀌어도 자동으로 따라간다.
     """
     warn = []
     for aid, r in rules["augments"].items():
@@ -617,7 +618,13 @@ def resolve_rule_stats(rules, aug_spells):
                 if val is None:
                     warn.append(f"{aid}.{key}: 데이터 값 '{v['dv']}' 없음")
                     continue
-                out[key] = round(val * v.get("times", 1), 6)
+                out[key] = round(val * v.get("times", 1) * v.get("scale", 1), 6)
+            elif isinstance(v, dict) and "calcRatio" in v:  # 계산식의 능력치 계수 (정신 변환: 최대 마나 × 0.5 → 0.5)
+                e, _ = calc.calc(v["calcRatio"], 1)
+                if e is None or not hasattr(e, "ratios") or v.get("stat") not in e.ratios:
+                    warn.append(f"{aid}.{key}: 계산식 '{v['calcRatio']}' 에 {v.get('stat')} 계수 없음")
+                    continue
+                out[key] = round(e.ratios[v["stat"]] * v.get("scale", 1), 6)
             elif isinstance(v, dict) and "calc18" in v:  # 계산식의 18레벨 값 (중첩 계수는 stacks 개) × 배수
                 e, _ = calc.calc(v["calc18"], 1)
                 if e is None:
@@ -627,13 +634,19 @@ def resolve_rule_stats(rules, aug_spells):
                     warn.append(f"{aid}.{key}: 계산식 '{v['calc18']}' 은 곱셈 식이라 18레벨 값으로 못 씀")
                     continue
                 val = e.base + (e.lvl[1] if e.lvl else 0) + e.ratios.get("STACKS", 0) * v.get("stacks", 0)
-                out[key] = round(val * v.get("times", 1), 6)
+                out[key] = round(val * v.get("times", 1) * v.get("scale", 1), 6)
             elif isinstance(v, dict) and "calc" in v:
                 e, _ = calc.calc(v["calc"], 1)
                 if e is None:
                     warn.append(f"{aid}.{key}: 계산식 '{v['calc']}' 해석 실패")
                     continue
-                out[key] = expr_json([e])
+                if v.get("scale", 1) != 1:
+                    e = e.scale(v["scale"])
+                # 능력치 계수(ratios)가 있으면 화면이 최종 능력치로 계산한다 (stats.js 늦은 능력치).
+                # 계수는 작을 수 있어 자릿수를 넉넉히 (범람: 최대 마나 1당 0.00005 가 소수 넷째 자리 반올림으로 0 이 됐다)
+                out[key] = {"base": [round(e.base, 8)], **({"lvl": [round(x, 8) for x in e.lvl]} if e.lvl else {}),
+                            **({"ratios": {k2: [round(c, 8)] for k2, c in e.ratios.items()}} if e.ratios else {})} \
+                    if hasattr(e, "ratios") else expr_json([e])
             elif isinstance(v, dict):  # 스킬별 가속 {"Q": "QAbilityHaste"}
                 sub = {}
                 for slot, name in v.items():
@@ -689,6 +702,36 @@ def rule_effect_cooldowns(rules, aug_spells, out_augs, warn):
                 hit += 1
         if not hit:
             warn.append(f"{aid}: effectCooldown 을 걸 반복 발동 효과가 없음")
+
+
+def rule_effect_counts(rules, aug_spells, out_augs, warn):
+    """rules.json effectCount / effectTrigger: 효과 한 번에 몇 발인지(원본 값), 발동 빈도를 바로잡는다.
+    count = 원본 값(탄환 세례 5발·마법 미사일 3발·검무 8회), critPer = 치명타 확률 100% 일 때 더 쏘는 발 수(쌍둥이 불꽃 3·치명적 미사일 2).
+    한 발만 세던 것 (2026-10-20 증강 원본 대조: 미구현 NumberOfMissiles·AdditionalBolts·TotalHits)"""
+    by_id = {a["id"]: a for a in out_augs}
+    for aid, r in rules["augments"].items():
+        spec, trig = r.get("effectCount"), r.get("effectTrigger")
+        if not (spec or trig) or aid not in by_id or aid not in aug_spells:
+            continue
+        calc = Calc(aug_spells[aid])
+        fx = [e for e in by_id[aid]["effects"] if e["kind"] in ("physical", "magic", "true", "adaptive")]
+        if not fx:
+            warn.append(f"{aid}: effectCount/effectTrigger 를 걸 피해 효과가 없음")
+            continue
+        for e in fx:
+            if spec:
+                name = spec.get("dv") or spec.get("calc18")
+                n = calc.value(name, 1) if spec.get("dv") else (calc.calc(name, 1)[0].base if calc.calc(name, 1)[0] else None)
+                if n is None and name:
+                    warn.append(f"{aid}: effectCount 값 '{name}' 없음")
+                    continue
+                if name:
+                    e["count"] = n
+                if spec.get("critPer"):
+                    e["count"] = e.get("count", 1)
+                    e["countCrit"] = calc.value(spec["critPer"], 1)
+            if trig:
+                e["trigger"] = {**trig, "from": trig.get("from", "rules.json effectTrigger")}
 
 
 # 자동 규칙: rules.json 에 없는 증강(새 증강 등)은 설명의 '조건 없는 능력치 문장'만 능력치로 읽는다.
@@ -756,12 +799,13 @@ STAT_LABEL = {
     "ultRefundEvery": "궁극기 추가 사용 주기(초)", "ultTriggerHaste": "궁극기 후 가속", "ultTriggerDur": "궁극기 후 지속(초)",
     "ultTriggerMs": "궁극기 후 이동 속도", "dashHaste": "돌진 스킬 가속", "fearCdDiv": "공포 시간 계산 나눗수",
     "APtoCRIT": "주문력 → 치명타 확률", "skillCritDmg": "스킬 치명타 피해", "onhitOnCrit": "치명타 시 적중 효과 추가",
+    "effectCritDmg": "아이템·지속 피해 치명타 피해",
 }
 # 0~1 비율로 저장하는 키 → 화면에 % 로
 PCT_KEYS = {"AS", "CRIT", "MSP", "LS", "OMNIVAMP", "HSP", "MPENP", "HPmult", "ADmult", "APmult", "ASmult",
             "adaptiveMult", "dmgDealtMult", "skillDmgMult", "effectDmgMult", "refundPct", "refundChanceRanged",
             "refundChanceMelee", "ehpPhysMult", "itemHPbonus", "bonusResistMult", "onhitRemainingPct",
-            "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN", "skillCritDmg"}
+            "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN", "skillCritDmg", "effectCritDmg"}
 
 
 def _fmt_val(v, key=None):
@@ -799,7 +843,9 @@ def rule_basis(rule, resolved, desc_html, warn, who):
             out.append({"t": "game", "text": f"{label} {_fmt_val(val, k)} — 게임 계산식 '{v['calc18']}' 18레벨 값"
                         + (f" (중첩 {v['stacks']}개)" if v.get("stacks") else "") + (f" × {v['times']:g}" if v.get("times", 1) != 1 else "")})
         elif isinstance(v, dict) and "calc" in v:
-            out.append({"t": "game", "text": f"{label} — 게임 계산식 '{v['calc']}'"})
+            out.append({"t": "game", "text": f"{label} — 게임 계산식 '{v['calc']}'" + (" (능력치 비례)" if isinstance(val, dict) and val.get("ratios") else "")})
+        elif isinstance(v, dict) and "calcRatio" in v:
+            out.append({"t": "game", "text": f"{label} {_fmt_val(val, k)} — 게임 계산식 '{v['calcRatio']}' 의 {v.get('stat')} 계수"})
         elif isinstance(v, dict):
             out.append({"t": "game", "text": f"{label} {_fmt_val(val)} — 게임 데이터 값 {', '.join(v.values())}"})
         elif isinstance(v, bool):
@@ -1353,6 +1399,7 @@ def main():
     rule_warn = resolve_rule_stats(rules, aug_spells)
     rule_effects(rules, aug_spells, out_augs, rule_warn)
     rule_effect_cooldowns(rules, aug_spells, out_augs, rule_warn)
+    rule_effect_counts(rules, aug_spells, out_augs, rule_warn)
     auto_rules = {}  # rules.json 에 능력치 규칙이 없는 증강 → 설명에서 자동 추정
     for a in out_augs:
         if (rules["augments"].get(a["id"]) or {}).get("stats"):

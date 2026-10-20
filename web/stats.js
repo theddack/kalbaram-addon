@@ -89,11 +89,15 @@
     // 스킬 가속 900 으로 계산됐다 (2026-10-20 피드백 #13: 대마법사 + 노련한 저격수 궁합 +365)
     const REFUND_KEYS = ["refundPct", "refundChanceRanged", "refundChanceMelee", "refundAll"];
     conv.refunds = [];
+    // 능력치 비례 값 (rules {"calc": …} 에 계수가 있는 것: 범람 최대 마나·프로틴 음료 추가 방어/마저·마도사의 주스 상자 주문력):
+    // 최종 능력치를 다 구한 뒤 더한다. 다른 능력치를 다시 바꾸지 않는 값(회복·흡혈·피해 증폭)에만 쓴다
+    const late = [];
     for (const s of mods) {
       if (s && s.refundPct) conv.refunds.push({ pct: s.refundPct, ranged: s.refundChanceRanged ?? 1, melee: s.refundChanceMelee ?? 1, all: !!s.refundAll });
       for (const [k, raw] of Object.entries(s || {})) {
         if (k === "_effects") { effects.push(...raw); continue; }
         if (REFUND_KEYS.includes(k)) continue;
+        if (raw && typeof raw === "object" && raw.ratios && Object.keys(raw.ratios).length) { late.push([k, raw]); continue; }
         const v = levelValue(raw, L);
         if (k in add) addTo(k, v);
         else if (k in mult) mult[k] += v;
@@ -178,6 +182,13 @@
     for (const k of ["LETHALITY", "MPEN", "ARPEN", "MPENP", "LS", "OMNIVAMP", "HSP"]) t[k] = add[k];
     t.RANGE = base.RANGE;
     t.CSTACKS = champ.stacks || 0;  // 스킬의 '중첩당' 피해 (나서스 Q, 스몰더 Q …)
+    for (const [k, raw] of late) {
+      let v = levelValue(raw, L);
+      for (const [stat, arr] of Object.entries(raw.ratios)) v += (Array.isArray(arr) ? arr[0] : arr) * (t[stat] || 0);
+      if (k in t && typeof t[k] === "number") t[k] += v;
+      else if (k in flags) flags[k] += v;
+      else conv[k] = (conv[k] || 0) + v;
+    }
     return { total: t, base, flags, aram, effects, conv };
   }
 
@@ -455,7 +466,8 @@
     out.augDps = 0;
     out.effects = [];
     for (const e of stats.effects || []) {
-      let v = effectValue(e, 1, L, t) * (e.ticks || 1);
+      // 한 번에 여러 발 (rules effectCount: 탄환 세례 5발 · 마법 미사일 3발 · 쌍둥이 불꽃 1 + 치명타 확률 × 3)
+      let v = effectValue(e, 1, L, t) * (e.ticks || 1) * ((e.count || 1) + (e.countCrit ? Math.min(1, t.CRIT) * e.countCrit : 0));
       if (e.rangedScale != null && !champ.melee) v *= e.rangedScale;
       // 쪼개기(불경한 히드라)는 원거리 챔피언이면 절반 (근접 공격력 40% · 원거리 20%, 리그 오브 레전드 위키)
       // (2026-10-15 베인+치명적 리듬: 원거리인데 근접 값으로 세서 불경한 히드라가 무한의 대검보다 위였다)
@@ -488,7 +500,10 @@
       const kind = e.kind === "adaptive" ? (apMain(champ) ? "magic" : "physical") : e.kind;
       row.kind = kind;
       const mit = kind === "magic" ? magMit : kind === "physical" ? physMit : 1;
-      const hit = v * mit * dealt * (1 + flags.trueBonus) * (e.src !== "패시브" && !e.champ ? 1 + (cv.effectDmgMult || 0) : 1);
+      const itemOrAug = e.src !== "패시브" && !e.champ;
+      // 취약: 아이템·지속 피해 효과도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값 (rules effectCritDmg)
+      const effCrit = itemOrAug && cv.effectCritDmg ? 1 + Math.min(1, t.CRIT) * (cv.effectCritDmg + (t.CRITDMG - BASE_CRIT_DMG) - 1) : 1;
+      const hit = v * mit * dealt * (1 + flags.trueBonus) * (itemOrAug ? 1 + (cv.effectDmgMult || 0) : 1) * effCrit;
       row.hit = hit;
       if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / Math.max(tr.sec, e.cooldown || 0); }
       else if (tr.type === "attacks") out.augDps += hit * rate(t.AS / tr.n);

@@ -1,7 +1,7 @@
 {
  "version": "16.20.8248524+branch.releases-16-20.content.release",
  "dataVersion": "16.20.8248524+branch.releases-16-20.content.release",
- "builtAt": "2026-10-20 13:49",
+ "builtAt": "2026-10-20 14:42",
  "augments": 215,
  "disabled": [
   "인내심",
@@ -681,11 +681,11 @@
    "ref": "ManaToHealthCalc",
    "kind": "수치",
    "source": "계산식 (상수)",
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -)"
+   "applied": 0.5,
+   "how": "이름 참조",
+   "key": "manaToHP",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_Minionmancer",
@@ -777,11 +777,11 @@
    "ref": "ManaCalc",
    "kind": "수치",
    "source": "계산식 (InitialAmpPercent=10)",
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -)"
+   "applied": "효과식",
+   "how": "이름 참조",
+   "key": "skillDmgMult",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_ProteinShake",
@@ -789,11 +789,11 @@
    "ref": "BonusHSPower",
    "kind": "수치",
    "source": "계산식 (InitialHS=25, ConversionRate=0.35)",
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -)"
+   "applied": "효과식",
+   "how": "이름 참조",
+   "key": "HSP",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_Quest_UrfsChampion",
@@ -1235,11 +1235,11 @@
    "ref": "CritDamage*100",
    "kind": "수치",
    "source": 1.4500000476837158,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: CRIT)"
+   "applied": 1.4500000476837158,
+   "how": "이름 참조",
+   "key": "effectCritDmg",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_Vulnerability",
@@ -1704,10 +1704,10 @@
    "kind": "수치",
    "source": 3,
    "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: true)"
+   "how": "이름 참조",
+   "key": "effectCount",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_MagicMissile",
@@ -2760,10 +2760,10 @@
    "kind": "수치",
    "source": 8,
    "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: adaptive)"
+   "how": "이름 참조",
+   "key": "effectCount",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "SoulEater",
@@ -2989,10 +2989,10 @@
    "kind": "수치",
    "source": "계산식 (AdditionalMisDivision=3)",
    "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic, trigger.sec, CRIT)"
+   "how": "이름 참조 (계산식 안의 값)",
+   "key": "effectCount",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "Twinfire",
@@ -3145,10 +3145,10 @@
    "kind": "수치",
    "source": "계산식 (AdditionalMisDivision=2)",
    "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, CRIT)"
+   "how": "이름 참조 (계산식 안의 값)",
+   "key": "effectCount",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "CriticalMissile",
@@ -3386,10 +3386,10 @@
    "kind": "수치",
    "source": 5,
    "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, trigger.sec)"
+   "how": "이름 참조",
+   "key": "effectCount",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_FanTheHammer",
@@ -3413,7 +3413,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, trigger.sec)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, trigger.sec, effectCount)"
   },
   {
    "id": "ARAM_FanTheHammer",
@@ -3437,7 +3437,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, trigger.sec)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, trigger.sec, effectCount)"
   },
   {
    "id": "ARAM_DropBear",
@@ -3750,7 +3750,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: ARMOR)"
   },
   {
    "id": "TitansPulse",
@@ -3758,11 +3758,11 @@
    "ref": "AdditionalARMR",
    "kind": "수치",
    "source": 20,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "applied": 20,
+   "how": "이름 참조",
+   "key": "ARMOR",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ChainReaction",
@@ -4758,11 +4758,11 @@
    "ref": "Calc_Damage_Amp",
    "kind": "수치",
    "source": 0.44999998807907104,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -) · 규칙 effectDmgMult=0.45 과 값이 같음 (같은 효과인지 확인 필요)"
+   "applied": 0.45,
+   "how": "이름 참조",
+   "key": "effectDmgMult",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "SurgeField",
@@ -4830,11 +4830,11 @@
    "ref": "Calc_Vamp",
    "kind": "수치",
    "source": "계산식 (상수)",
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -)"
+   "applied": "효과식",
+   "how": "이름 참조",
+   "key": "OMNIVAMP",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "Overkill",
@@ -5052,7 +5052,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: goldValue)"
   },
   {
    "id": "Upgrade_SunderedSky",
@@ -5064,7 +5064,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: goldValue)"
   },
   {
    "id": "Upgrade_SunderedSky",
@@ -5072,11 +5072,11 @@
    "ref": "Gold",
    "kind": "수치",
    "source": 500,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "applied": 500,
+   "how": "이름 참조",
+   "key": "goldValue",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "Upgrade_Ravenous",
@@ -5089,7 +5089,7 @@
    "key": null,
    "hashed": true,
    "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: goldValue)"
   },
   {
    "id": "Upgrade_Ravenous",
@@ -5097,11 +5097,11 @@
    "ref": "Gold",
    "kind": "수치",
    "source": 500,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "applied": 500,
+   "how": "이름 참조",
+   "key": "goldValue",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "Upgrade_DeathDance",
@@ -5109,11 +5109,11 @@
    "ref": "Gold",
    "kind": "수치",
    "source": 250,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: heal, heal)"
+   "applied": 250,
+   "how": "이름 참조",
+   "key": "goldValue",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "Upgrade_DeathDance",
@@ -5125,7 +5125,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: heal, heal)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: heal, heal, goldValue)"
   },
   {
    "id": "Upgrade_DeathDance",
@@ -8306,14 +8306,6 @@
    "sameAs": "HealthAmp"
   },
   {
-   "id": "ARAM_MindtoMatter",
-   "name": "정신 변환",
-   "key": "manaToHP",
-   "value": 0.5,
-   "state": "일치 (설명 수치)",
-   "why": "근거 없음"
-  },
-  {
    "id": "ARAM_OutlawsGrit",
    "name": "무법자의 투지",
    "key": "ARMOR",
@@ -8328,33 +8320,6 @@
    "value": 30,
    "state": "가정",
    "why": "한타 중 평균 2.5중첩 (최대 5)"
-  },
-  {
-   "id": "ARAM_Overflow",
-   "name": "범람",
-   "key": "skillDmgMult",
-   "value": 0.1,
-   "state": "일치 (설명 수치)",
-   "why": "기본 10% 증가만 반영 (마나 비례분 제외)",
-   "sameAs": "InitialAmpPercent"
-  },
-  {
-   "id": "ARAM_Overflow",
-   "name": "범람",
-   "key": "HSP",
-   "value": 0.1,
-   "state": "일치 (설명 수치)",
-   "why": "기본 10% 증가만 반영 (마나 비례분 제외)",
-   "sameAs": "InitialAmpPercent"
-  },
-  {
-   "id": "ARAM_ProteinShake",
-   "name": "프로틴 음료",
-   "key": "HSP",
-   "value": 0.35,
-   "state": "가정",
-   "why": "추가 방어력 + 마법 저항력 합 30",
-   "sameAs": "ConversionRate"
   },
   {
    "id": "ARAM_SkilledSniper",
@@ -8666,23 +8631,6 @@
    "value": 0.5,
    "state": "가정",
    "why": "적중 시 0.5초 감소"
-  },
-  {
-   "id": "ForgedByTheMaster",
-   "name": "장인의 솜씨",
-   "key": "effectDmgMult",
-   "value": 0.45,
-   "state": "일치 (설명 수치)",
-   "why": "아이템·증강 피해 +45%",
-   "sameAs": "calc_damage_amp"
-  },
-  {
-   "id": "WarlockJuicebox",
-   "name": "마도사의 주스 상자",
-   "key": "OMNIVAMP",
-   "value": 0.1,
-   "state": "일치 (설명 수치)",
-   "why": "근거 없음"
   }
  ],
  "perAug": [
@@ -9352,9 +9300,9 @@
    "auto": false,
    "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -9478,9 +9426,9 @@
    "auto": false,
    "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -9496,9 +9444,9 @@
    "auto": false,
    "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -9874,9 +9822,9 @@
    "auto": false,
    "items": 2,
    "states": {
-    "일치": 1,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -10234,9 +10182,9 @@
    "auto": false,
    "items": 2,
    "states": {
-    "일치": 1,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -10936,9 +10884,9 @@
    "auto": false,
    "items": 2,
    "states": {
-    "일치": 1,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -11080,9 +11028,9 @@
    "auto": false,
    "items": 3,
    "states": {
-    "일치": 2,
+    "일치": 3,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -11196,9 +11144,9 @@
    "auto": false,
    "items": 3,
    "states": {
-    "일치": 2,
+    "일치": 3,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -11412,9 +11360,9 @@
    "auto": false,
    "items": 5,
    "states": {
-    "일치": 2,
+    "일치": 3,
     "불일치": 0,
-    "미구현": 3,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -11684,9 +11632,9 @@
    "auto": false,
    "items": 2,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 2,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12352,9 +12300,9 @@
    "auto": false,
    "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12406,9 +12354,9 @@
    "auto": false,
    "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12550,9 +12498,9 @@
    "auto": false,
    "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 3,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12568,9 +12516,9 @@
    "auto": false,
    "items": 2,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 2,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12604,9 +12552,9 @@
    "auto": false,
    "items": 3,
    "states": {
-    "일치": 1,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 2,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12632,9 +12580,9 @@
   }
  ],
  "count": {
-  "일치": 155,
+  "일치": 170,
   "불일치": 0,
-  "미구현": 179,
+  "미구현": 164,
   "가정": 62,
   "원본 확인 불가": 7,
   "계산 제외": 29
