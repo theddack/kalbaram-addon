@@ -828,7 +828,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND,
+    conceptWeights, buildConcepts, rankItems, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;
