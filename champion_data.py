@@ -260,6 +260,9 @@ def spell_cc_seconds(plain):
     return round(total, 2)
 
 
+ONHIT_PASSIVE = re.compile(r"기본 지속 효과\s*:[^.]*기본 공격")
+
+
 def process_champion(cid, detail, bin_json):
     spells, unresolved_total = [], 0
     for i, sp in enumerate(detail["spells"]):
@@ -269,7 +272,15 @@ def process_champion(cid, detail, bin_json):
         text, effects, unresolved = resolve_tooltip(sp["tooltip"], calc, ranks,
                                                     lambda sid: find_spell(bin_json, sid), hp_pct=True)
         for e in effects:
-            e.pop("_ctx", None)
+            ctx = e.pop("_ctx", "")
+            # 스킬의 '기본 지속 효과: 기본 공격이 … 추가로' 피해는 기본 공격마다 들어간다 (케일 E·바루스 W·카사딘 W·티모 E 등).
+            # 스킬 피해(콤보 1번)로만 세면 공격 속도 가치를 낮게 봤다. 지속 피해(독 등)는 다시 걸어도 안 쌓여서 뺀다
+            # 'N번째 공격마다'·'3회 연속'(베인 W)은 매 공격이 아니라서 뺀다 (베인은 rules.json fight 로 따로 센다).
+            # 조건이 붙은 것도 뺀다: 처치하면(트리스타나 E)·수풀(아이번 W)·계약자와 같은 대상(칼리스타 W, 대상별 10초)
+            if (e["kind"] in ("physical", "magic", "true") and ONHIT_PASSIVE.search(ctx)
+                    and not re.search(r"\d+\s*(회|번)|번째|연속|처치하면|수풀|계약자", ctx)
+                    and not re.search(r"dot|overtime|persecond|tick", e["name"], re.I)):
+                e["onhit"] = True
         # 상대 체력 % 피해가 같은 종류로 둘 이상이면(기본/최대, 다른 스킬 참조 중복) 큰 것 하나만
         tgt = {}
         for e in effects:

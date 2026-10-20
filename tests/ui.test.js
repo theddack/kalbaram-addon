@@ -1053,7 +1053,9 @@ test("산 부품으로 만들던 아이템은 순위가 바뀌어도 다음 구�
   const kept = first();
   const D = JSON.parse(require("node:fs").readFileSync(require("node:path").join(__dirname, "..", "web", "data.json"), "utf8"));
   const tree = (id) => { const x = D.parts[id] || D.items.find((i) => i.id === id); return [id, ...((x && x.from) || []).flatMap(tree)]; };
-  assert.ok(tree(kept).includes("1018"), `망토를 쓰는 아이템: ${kept}`);
+  // 산 부품을 쓰는 아이템 (바로 전 1순위가 단검 2개를 쓰는 크라켄이면 그것, 아니면 망토까지 쓰는 루난 — 데이터에 따라 다르다)
+  const used = tree(kept);
+  assert.ok(used.filter((x) => x === "1042").length >= 2 || used.includes("1018"), `산 부품을 쓰는 아이템: ${kept}`);
   // 레벨이 바뀌어 다시 계산해도 그대로
   live(["1042", "1042", "1018"], 12);
   assert.equal(first(), kept);
