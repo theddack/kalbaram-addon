@@ -41,7 +41,7 @@ function replay(name) {
       for (const [k, v] of Object.entries(rule.perTakedown || {})) o[k] = (o[k] || 0) + v * takedowns;
       return o;
     });
-    const st = Stats.computeStats(c, ap.level, items, augSt, { aram: true }).total;
+    const st = Stats.computeStats(c, ap.level, items, augSt, { aram: true, now: true }).total;
     const stats = {};
     for (const [k, lk] of Object.entries(LIVE)) stats[k] = [Math.round((st[k] || 0) * 100) / 100, Math.round(ap.championStats[lk] * 100) / 100];
     rows.push({ file: f, t: Math.round(t), level: ap.level, items: items.map((i) => i.name),

@@ -199,7 +199,10 @@ test("기본 빌드는 라이엇 주 피해 유형을 따른다 (이렐리아 AP
   const isCrit = (it) => (it.tags.CRIT || 0) >= 0.5 || "CRIT" in (Array.isArray(it.stats) ? {} : it.stats || {});
   assert.equal(by("Irelia").damageType, "physical");
   assert.ok(!items("Irelia").some(isAP), "이렐리아(물리)에 AP 아이템 없음");
-  for (const id of ["Azir", "Teemo", "Kayle"]) assert.ok(!items(id).some((it) => (it.tags.AD || 0) >= 0.5 && !(it.tags.AP >= 0.5)), `${id}(마법)에 AD 아이템 없음`);
+  for (const id of ["Azir", "Teemo"]) assert.ok(!items(id).some((it) => (it.tags.AD || 0) >= 0.5 && !(it.tags.AP >= 0.5)), `${id}(마법)에 AD 아이템 없음`);
+  // 예외: 라이엇 칼바람 추천이 반대 유형 위주인 챔피언 (케일 = 크라켄·몰락한 왕의 검·구인수) → 그 추천을 따른다
+  const official = new Set(by("Kayle").officialItems.ranges.flat());
+  assert.ok(items("Kayle").some((it) => official.has(it.id) && (it.tags.AD || 0) >= 0.5), "케일은 라이엇 추천 AD 적중 아이템");
   for (const id of ["Darius", "Trundle", "Jax"]) assert.ok(!items(id).some(isCrit), `${id}(치명타 못 살리는 근접)에 치명타 없음`);
   assert.ok(items("Jinx").some(isCrit), "원거리 딜러는 치명타 그대로");
   assert.ok(items("Yasuo").some(isCrit), "치명타 특성(야스오)은 그대로");
@@ -443,4 +446,44 @@ test("점수가 비슷하면 증강 필요 → 증강 연계 → 라이엇 추�
   assert.equal(out[2].tie, undefined, "원래 1위가 그대로면 표시 없음");
   const far = S.tieOrder([row("a", 100, 3), row("c", 90, 1)], prio);
   assert.deepEqual(far.map((r) => r.item.id), ["a", "c"], "10% 차이면 연계라도 안 올린다");
+});
+
+test("챔피언 전투 특성: 베인 은화살·징크스 미니건은 추천 점수(한타)에만, 지금 능력치 비교(now)엔 안 넣는다", () => {
+  const v = champ("Vayne");
+  const fx = (v.fightStats._effects || [])[0];
+  assert.equal(fx.kind, "true");
+  assert.equal(fx.ratios.TGT_MAXHP[0], 0.1, "W 5단계 최대 체력 10% (설명 수치)");
+  const m = St.evaluate(v, 18, [], [], { aram: true }).m;
+  const row = m.effects.find((e) => e.src === "W 은화살");
+  assert.ok(row && row.hit > 0, "은화살이 초당 피해에 들어간다");
+  const now = St.computeStats(v, 18, [], [], { aram: true, now: true });
+  assert.ok(!now.effects.some((e) => e.src === "W 은화살"), "지금 능력치 계산엔 없다");
+  const j = champ("Jinx");
+  const fight = St.computeStats(j, 18, [], [], { aram: true }).total.AS;
+  const live = St.computeStats(j, 18, [], [], { aram: true, now: true }).total.AS;
+  assert.ok(fight > live * 1.5, `미니건 3중첩 공격 속도 ${fight} vs 지금 ${live}`);
+  assert.ok(j.fightBasis.some((b) => b.t === "assume"), "가정은 근거에 적혀 있다");
+});
+
+test("주 피해 유형: 라이엇 damageType 이 물리면 스킬 마법 비율이 높아도 물리 (바루스 즉시 골드 증강·추천 가중치)", () => {
+  const c = champ("Varus");
+  assert.equal(c.damageType, "physical");
+  assert.ok(c.magicShare > 0.5, "스킬 계수만 보면 마법 쪽");
+  const t = St.computeStats(c, 18, [], [{ goldValue: 1000 }], { aram: true }).total;
+  const t0 = St.computeStats(c, 18, [], [], { aram: true }).total;
+  assert.ok(t.AD > t0.AD && t.AP === t0.AP, "즉시 골드는 공격력으로");
+  const w = S.profile(c, d.tags);
+  assert.ok(w.AD > w.AP, `AD ${w.AD} > AP ${w.AP}`);
+});
+
+test("라이엇 칼바람 추천이 반대 유형 위주면(케일) 그 아이템을 맨 뒤로 밀지 않는다 · 케일은 18레벨 원거리", () => {
+  const c = champ("Kayle");
+  assert.equal(c.melee, false);
+  assert.equal(c.range, 625);
+  const rows = S.rankItems(d.items, S.profile(c, d.tags), [], [], d.rules, c, { aram: true });
+  const kraken = rows.find((r) => r.item.name === "크라켄 학살자");
+  assert.ok(kraken && !kraken.offType, "크라켄 학살자(라이엇 추천)는 반대 유형 표시 없음");
+  // 공식 추천이 같은 유형인 마법 챔피언(럭스)은 그대로 막는다
+  const lux = S.rankItems(d.items, S.profile(champ("Lux"), d.tags), [], [], d.rules, champ("Lux"), { aram: true });
+  assert.ok(lux.find((r) => r.item.name === "크라켄 학살자").offType);
 });

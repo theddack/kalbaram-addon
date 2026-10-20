@@ -104,7 +104,7 @@ function nowChamp() {
     const x = v * k;
     return [n, step[n] ? Math.floor(x / step[n] + 1e-9) * step[n] : x];
   })) });
-  const val = (k) => St.computeStats(at(k), state.level, nowItems(), nowAugStats(), statOpts()).total[key] || 0;
+  const val = (k) => St.computeStats(at(k), state.level, nowItems(), nowAugStats(), { ...statOpts(), now: true }).total[key] || 0;
   // 배율 → 기준 능력치는 거의 직선 (라바돈처럼 % 증가가 있어도). 치명타 초과분 전환 같은 꺾임은 두 번 더 고친다
   const v0 = val(0), slope = val(1) - v0;
   if (!(slope > 0)) return c;
@@ -121,7 +121,7 @@ function statCheck() {
   // 게임 레벨을 아직 반영하기 전(쿨타임 다시 그리기가 먼저 보낸다)이면 비교하지 않는다 (2026-10-17 카이사 판: 첫 기록이 18레벨 vs 실제 3레벨)
   if (state.liveLevel != null && state.liveLevel !== state.level) return null;
   const c = nowChamp();
-  const t = St.computeStats(c, state.level, nowItems(), nowAugStats(), statOpts()).total;
+  const t = St.computeStats(c, state.level, nowItems(), nowAugStats(), { ...statOpts(), now: true }).total;
   const r2 = (v) => Math.round(v * 100) / 100;
   const rows = {};
   for (const [k, lk] of Object.entries(LIVE_STAT)) {
@@ -632,7 +632,7 @@ function renderChampCard() {
     <div><span class="muted small">가중치</span> ${top.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}</div>
     <div><span class="muted small">스킬 특성</span> ${traits.map(([t, v]) => `<span class="chip">${label(t)} ${v}</span>`).join("")}
       ${feats.map((f) => `<span class="chip on">${esc(featLabel[f] || f)}</span>`).join("")}</div>
-    ${aramChips(c)}${patchChip(c.patch, c.patchCheck)}${c.stackBasis ? `<div class="small">중첩형 패시브·스킬은 게임 중반 평균 중첩으로 계산해요 ${basisBlock(c.stackBasis)}</div>` : ""}${refLinks(c.refs)}</div>`;
+    ${aramChips(c)}${patchChip(c.patch, c.patchCheck)}${c.stackBasis ? `<div class="small">중첩형 패시브·스킬은 게임 중반 평균 중첩으로 계산해요 ${basisBlock(c.stackBasis)}</div>` : ""}${c.fightBasis ? `<div class="small">한타 기준 스킬 효과·사거리를 추천 점수에 넣어요 ${basisBlock(c.fightBasis)}</div>` : ""}${refLinks(c.refs)}</div>`;
 }
 
 const ARAM_NAME = { dmg_dealt: "가하는 피해", dmg_taken: "받는 피해", healing: "회복", shielding: "보호막",
