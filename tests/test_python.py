@@ -2089,12 +2089,15 @@ class CardsAndBox0150(unittest.TestCase):
         t.feed(["가", "나", "다"], pos)
         self.assertEqual(augocr.reroll_at(pos, 0.71, 0.71), 2, "1440×900 영상의 새로고침 버튼 높이")
         self.assertIsNone(augocr.reroll_at(pos, 0.71, 0.50), "카드 몸통은 새로고침 아님")
+        seq = t.state["seq"]
         t.reroll(2)
         self.assertEqual(t.state["rerolled"], [False, False, True])
-        seq = t.state["seq"]
-        t.feed(["가", "나", None], pos)  # 새 카드 이름을 아직 못 읽음
-        self.assertEqual(t.state["offers"], ["가", "나", None], "옛 이름 '다'를 남기지 않는다")
+        self.assertEqual(t.state["offers"], ["가", "나", None], "누르는 즉시 옛 이름 '다'를 지운다")
         self.assertGreater(t.state["seq"], seq)
+        t.feed(["가", "나", "다"], pos)  # 새로고침 연출 중 옛 카드가 다시 읽힘
+        self.assertEqual(t.state["offers"], ["가", "나", None], "연출 중 옛 이름은 무시")
+        t.feed(["가", "나", None], pos)  # 새 카드 이름을 아직 못 읽음
+        self.assertEqual(t.state["offers"], ["가", "나", None])
         t.feed(["가", "나", "라"], pos)
         self.assertEqual(t.state["offers"], ["가", "나", "라"])
         self.assertEqual(t.state["rerolled"], [False, False, True], "같은 선택 화면에선 그대로")
@@ -2106,6 +2109,34 @@ class CardsAndBox0150(unittest.TestCase):
         t.feed(None)
         t.feed(None)
         self.assertEqual(t.state["rerolled"], [False, False, False])
+
+    def test_reroll_all_then_pick_unread_slot_is_unknown(self):
+        """2026-10-20 v0.1.55 신드라 판: 세 칸 다 새로고침 → 새 이름 1개('처형 시간')만 읽힘 → 첫 칸 클릭.
+        예전엔 옛 이름 '마법 명사수'로 골랐다고 기록했다. 이제 읽힌 칸은 채우고, 못 읽은 칸을 고르면 '못 정함'"""
+        import augocr
+        t = augocr.Tracker()
+        pos = {"xs": [0.29, 0.50, 0.71], "nameY": 0.41}
+        t.feed(["마법 명사수", "신난다!", "범람"], pos)
+        for i in (1, 2, 0):
+            t.reroll(i)
+        self.assertEqual(t.state["offers"], [None, None, None])
+        self.assertTrue(t.update_slot(1, "처형 시간"), "이름 하나만 읽혀도 빈 칸이면 채운다")
+        self.assertFalse(t.update_slot(0, "마법 명사수"), "연출 중 옛 이름으로는 안 채운다")
+        self.assertEqual(t.state["offers"], [None, "처형 시간", None])
+        t.click(0)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["pickSeq"], 1)
+        self.assertIsNone(t.state["picked"], "새 이름을 못 읽은 칸은 옛 이름으로 고르지 않는다")
+        # 읽힌 칸을 골랐으면 그 이름
+        t = augocr.Tracker()
+        t.feed(["마법 명사수", "신난다!", "범람"], pos)
+        t.reroll(1)
+        t.update_slot(1, "처형 시간")
+        t.click(1)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["picked"], "처형 시간")
 
     def test_shop_button_click(self):
         """닫힌 상점: 아래 골드 버튼 클릭이면 바로 상점을 읽는다 (피드백 #10). 게임 창 1440×900 이 화면 (240, 90) 에"""
