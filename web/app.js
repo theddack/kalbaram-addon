@@ -1624,7 +1624,18 @@ function buildingItem(avail) {
   if (prev && (prev.sunk = sunk(prev)) >= BUILD_KEEP_GOLD) return prev;
   let best = null;
   for (const r of near) if ((r.sunk = sunk(r)) > ((best && best.sunk) || 0)) best = r;
-  return best && best.sunk >= BUILD_KEEP_GOLD ? best : null;
+  if (!best || best.sunk < BUILD_KEEP_GOLD) return null;
+  return keepWorth(best, near[0]) ? best : null;
+}
+// 놓아 주는 경우 (안정화 기획서 8.3): 계산 1순위보다 BUILD_DROP_GAP 넘게 낮고, 남은 골드 1당 가치도 1순위보다 나쁠 때만.
+// 이미 부품을 많이 사서 남은 돈이 적으면 점수가 조금 낮아도 마저 만드는 게 이득이다
+// (2026-10-20 기록 판 6건: 점수가 3~39% 낮아도 남은 골드당 가치는 모두 유지 쪽이 높았다 → 지금은 안전장치)
+const BUILD_DROP_GAP = 0.15;
+function keepWorth(r, top) {
+  if (!top || top === r || !(top.score > 0)) return true;
+  const own = () => (state.inventory || []).reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {});
+  const left = Math.max(1, partGold(r.item.id) - r.sunk), topLeft = Math.max(1, remainingCost(top.item.id, own()));
+  return !((top.score - r.score) / top.score > BUILD_DROP_GAP && r.score / left < top.score / topLeft);
 }
 
 function renderNextBuy(rows) {

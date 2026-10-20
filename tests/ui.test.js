@@ -1120,3 +1120,13 @@ test("⚙ 팝업은 바깥 클릭·Esc·✕ 로 닫히고, 상태 글은 짧은 
   assert.equal(p.text("#aug-title"), "증강 4개 완료");
   assert.deepEqual(p.errors, []);
 });
+
+// 안정화 기획서 8.3: 만드는 중 아이템은 1순위보다 15% 넘게 낮고 남은 골드당 가치도 나쁠 때만 놓아 준다
+test("만드는 중 놓아 주기: 점수 차이가 크고 남은 골드당 가치도 나쁘면 놓아 주고, 거의 다 만들었으면 계속", async () => {
+  const p = await loadPage({ simple: true });
+  const it = (name) => p.data.items.find((i) => i.name === name);
+  const top = { item: it("무한의 대검"), score: 2 };
+  assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: 600, score: 1 }, top), false, "절반 점수 · 남은 돈 많음 → 놓아 줌");
+  assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: it("크라켄 학살자").gold - 300, score: 1 }, top), true, "남은 300G → 계속");
+  assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: 600, score: 1.9 }, top), true, "점수 차이 5% → 계속");
+});
