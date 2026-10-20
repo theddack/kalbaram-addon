@@ -85,9 +85,15 @@
     // 효과 출처: 챔피언 패시브, 아이템 고유 효과 (증강 효과는 augStats 의 _effects 로 들어온다)
     const effects = [...withSrc(champ.passive, "패시브")];
     for (const it of items) effects.push(...withSrc(it, it.name));
+    // 쿨 반환(대마법사·노련한 저격수 등)은 증강마다 따로: 더하면 반환 30% + 80%, 확률 1 + 0.4 로 상한(90%)에 걸려
+    // 스킬 가속 900 으로 계산됐다 (2026-10-20 피드백 #13: 대마법사 + 노련한 저격수 궁합 +365)
+    const REFUND_KEYS = ["refundPct", "refundChanceRanged", "refundChanceMelee", "refundAll"];
+    conv.refunds = [];
     for (const s of mods) {
+      if (s && s.refundPct) conv.refunds.push({ pct: s.refundPct, ranged: s.refundChanceRanged ?? 1, melee: s.refundChanceMelee ?? 1, all: !!s.refundAll });
       for (const [k, raw] of Object.entries(s || {})) {
         if (k === "_effects") { effects.push(...raw); continue; }
+        if (REFUND_KEYS.includes(k)) continue;
         const v = levelValue(raw, L);
         if (k in add) addTo(k, v);
         else if (k in mult) mult[k] += v;
@@ -137,7 +143,8 @@
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
     let bonusAS = base.asLevelBonus + add.AS;
     if (conv.AStoHASTE) { t.HASTE += add.AS * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }  // 순수주의자 - 마법사
-    t.CRIT = Math.min(1, add.CRIT);
+    // 보석 건틀릿: 주문력 1당 치명타 확률 (conv.APtoCRIT, 원본 CritConverRatio 0.00045 = 주문력 100당 4.5%)
+    t.CRIT = Math.min(1, add.CRIT + (conv.APtoCRIT ? t.AP * conv.APtoCRIT : 0));
     // 그레이브즈처럼 공격 속도 표시값이 다른 챔피언은 레벨별 상한 (champ.asCapLv = [1레벨, 18레벨], rules.json champions.asCap)
     const cap = champ.asCapLv ? champ.asCapLv[0] + (champ.asCapLv[1] - champ.asCapLv[0]) * (L - 1) / 17 : ms.asCap || AS_CAP;
     const asOf = (b) => Math.min(cap, (base.AS + b * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
@@ -383,17 +390,21 @@
     const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, spellOnhit: 0 };
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
-    const refund = (h) => {  // 쿨의 f% 를 확률 p 로 돌려받음 → 가속 100 × (1/(1-pf) - 1)
-      if (!cv.refundPct) return 0;
-      const pc = ranged ? (cv.refundChanceRanged ?? 1) : (cv.refundChanceMelee ?? 1);
-      return 100 * (1 / (1 - Math.min(0.9, cv.refundPct * pc)) - 1);
+    // 쿨의 f% 를 확률 p 로 돌려받음 → 남는 쿨 비율 (1 - pf). 여럿이면 곱한다 → 가속 100 × (1/Π(1-pf) - 1)
+    const refund = (ult) => {
+      let keep = 1;
+      for (const r of cv.refunds || []) {
+        if (ult && !r.all) continue;
+        keep *= 1 - Math.min(0.9, r.pct * (ranged ? r.ranged : r.melee));
+      }
+      return 100 * (1 / Math.max(0.1, keep) - 1);
     };
     const rIdx = champ.spells.findIndex((sp) => sp.slot === "R");
     const rSp = champ.spells[rIdx];
     const rRank = ranks[rIdx] || 1;
     const rBaseCd = rSp ? rSp.cooldown[Math.max(0, Math.min(rRank, rSp.cooldown.length) - 1)] || 100 : 100;
     const ultHaste = t.HASTE + flags.ultHaste * 1.5 + (cv.ultHasteAdd || 0)
-      + (cv.ultRefundEvery ? 100 * rBaseCd / cv.ultRefundEvery : 0) + (cv.refundAll ? refund() : 0);
+      + (cv.ultRefundEvery ? 100 * rBaseCd / cv.ultRefundEvery : 0) + refund(true);
     const rCd = rBaseCd * 100 / (100 + ultHaste);
     const ultUptime = (dur) => Math.min(1, (dur || 0) / Math.max(rCd, 1));
     const basicHaste = t.HASTE + (cv.basicHaste || 0) + 100 * t.AS * (cv.onhitCdr || 0)
@@ -409,6 +420,8 @@
       const cd = cdBase * 100 / (100 + haste);
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
       let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0;
+      // 보석 건틀릿: 스킬도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값
+      const skillCrit = cv.skillCritDmg ? 1 + Math.min(1, t.CRIT) * (cv.skillCritDmg + (t.CRITDMG - BASE_CRIT_DMG) - 1) : 1;
       for (const v of vals) {
         if (v.onhit && DMG_KINDS.includes(v.kind)) {
           // 스킬의 '기본 지속 효과' 적중 시 피해: 기본 공격마다 (초당 피해의 평타 쪽). 스킬 피해 증폭은 안 받는다
@@ -417,7 +430,7 @@
           continue;
         }
         if (DMG_KINDS.includes(v.kind)) {
-          const amp = dealt * (1 + flags.skillDmgMult);
+          const amp = dealt * (1 + flags.skillDmgMult) * skillCrit;
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : 1;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
@@ -479,7 +492,7 @@
       row.hit = hit;
       if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / Math.max(tr.sec, e.cooldown || 0); }
       else if (tr.type === "attacks") out.augDps += hit * rate(t.AS / tr.n);
-      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS);
+      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0));
       else if (tr.type === "cast") { out.augCombo += hit * comboTimes(casts); out.augDps += hit * rate(castRate); }
       else out.augCombo += hit;
     }
@@ -492,7 +505,9 @@
     }
     out.combo += out.augCombo;
     const critMul = 1 + (t.critAuto ?? t.CRIT) * (t.CRITDMG - 1);
-    out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS;
+    // 한 발에 두 놈: 치명타 평타는 적중 효과를 한 번 더 (conv.onhitOnCrit 번) → 적중 효과에 (1 + 치명타 확률 × 횟수)
+    const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0);
+    out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS * onCrit;
     // ---- 버티는 힘: 체력 × 저항 + 무적·피해 감소(그동안 받을 피해) + 생명선 회복 + 아이템 피해 감소
     const extraHp = (cv.selfHeal || 0) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
     out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;

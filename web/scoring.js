@@ -691,6 +691,9 @@
   // 숫자 근거 = 궁합(같이 골랐을 때 가치 − 따로 골랐을 때 가치, 고른 증강 전부 누적). 숫자가 없으면 연계라고 단정하지 않는다
   const LINK_STRONG = SYNERGY_MARK; // 화면 '궁합'과 같은 기준 (가치 ×100 기준 +5)
   const LINK_SOME = 0.01;
+  // 강한 연계는 절대값만이 아니라 '혼자일 때 가치보다 이만큼 더' 일 때만: 딜 증강끼리는 서로 곱해져 대부분 +5 를 넘어서,
+  // 증강을 2개 고르면 다음 추천 목록이 전부 '🔗 강한 연계'였다 (2026-10-20 피드백 #13: 코르키 증강 2개 39개 → 6개)
+  const LINK_STRONG_REL = 0.3;
   const ULT_STATS = ["ultHaste", "ultHasteAdd", "ultRefundEvery", "ultTriggerHaste", "ultTriggerDur", "ultTriggerMs"];
   const setsMelee = (r) => ((r.setsFeatures || {}).add || []).includes("melee");
   const usesUlt = (rules, a) => (effTags(rules, a).ULT || 0) >= 0.6 || ULT_STATS.some((k) => k in (ruleOf(rules, a).statsResolved || {}));
@@ -711,14 +714,15 @@
     }
     return null;
   }
-  function linkOf(a, chosen, rules, interaction, numeric, synTag) {
+  function linkOf(a, chosen, rules, interaction, numeric, synTag, aloneGain = null) {
     if (!chosen.length) return null;
     const why = ruleConflict(a, chosen, rules);
     if (why) return { kind: "conflict", why };
     // 숫자상 손해(궁합 음수)는 '충돌'이라 하지 않는다: 같이/따로 비교할 때 기준 빌드가 달라 생기는 차이가 섞여 있다.
     // 충돌은 규칙으로 아는 것(궁극기 봉인·반대 환산·근접 전환)만
     const sure = numeric && chosen.every((c) => hasNumbers(c, rules));
-    if (interaction != null && interaction >= LINK_STRONG) return { kind: "strong" };
+    if (interaction != null && interaction >= LINK_STRONG
+        && (aloneGain == null || interaction >= LINK_STRONG_REL * Math.max(aloneGain, LINK_STRONG))) return { kind: "strong" };
     if (interaction != null && interaction >= LINK_SOME) return { kind: "some" };
     if (sure) return { kind: "none" };
     // 숫자로 계산이 안 되는 쪽이 있으면 '연계 없음'이라고도 '강한 연계'라고도 하지 않는다
@@ -763,7 +767,9 @@
             else if (interaction <= -SYNERGY_MARK) { tier = order[Math.min(4, order.indexOf(tier) + 1)]; reasons.push("충돌"); }
           }
           if (synergyMode && interaction != null && interaction > 0) reasons.push("궁합");
-          const link = sc.req && !sc.req.met ? null : linkOf(a, chosen, rules, interaction, !!g, synTag(a));
+          const link = sc.req && !sc.req.met ? null : linkOf(a, chosen, rules, interaction, !!g, synTag(a), alone[a.id] ? alone[a.id].gain : null);
+          // 연계 기준 보기의 S(🔥 강력 추천)는 강한 연계일 때만: 상위 10%라도 연계가 약하면 A (전부 🔥 로 보이지 않게, 피드백 #13·#14)
+          if (synergyMode && tier === "S" && !(link && link.kind === "strong")) tier = "A";
           // 규칙으로 아는 충돌(궁극기 봉인 + 궁극기 증강 등)은 숫자에 안 잡히는 경우가 있어 등급도 한 단계 내린다
           if (link && link.kind === "conflict" && link.why && !reasons.includes("충돌")) {
             reasons.push("충돌");

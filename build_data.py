@@ -755,12 +755,13 @@ STAT_LABEL = {
     "healToDamage": "회복 → 피해", "ehpMult": "받는 피해 감소", "shieldMult": "스킬 보호막 강화", "ARPEN": "방어구 관통력", "AStoHASTE": "공격 속도 → 스킬 가속 전환", "critToHaste": "치명타 → 스킬 가속",
     "ultRefundEvery": "궁극기 추가 사용 주기(초)", "ultTriggerHaste": "궁극기 후 가속", "ultTriggerDur": "궁극기 후 지속(초)",
     "ultTriggerMs": "궁극기 후 이동 속도", "dashHaste": "돌진 스킬 가속", "fearCdDiv": "공포 시간 계산 나눗수",
+    "APtoCRIT": "주문력 → 치명타 확률", "skillCritDmg": "스킬 치명타 피해", "onhitOnCrit": "치명타 시 적중 효과 추가",
 }
 # 0~1 비율로 저장하는 키 → 화면에 % 로
 PCT_KEYS = {"AS", "CRIT", "MSP", "LS", "OMNIVAMP", "HSP", "MPENP", "HPmult", "ADmult", "APmult", "ASmult",
             "adaptiveMult", "dmgDealtMult", "skillDmgMult", "effectDmgMult", "refundPct", "refundChanceRanged",
             "refundChanceMelee", "ehpPhysMult", "itemHPbonus", "bonusResistMult", "onhitRemainingPct",
-            "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN"}
+            "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN", "skillCritDmg"}
 
 
 def _fmt_val(v, key=None):
