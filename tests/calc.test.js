@@ -562,3 +562,17 @@ test("취약: 아이템 효과도 치명타 → 치명타 확률이 높을수록
     .filter((e) => e.src === "몰락한 왕의 검").reduce((t, e) => t + (e.hit || 0), 0);
   assert.ok(eff([aug("ARAM_Vulnerability")]) > eff([]) * 1.3);
 });
+
+// 2026-10-20 리치베인 과대평가 확인: 서포터 아이템 고유 효과(월석 재생기 연쇄·헬리아의 메아리 피해 → 아군 회복)가 수치로 안 잡혔다
+test("서포터 아이템: 아군을 돕는 챔피언이면 월석 재생기·헬리아의 메아리가 지원 지표를 올리고, 아니면 안 올린다", () => {
+  const sup = (id, name) => {
+    const c = champ(id);
+    return St.evaluate(c, 18, [item(name)], []).m.allySupport || 0;
+  };
+  assert.ok(sup("Lulu", "월석 재생기") > 0, "룰루 + 월석");
+  assert.ok(sup("Lulu", "헬리아의 메아리") > 0, "룰루 + 헬리아");
+  assert.equal(sup("Zed", "월석 재생기"), 0, "아군을 안 돕는 제드는 없음");
+  // 헬리아 충전은 레벨 비례 최대(18레벨 250)를 넘지 않는다
+  const m = St.evaluate(champ("Lulu"), 18, [item("헬리아의 메아리"), item("라바돈의 죽음모자")], []).m;
+  assert.ok(m.allySupport <= 250 * 1.5 + 1e-6, String(m.allySupport));
+});

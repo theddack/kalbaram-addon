@@ -541,6 +541,16 @@
     out.control = control;
     out.dps = out.autoDps + 0.3 * out.skillDps + out.augDps;  // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 30%만
     out.support = out.shield + out.heal;
+    // 서포터 아이템: 아군을 돕는 챔피언(allysupport)이면 그 도움을 다른 아군에게 더 준다 (rules.json items).
+    // 월석 재생기 연쇄(회복 30%·보호막 35%), 헬리아의 메아리(감소 전 피해 30% 충전 → 아군 회복, 최대 80~250).
+    // 예전엔 수치로 안 잡혀 서포터 1위가 리치베인 같은 피해 아이템이었다 (2026-10-20 공식 추천 차이 분석)
+    if ((champ.features || []).includes("allysupport")) {
+      const hsp = (aram.healing || 1) * (1 + t.HSP);
+      const chain = out.heal * (cv.allyHealMult || 0) + out.shield * (cv.allyShieldMult || 0);
+      const helia = cv.dmgToAllyHeal ? Math.min(cv.allyHealCap || Infinity, out.comboRaw * cv.dmgToAllyHeal) * hsp : 0;
+      out.allySupport = chain + helia;
+      out.support += out.allySupport;
+    }
     return out;
   }
 

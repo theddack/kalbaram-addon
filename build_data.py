@@ -800,12 +800,13 @@ STAT_LABEL = {
     "ultTriggerMs": "궁극기 후 이동 속도", "dashHaste": "돌진 스킬 가속", "fearCdDiv": "공포 시간 계산 나눗수",
     "APtoCRIT": "주문력 → 치명타 확률", "skillCritDmg": "스킬 치명타 피해", "onhitOnCrit": "치명타 시 적중 효과 추가",
     "effectCritDmg": "아이템·지속 피해 치명타 피해",
+    "allyHealMult": "다른 아군 연쇄 회복", "allyShieldMult": "다른 아군 연쇄 보호막", "dmgToAllyHeal": "피해 → 아군 회복 충전", "allyHealCap": "아군 회복 최대",
 }
 # 0~1 비율로 저장하는 키 → 화면에 % 로
 PCT_KEYS = {"AS", "CRIT", "MSP", "LS", "OMNIVAMP", "HSP", "MPENP", "HPmult", "ADmult", "APmult", "ASmult",
             "adaptiveMult", "dmgDealtMult", "skillDmgMult", "effectDmgMult", "refundPct", "refundChanceRanged",
             "refundChanceMelee", "ehpPhysMult", "itemHPbonus", "bonusResistMult", "onhitRemainingPct",
-            "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN", "skillCritDmg", "effectCritDmg"}
+            "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN", "skillCritDmg", "effectCritDmg", "allyHealMult", "allyShieldMult", "dmgToAllyHeal"}
 
 
 def _fmt_val(v, key=None):
@@ -846,8 +847,11 @@ def rule_basis(rule, resolved, desc_html, warn, who):
             out.append({"t": "game", "text": f"{label} — 게임 계산식 '{v['calc']}'" + (" (능력치 비례)" if isinstance(val, dict) and val.get("ratios") else "")})
         elif isinstance(v, dict) and "calcRatio" in v:
             out.append({"t": "game", "text": f"{label} {_fmt_val(val, k)} — 게임 계산식 '{v['calcRatio']}' 의 {v.get('stat')} 계수"})
+        elif isinstance(v, dict) and "base" in v:  # 레벨 비례 수치 (설명에 나온 'a~b(레벨 비례)')
+            lv = v.get("lvl") or [v["base"][0], v["base"][0]]
+            out.append({"t": "desc", "text": f"{label} {lv[0]:g}~{lv[1]:g}(레벨 비례) — 설명에 나온 수치"})
         elif isinstance(v, dict):
-            out.append({"t": "game", "text": f"{label} {_fmt_val(val)} — 게임 데이터 값 {', '.join(v.values())}"})
+            out.append({"t": "game", "text": f"{label} {_fmt_val(val)} — 게임 데이터 값 {', '.join(map(str, v.values()))}"})
         elif isinstance(v, bool):
             out.append({"t": "desc", "text": f"{label}: 설명 내용"})
         elif rule.get("basis"):
