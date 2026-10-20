@@ -209,6 +209,29 @@ def set_dpi_aware():
 
 
 # ---------------------------------------------------------------- 그리기 (OS 무관, 맥에서도 확인 가능)
+def with_live(payload, live):
+    """그리는 순간의 상점 열림·죽음으로 상자를 띄울지 다시 정한다.
+    예전엔 화면(JS)이 보낼 때의 값으로만 정해서, 상점을 닫거나 부활해도 화면이 다시 보낼 때까지(최대 약 13초)
+    상자가 남았다 (2026-10-20 피드백 #11 영상: 부활 후 이동·교전 중에도 상자). live = {"shop": 상점 위치|None, "dead": bool}"""
+    if not live or payload.get("shop") == "preview":
+        return payload
+    p = dict(payload)
+    shop, dead = live.get("shop"), bool(live.get("dead"))
+    p["shop"] = shop or ("dead" if dead else ("start" if p.get("box") == "start" else None))
+    p["dead"] = dead
+    return p
+
+
+# Tk 는 컬러 이모지를 못 그려 흑백 대체 글자(☑ 등)로 어색하게 보였다 (2026-10-20 피드백 #20) → 상자 글자에선 기호로
+HUD_GLYPHS = {"✅": "✔", "⚠️": "⚠", "👍": "✔", "🤔": "△"}
+
+
+def hud_text(line):
+    for k, v in HUD_GLYPHS.items():
+        line = line.replace(k, v)
+    return line
+
+
 def layout(payload, w, h):
     """그릴 항목 목록: (종류, x, y, 내용). 좌표는 표시 창 기준"""
     pos = {**DEFAULT_POS, **(payload.get("pos") or {})}
@@ -544,6 +567,7 @@ class Overlay(threading.Thread):
         self._mode_checked = False  # 이번 게임 창에서 화면 모드를 읽어 봤는지 (없으면 0.2초마다 다시 찾지 않게)
         self.icon_dir = None  # 증강 아이콘 폴더 (쿨타임 표시)
         self._perf = {}  # 그리기 처리 시간(ms): 전체 다시 그리기 · 쿨타임만 (한 판 기록에 요약)
+        self.live_fn = None  # 지금 상점 열림·죽음 {"shop", "dead"} (desktop 이 연결). 그릴 때마다 묻는다 (with_live)
 
     def _perf_add(self, kind, t0):
         v = self._perf.setdefault(kind, [])
@@ -641,7 +665,12 @@ class Overlay(threading.Thread):
                 self._mode_checked = False
             # 실제로 그릴 것(카드 평가·상점 상자)이 있을 때만 띄운다. 예전엔 그릴 게 없어도 게임 크기의 투명 창이
             # 게임 위에 늘 떠 있어서, 화면 합성(DWM)이 게임 프레임마다 그 창까지 섞느라 렉이 생길 수 있었다
-            entries = layout(self.payload, rect[2], rect[3]) if rect else []
+            try:
+                live = self.live_fn() if self.live_fn else None
+            except Exception:
+                live = None
+            pay = with_live(self.payload, live)
+            entries = layout(pay, rect[2], rect[3]) if rect else []
             visible = self.enabled and rect and (front or self.preview) and entries and self.mode != "전체 화면"
             if not visible:
                 if shown:
@@ -671,7 +700,7 @@ class Overlay(threading.Thread):
                 elif key != last:  # 내용·게임 창 크기가 바뀌었을 때만 다시 그린다
                     t0 = time.time()
                     canvas.config(width=w, height=h)
-                    draw(canvas, self.payload, w, h, scale=h / 1080, icon_dir=self.icon_dir)
+                    draw(canvas, pay, w, h, scale=h / 1080, icon_dir=self.icon_dir)
                     # 창은 그린 것 둘레만큼만 (게임 크기 투명 창 X): 겹치는 영역이 작을수록 게임 화면 합성이 가볍다
                     bb = canvas.bbox("all") or (0, 0, 1, 1)
                     bx0, by0 = max(0, bb[0] - 4), max(0, bb[1] - 4)

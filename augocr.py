@@ -889,8 +889,11 @@ class Reader(threading.Thread):
                     return
             if active and mouse is not None:
                 key = any(mouse.pressed(vk) for vk in SHOP_KEYS)
-                # 클릭은 상점이 열려 있을 때만 (✕·바깥 클릭으로 닫기). 닫혀 있을 때 클릭마다 읽었더니 한 판 215번 (사미라 판, 싸울 때 클릭)
-                click = (mouse.clicked() is not None and bool(self.shop)
+                # 클릭은 상점이 열려 있을 때만 (✕·바깥 클릭으로 닫기). 닫혀 있을 때 클릭마다 읽었더니 한 판 215번 (사미라 판, 싸울 때 클릭).
+                # 닫혀 있어도 아래 골드(상점) 버튼을 누른 건 상점을 연 것 → 바로 읽는다 (처음 연 상점에 상자가 안 떴다, 2026-10-20 피드백 #10)
+                hit = mouse.clicked()
+                at_gold = hit is not None and not self.shop and shop_button_at(getattr(self, "_last_rect", None), hit)
+                click = (hit is not None and (bool(self.shop) or at_gold)
                          and time.time() - getattr(self, "_shop_click_at", 0.0) >= SHOP_CLICK_GAP)
                 if key or click:
                     if click:

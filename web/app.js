@@ -1863,7 +1863,7 @@ function setAutoChamp() {
 // 게임 연동: 챔피언·레벨·아이템을 게임에 맞춘다 (증강은 직접 고름). 같은 값이면 다시 그리지 않는다
 let liveLast = "";
 let liveEnded = false;
-let liveShop = false, goldDrawnAt = 0;
+let liveShop = false, goldDrawnAt = 0, boxSent = null;
 let enemyBuildKey = "";
 const BOX_START = 75;  // 초. 상자 '자세히'일 때 게임 시작 후 이 시간까지 띄운다 (처음 아이템을 사는 때)
 function applyLive(L) {
@@ -1919,6 +1919,10 @@ function applyLive(L) {
     && (shopOpen || shopOpen !== liveShop || Date.now() - goldDrawnAt > 10000));
   liveShop = shopOpen;
   if (goldChanged) goldDrawnAt = Date.now();
+  // 상자를 띄울 이유(상점·죽음)가 바뀌면 골드·아이템이 그대로여도 바로 다시 보낸다.
+  // 예전엔 골드·아이템이 바뀔 때만 보내서 상점을 닫거나 부활한 뒤에도 최대 약 13초 상자가 남았다 (피드백 #11·#10)
+  const boxChanged = state.boxWhy !== boxSent;
+  boxSent = state.boxWhy;
   state.gold = L.gold ?? null;
   state.liveStats = L.stats && Object.keys(L.stats).length ? L.stats : null;
   state.liveLevel = level;
@@ -1952,6 +1956,7 @@ function applyLive(L) {
     // 부품을 샀으면 다음 구매도 다시 (만드는 중인 아이템을 1순위로 묶는다). 골드만 바뀌면 '지금 살 것'만
     if (invChanged && state.champ) { renderNextBuy(itemRanking()); renderChosenItems(); }
     else if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay("gold"); }
+    else if (boxChanged) sendOverlay("box");
     return;
   }
   const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));
@@ -1962,6 +1967,7 @@ function applyLive(L) {
     $("#level").value = level;
     $("#level-val").textContent = level;
     if (!document.body.classList.contains("simple")) renderStats();
+    if (boxChanged || goldChanged) { renderBuyNow(); sendOverlay("box"); }
     return;
   }
   if (champ && (!state.champ || state.champ.id !== champ.id)) {

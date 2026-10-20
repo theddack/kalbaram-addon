@@ -1173,6 +1173,8 @@ def lower_priority():
 WEBVIEW2_ARGS = ("--disable-gpu --disable-gpu-compositing --in-process-gpu --renderer-process-limit=1 "
                  "--enable-low-end-device-mode --disable-background-networking --disable-component-update "
                  "--js-flags=--optimize-for-size --enable-features=NetworkServiceInProcess2 "
+                 # 애드온 창이 게임 뒤에 있어도 화면 타이머(게임 상태 묻기)를 늦추지 않게 (상자가 늦게 내려가던 원인 후보, 피드백 #11)
+                 "--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows "
                  "--disable-features=msSmartScreenProtection,Translate,AutofillServerCommunication,MediaRouter,"
                  "SpareRendererForSitePerProcess,BackForwardCache")
 
@@ -1523,6 +1525,11 @@ def main():
         reader.board_on = bool(settings.get("board", False))  # Tab 점수판 읽기 (시험, 기본 꺼짐)
         watcher.on_new_game = lambda st: reader.new_game()
         reader.start()
+    # 표시 창은 그릴 때마다 지금 상점·죽음을 직접 본다 (화면이 다시 보낼 때까지 상자가 남지 않게, 피드백 #11)
+    ov.live_fn = lambda: {"shop": reader.state.get("shop") if reader else None,
+                          "dead": bool(watcher.state.get("inGame") and watcher.state.get("dead"))}
+    if reader:
+        watcher.fast = lambda: bool(reader.state.get("shop"))
     api = Api(settings, watcher, ov, lw, reader)
     # 한 판 기록: logs/games/날짜_챔피언/ (끝나면 zip). 빗나간 인식·추천을 고치려고 읽은 화면 조각까지 남긴다
     rec = gamelog.GameRecorder(user_dir() / "logs" / "games")
@@ -1647,12 +1654,17 @@ def main():
     )
     api._window = window
     webmem.window = window
+    def poke():
+        # 기다리지 않고 따로: 증강 인식이 창 스레드를 기다리며 서지 않게
+        threading.Thread(target=lambda: _safe(lambda: window.run_js("window.livePoke && window.livePoke()")),
+                         daemon=True, name="화면 깨우기").start()
+
+    def reader_changed():
+        watcher.wake.set()  # 상점이 열리고 닫히면 게임 데이터도 바로 다시 읽는다 (골드·아이템이 같은 순간 값이게)
+        poke()
     if reader:
-        def poke():
-            # 기다리지 않고 따로: 증강 인식이 창 스레드를 기다리며 서지 않게
-            threading.Thread(target=lambda: _safe(lambda: window.run_js("window.livePoke && window.livePoke()")),
-                             daemon=True, name="화면 깨우기").start()
-        reader.on_change = poke
+        reader.on_change = reader_changed
+    watcher.on_change = poke  # 죽음·레벨·골드·아이템이 바뀌면 화면을 바로 깨운다
     # 기준 초: 게임 연동 최대 10초 쉬고 2초 대기, 롤 클라이언트 10초 + 요청 3번 x 5초, 표시 창 최대 1초,
     # 화면은 3초마다 묻지만 창을 내려 두면 브라우저가 타이머를 늦추므로 넉넉히
     diag = Diag(user_dir() / "logs" / "diag.log", {
