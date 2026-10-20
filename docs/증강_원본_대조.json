@@ -1,7 +1,7 @@
 {
  "version": "16.20.8248524+branch.releases-16-20.content.release",
  "dataVersion": "16.20.8248524+branch.releases-16-20.content.release",
- "builtAt": "2026-10-20 12:56",
+ "builtAt": "2026-10-20 13:49",
  "augments": 215,
  "disabled": [
   "인내심",
@@ -511,7 +511,7 @@
    "id": "ARAM_InfernalConduit",
    "name": "지옥의 전도체",
    "ref": "FlatCooldownRefundPerTick",
-   "kind": "발동 주기",
+   "kind": "수치",
    "source": 0.07999999821186066,
    "applied": null,
    "how": "근사 규칙",
@@ -537,11 +537,11 @@
    "ref": "CritDamage*100",
    "kind": "수치",
    "source": 1.4500000476837158,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: CRIT)"
+   "applied": 1.4500000476837158,
+   "how": "이름 참조",
+   "key": "skillCritDmg",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "ARAM_JeweledGauntlet",
@@ -703,7 +703,7 @@
    "id": "ARAM_MysticPunch",
    "name": "신비한 주먹",
    "ref": "CooldownRefund",
-   "kind": "발동 주기",
+   "kind": "수치",
    "source": 1.25,
    "applied": 1.25,
    "how": "이름 참조",
@@ -2613,7 +2613,7 @@
    "id": "PinballSnowball",
    "name": "핀볼",
    "ref": "CDRefundOnBounce*100",
-   "kind": "발동 주기",
+   "kind": "수치",
    "source": 0.30000001192092896,
    "applied": null,
    "how": "-",
@@ -3324,11 +3324,11 @@
    "ref": "Calc_Crit_Chance",
    "kind": "확률",
    "source": 0.25,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -) · 규칙 CRIT=0.25 과 값이 같음 (같은 효과인지 확인 필요)"
+   "applied": 0.25,
+   "how": "이름 참조",
+   "key": "CRIT",
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "CritNCast",
@@ -7059,7 +7059,7 @@
    "value": 1,
    "dv": "AdditionalOnHitCount",
    "kind": "중첩",
-   "used": null
+   "used": "이름 참조"
   },
   {
    "id": "ARAM_DoubleTap",
@@ -8586,15 +8586,6 @@
    "why": "재사용 대기시간 감소 10% = 스킬 가속 11 (가속 = 100 × (1 ÷ (1 − 0.1) − 1))"
   },
   {
-   "id": "ARAM_DoubleTap",
-   "name": "한 발에 두 놈",
-   "key": "CRIT",
-   "value": 0.25,
-   "state": "일치 (설명 수치)",
-   "why": "근거 없음",
-   "sameAs": "calc_crit_chance"
-  },
-  {
    "id": "BrushPower",
    "name": "Hide on bush",
    "key": "dmgDealtMult",
@@ -9263,9 +9254,9 @@
    "auto": false,
    "items": 2,
    "states": {
-    "일치": 1,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -11331,9 +11322,9 @@
    "auto": false,
    "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12641,9 +12632,9 @@
   }
  ],
  "count": {
-  "일치": 153,
+  "일치": 155,
   "불일치": 0,
-  "미구현": 181,
+  "미구현": 179,
   "가정": 62,
   "원본 확인 불가": 7,
   "계산 제외": 29
@@ -12699,15 +12690,6 @@
   }
  ],
  "overcount": [
-  {
-   "id": "ARAM_InfernalConduit",
-   "name": "지옥의 전도체",
-   "effect": "magic BleedDamagePerSecond",
-   "trigger": "cast",
-   "dv": "FlatCooldownRefundPerTick",
-   "sec": 0.07999999821186066,
-   "desc": "모든 화상 효과가 적 챔피언에게 피해를 입힐 때마다 기본 스킬의 재사용 대기시간을 0"
-  },
   {
    "id": "ARAM_InfernalConduit",
    "name": "지옥의 전도체",
