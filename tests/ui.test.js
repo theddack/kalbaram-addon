@@ -1131,8 +1131,8 @@ test("현재 구매 추천: 지금 골드로 살 수 있는 것만, 완성 빌�
   const cost = Number(/\(([\d,]+)G\)/.exec(line.textContent)[1].replace(/,/g, ""));
   assert.ok(cost <= 1300, `지금 골드로 살 수 있는 것: ${cost}`);
   assert.match(line.textContent, /완성 빌드로 가는 길과 같아요|완성 빌드 기준으로는/);
-  // 골드가 없으면 안 보인다
-  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gold: 0, gameTime: 420 });
+  // 골드가 없으면 안 보인다 (상점이 열려 있으면 골드가 바뀌자마자 다시 그린다. 닫혀 있으면 10초에 한 번이 원래 동작)
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gold: 0, gameTime: 420, aug: { shop: { left: 0.3 } } });
   assert.equal(p.q("#buy-now .buy-now-current"), null);
   assert.deepEqual(p.errors, []);
 });
