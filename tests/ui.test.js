@@ -1124,6 +1124,22 @@ test("⚙ 팝업은 바깥 클릭·Esc·✕ 로 닫히고, 상태 글은 짧은 
   assert.deepEqual(p.errors, []);
 });
 
+// 안정화 기획서 8.2: 완성 빌드 추천(18레벨)과 따로, 지금 레벨·가진 것 기준으로 지금 골드로 살 수 있는 것 중 당장 가장 강해지는 것
+test("현재 구매 추천: 지금 골드로 살 수 있는 것만, 완성 빌드 경로와 다르면 이유를 붙인다", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gold: 1300, gameTime: 400 });
+  const line = p.q("#buy-now .buy-now-current");
+  assert.ok(line, "한 줄이 있다");
+  assert.match(line.textContent, /지금 9레벨에서 바로 강해지는 것: .+ \(([\d,]+)G\)/);
+  const cost = Number(/\(([\d,]+)G\)/.exec(line.textContent)[1].replace(/,/g, ""));
+  assert.ok(cost <= 1300, `지금 골드로 살 수 있는 것: ${cost}`);
+  assert.match(line.textContent, /완성 빌드로 가는 길과 같아요|완성 빌드 기준으로는/);
+  // 골드가 없으면 안 보인다 (상점이 열려 있으면 골드가 바뀌자마자 다시 그린다. 닫혀 있으면 10초에 한 번이 원래 동작)
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gold: 0, gameTime: 420, aug: { shop: { left: 0.3 } } });
+  assert.equal(p.q("#buy-now .buy-now-current"), null);
+  assert.deepEqual(p.errors, []);
+});
+
 // 안정화 기획서 8.3: 만드는 중 아이템은 1순위보다 15% 넘게 낮고 남은 골드당 가치도 나쁠 때만 놓아 준다
 test("만드는 중 놓아 주기: 점수 차이가 크고 남은 골드당 가치도 나쁘면 놓아 주고, 거의 다 만들었으면 계속", async () => {
   const p = await loadPage({ simple: true });

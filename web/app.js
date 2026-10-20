@@ -1611,6 +1611,53 @@ function renderBuyNow() {
         : `→ 아직 살 수 있는 부품이 없어요 (가장 싼 부품보다 골드가 적어요)`);
   // 계산에 쓴 골드를 같이 적는다: 산 직후 게임 데이터가 늦게 오면 화면 골드와 달라 바로 알아볼 수 있게 (피드백 #12)
   state.buyNowText = b.done ? `지금 ${top.name} 완성 가능 (${fmt(g)}G 기준)` : b.part ? `지금 ${b.part.name} (${b.part.cost}G · ${fmt(g)}G 기준)` : "";
+  // 현재 구매 추천 (안정화 기획서 8.2): 위는 완성 빌드(18레벨) 1순위로 가는 길, 이건 지금 레벨·가진 것에 더해 당장 가장 강해지는 것
+  const now = buyNowCurrent(g);
+  const pathId = b.done ? top.id : b.part && b.part.id;
+  if (now) {
+    el.insertAdjacentHTML("beforeend", `<div class="buy-now-current">⚡ 지금 ${state.liveLevel || state.level}레벨에서 바로 강해지는 것: `
+      + `<img src="${icon(now.kind, now.id)}" alt=""> <b>${esc(now.name)}</b> (${fmt(now.gold)}G)`
+      + (now.id === pathId ? ` <span class="muted">— 완성 빌드로 가는 길과 같아요</span>`
+        : ` <span class="muted">— 완성 빌드 기준으로는 ${esc(b.done ? top.name : b.part ? b.part.name : top.name)}${b.done ? "" : "부터"}지만, 지금 레벨에선 이게 당장 더 강해요 (몇 레벨 뒤 완성 빌드에 맞추려면 위 안내대로)</span>`)
+      + `</div>`);
+  }
+}
+
+// 지금 골드로 살 수 있는 것 중 '지금 레벨·가진 것'에 더했을 때 가장 강해지는 것. 후보 = 다음 구매 위 3개와 그 하위 부품
+let buyNowMemo = { key: null, value: null };
+function buyNowCurrent(gold) {
+  const d = state.data;
+  if (!state.champ || gold == null) return null;
+  const tops = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id).filter(Boolean).slice(0, 3);
+  const inv = state.inventory || [];
+  const level = state.liveLevel || state.level || 18;
+  const key = JSON.stringify([state.champ.id, level, state.items.map((i) => i.id), inv, Math.floor(gold / 25), state.chosen.map((a) => a.id), tops]);
+  if (buyNowMemo.key === key) return buyNowMemo.value;
+  const isItem = (id) => d.items.some((i) => i.id === id);
+  const owned = () => inv.filter((id) => partOf(id) && !isItem(id)).reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {});
+  // 이걸 사면 없어지는 가진 부품 (트리 안에서 가진 것)
+  const usesOf = (id) => {
+    const o = owned(), out = [];
+    const walk = (x) => { for (const c of partFrom(x)) { if (o[c] > 0) { o[c]--; out.push(c); } else walk(c); } };
+    walk(id);
+    return out;
+  };
+  const cands = new Map();
+  const add = (id) => {
+    if (cands.has(id) || inv.includes(id) && !isItem(id) && !partFrom(id).length) return;
+    const cost = remainingCost(id, owned());
+    if (!(cost > 0) || cost > gold) return;
+    const it = d.items.find((i) => i.id === id);
+    const p = partOf(id) || {};
+    cands.set(id, { ...(it || {}), id, name: (it || p).name, gold: cost, stats: (it || p).stats || {}, uses: usesOf(id), kind: "item" });
+  };
+  const walkAll = (id) => { add(id); for (const c of partFrom(id)) walkAll(c); };
+  for (const id of tops) walkAll(id);
+  const have = [...state.items, ...inv.filter((id) => partOf(id) && !isItem(id)).map((id) => ({ id, name: partOf(id).name, stats: partOf(id).stats || {} }))];
+  const ranked = S.buyNowGains([...cands.values()], state.weights, state.chosen, have, d.rules, state.champ, statOpts(), level);
+  const best = ranked.find((r) => r.gain > 0) || null;
+  buyNowMemo = { key, value: best && { ...best, kind: "item" } };
+  return buyNowMemo.value;
 }
 
 // 산 부품으로 만들던 아이템: 순위가 조금 바뀌어도 그대로 1순위로 (중간에 바꾸면 산 부품이 남는다).
