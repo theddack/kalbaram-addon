@@ -1100,7 +1100,8 @@ function renderOfferResult() {
   // 등급·가치가 같으면 한쪽에만 1순위를 붙이지 않고 '공동 1순위' (보석 건틀릿·한 발에 두 놈 1,083 → 1,112 동점, 피드백 #13)
   const coBest = best ? rows.filter((r) => { const a = rank(r), b = rank(best); return a[0] === b[0] && Math.abs(a[1] - b[1]) < 1e-4; }) : [];
   const isBest = (r) => coBest.includes(r);
-  const bestLabel = coBest.length > 1 ? "공동 1순위" : "1순위";
+  // 강한 선택 = 계산상 전투 성능이 가장 좋은 것, 재미있는 선택 = 가장 강하지는 않지만 플레이 방식이 크게 바뀌는 것 (안정화 기획서 8.5)
+  const bestLabel = coBest.length > 1 ? "강한 선택 (공동)" : "강한 선택";
   const rerollable = rows.filter((r) => !state.rerolled[r.i] && r.p && r.p.top >= 1 - REROLL_PCT);
   const worst = rerollable.length ? rerollable.reduce((x, y) => (y.p.top > x.p.top ? y : x)) : null;
   const fun = funPick(rows, best, tiers);
@@ -1111,14 +1112,15 @@ function renderOfferResult() {
   const nf = nowBal.final;
   const wait = `<span class="muted small">계산 중…</span>`;
   const draw = () => {
-    out.innerHTML = `<table class="offer-table">
+    out.innerHTML = `<p class="muted small legend">💪 강한 선택 = 계산상 전투 성능이 가장 좋아요 · 🎉 재미있는 선택 = 가장 강하지는 않지만 플레이 방식이 크게 바뀌어요</p>
+      <table class="offer-table">
       <tr><th>선택지</th><th>평가</th><th title="빌드 가치">강해지는 정도</th><th>같은 등급 순위</th><th title="콤보">스킬 피해</th><th title="DPS">초당 피해</th><th title="유효 체력">버티는 힘</th><th>이걸 고르면 살 아이템</th><th></th></tr>
       ${rows.map((r) => {
         const f = r.aug && r.aug.final;
         return `<tr class="${isBest(r) ? "best" : ""}">
           <td><img src="${icon("augment", r.a.id)}" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
-            ${newChips(r.a)}${isBest(r) ? `<span class="chip best">👍 ${bestLabel}</span>` : ""}${counterAug.has(r.a.id) ? `<span class="chip adv" title="${esc(enemyItemSummary())}">🛡️ 적 대응</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
-            ${r === fun ? `<span class="chip fun" title="가장 강한 선택은 아니지만 플레이 방식이 크게 바뀌어요. 색다르게 해 보고 싶으면 이것">🎉 재미 픽</span>` : ""}
+            ${newChips(r.a)}${isBest(r) ? `<span class="chip best" title="계산상 전투 성능이 가장 좋은 선택">💪 ${bestLabel}</span>` : ""}${counterAug.has(r.a.id) ? `<span class="chip adv" title="${esc(enemyItemSummary())}">🛡️ 적 대응</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
+            ${r === fun ? `<span class="chip fun" title="가장 강한 선택은 아니지만 플레이 방식이 크게 바뀌어요. 색다르게 해 보고 싶으면 이것">🎉 재미있는 선택</span>` : ""}
             ${r.twistKey ? `<span class="chip on" title="고르면 '변칙' 탭 빌드가 이 증강 덕분에 진짜로 성립해요 (성향만 뒤집은 실험 빌드 → 증강이 받쳐 주는 변칙)">🎭 변칙 열쇠</span>` : ""}
             ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
             <div class="why">${transformChip(r.a)}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div>
@@ -1166,7 +1168,8 @@ function pushOverlay(rows, src) {
     const t = x.t;
     // 등급이 없으면 빈칸으로 보내지 말고 '평가 없음' (2026-10-19 외부 테스터: 무한 반복 카드에 라벨이 안 보였다, 안정화 기획서 UX-02)
     const [icon, label] = noEffect(t) ? ["⛔", "효과 없음"] : t ? TIER_LABEL[t.tier] : ["❔", "평가 없음"];
-    const tag = x.best ? ` · ${x.bestLabel || "1순위"}` : x.reroll ? " · 새로고침?" : x.fun ? " · 재미 픽" : "";
+    // 게임 화면 카드는 짧게: ' · 강한 선택' / ' · 재미 픽'
+    const tag = x.best ? ` · ${x.bestLabel || "강한 선택"}` : x.reroll ? " · 새로고침?" : x.fun ? " · 재미 픽" : "";
     const tr = transform(x.r.a);
     overlayCards[x.r.i] = {
       name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier, best: !!x.best,
