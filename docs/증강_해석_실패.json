@@ -1,0 +1,115 @@
+[
+ {
+  "id": "ARAM_InfernalConduit",
+  "name": "지옥의 전도체",
+  "ref": "BleedDamagePerSecond",
+  "hashed": "{d5b286d1}",
+  "why": "해시 이름 계산식 {d5b286d1} (해시로 찾으면 풀림)"
+ },
+ {
+  "id": "ARAM_Quest_UrfsChampion",
+  "name": "우르프의 챔피언",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "ARAM_SpinToWin",
+  "name": "승리를 위한 회전",
+  "ref": "SpinDamageAmp_Ult",
+  "hashed": "{90a024ae}",
+  "why": "해시 이름 계산식 {90a024ae} (해시로 찾으면 풀림)"
+ },
+ {
+  "id": "ARAM_WithHaste",
+  "name": "속행",
+  "ref": "AbilityHasteToMSConversionCalc",
+  "why": "모르는 능력치 코드 mStat 11"
+ },
+ {
+  "id": "SoulEater",
+  "name": "영혼의 포식자",
+  "ref": "StartingHPIfSecondAugmentTT",
+  "hashed": "{37029355}",
+  "why": "해시 이름 계산식 {37029355} (해시로 찾으면 풀림)"
+ },
+ {
+  "id": "ARAM_EmpoweredByTheFaithful",
+  "name": "신념을 통한 강화",
+  "ref": "Calc_Damage",
+  "why": "모르는 능력치 코드 mStat 34"
+ },
+ {
+  "id": "ARAM_EmpoweredByTheFaithful",
+  "name": "신념을 통한 강화",
+  "ref": "Calc_Execute_Threshold",
+  "why": "모르는 능력치 코드 mStat 34"
+ },
+ {
+  "id": "ARAM_Juiced",
+  "name": "도취",
+  "ref": "Calc_Damage",
+  "why": "모르는 계산식 부품 {2b25a73a}, {e9a3c91d}"
+ },
+ {
+  "id": "ARAM_DropBear",
+  "name": "곰 투하",
+  "ref": "AOEDamage",
+  "why": "모르는 능력치 코드 mStat 22, 23"
+ },
+ {
+  "id": "ARAM_Multishot",
+  "name": "다중 공격",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "ChainReaction",
+  "name": "연쇄 반응",
+  "ref": "Ult_DamageAmp",
+  "hashed": "{166093f6}",
+  "why": "해시 이름 계산식 {166093f6} (해시로 찾으면 풀림)"
+ },
+ {
+  "id": "ARAM_SpecializedRecursion",
+  "name": "가속 추구",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "ARAM_BangBang",
+  "name": "초장거리 저격",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "SpecializedEmpowerment",
+  "name": "위력 추구",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "MercysStrike",
+  "name": "자비의 일격",
+  "ref": "MaxHealthDamage",
+  "why": "모르는 능력치 코드 mStat 34"
+ },
+ {
+  "id": "SupportMain",
+  "name": "서포터 주력",
+  "ref": "QuestRequirement",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "SupportMain",
+  "name": "서포터 주력",
+  "ref": "QuestProgress",
+  "why": "원본에 이름 없음"
+ },
+ {
+  "id": "Upgrade_Ravenous",
+  "name": "굶주린 히드라 업그레이드",
+  "ref": "LifeStealTT",
+  "hashed": "{41353c52}",
+  "why": "해시 이름 계산식 {41353c52} (해시로 찾으면 풀림)"
+ }
+]
