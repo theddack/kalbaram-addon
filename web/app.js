@@ -1632,8 +1632,6 @@ function buyNowCurrent(gold) {
   const tops = [...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id).filter(Boolean).slice(0, 3);
   const inv = state.inventory || [];
   const level = state.liveLevel || state.level || 18;
-  const key = JSON.stringify([state.champ.id, level, state.items.map((i) => i.id), inv, Math.floor(gold / 25), state.chosen.map((a) => a.id), tops]);
-  if (buyNowMemo.key === key) return buyNowMemo.value;
   const isItem = (id) => d.items.some((i) => i.id === id);
   const owned = () => inv.filter((id) => partOf(id) && !isItem(id)).reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {});
   // 이걸 사면 없어지는 가진 부품 (트리 안에서 가진 것)
@@ -1654,6 +1652,11 @@ function buyNowCurrent(gold) {
   };
   const walkAll = (id) => { add(id); for (const c of partFrom(id)) walkAll(c); };
   for (const id of tops) walkAll(id);
+  // 결과를 바꾸는 것은 모두 키에: 살 수 있는 후보(골드는 이걸로), 가중치·칼바람·적 마법 비율(statOpts)·기준 상대 방어
+  // (v0.1.55 후속 기획 A-②: 예전 키엔 가중치·statOpts·기준 상대가 없어 적 구성이 바뀌어도 옛 추천이 남을 수 있었다)
+  const key = JSON.stringify([state.champ.id, level, state.items.map((i) => i.id), inv, [...cands.values()].map((c) => [c.id, c.gold]),
+    state.chosen.map((a) => a.id), tops, state.weights, statOpts(), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
+  if (buyNowMemo.key === key) return buyNowMemo.value;
   const have = [...state.items, ...inv.filter((id) => partOf(id) && !isItem(id)).map((id) => ({ id, name: partOf(id).name, stats: partOf(id).stats || {} }))];
   const ranked = S.buyNowGains([...cands.values()], state.weights, state.chosen, have, d.rules, state.champ, statOpts(), level);
   const best = ranked.find((r) => r.gain > 0) || null;

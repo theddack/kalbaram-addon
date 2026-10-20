@@ -1140,6 +1140,42 @@ test("현재 구매 추천: 지금 골드로 살 수 있는 것만, 완성 빌�
   assert.deepEqual(p.errors, []);
 });
 
+// v0.1.55 후속 기획 A-②: 현재 구매 추천 캐시는 결과를 바꾸는 조건이 바뀌면 다시 계산한다
+test("현재 구매 추천 캐시: 같은 조건이면 재사용, 가중치·적 마법 비율·기준 상대·살 수 있는 후보가 바뀌면 다시 계산", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gold: 1300, gameTime: 400 });
+  const S = p.w.Scoring, orig = S.buyNowGains, St = p.w.Stats;
+  let calls = 0;
+  S.buyNowGains = (...a) => { calls++; return orig(...a); };
+  try {
+    p.w.buyNowCurrent(1300);
+    const base = calls;
+    p.w.buyNowCurrent(1300);
+    assert.equal(calls, base, "같은 조건 → 캐시");
+    p.w.buyNowCurrent(1301);
+    assert.equal(calls, base, "골드가 조금 달라도 살 수 있는 후보가 같으면 캐시");
+    p.w.buyNowCurrent(200);
+    assert.equal(calls, base + 1, "살 수 있는 후보가 달라짐");
+    p.w.buyNowCurrent(1300);
+    const n = calls;
+    const st = p.w.eval("state");  // app.js 의 const state (전역 어휘 범위라 window 속성은 아님)
+    st.weights = { ...st.weights, AD: (st.weights.AD || 0) + 1 };
+    p.w.buyNowCurrent(1300);
+    assert.equal(calls, n + 1, "가중치");
+    const t = St.TARGET.MR;
+    St.TARGET.MR = t + 40;
+    p.w.buyNowCurrent(1300);
+    assert.equal(calls, n + 2, "기준 상대 마법 저항력");
+    St.TARGET.MR = t;
+    st.aram = !st.aram;
+    p.w.buyNowCurrent(1300);
+    assert.equal(calls, n + 3, "칼바람 보정 (statOpts)");
+  } finally {
+    S.buyNowGains = orig;
+  }
+  assert.deepEqual(p.errors, []);
+});
+
 // 안정화 기획서 8.3: 만드는 중 아이템은 1순위보다 15% 넘게 낮고 남은 골드당 가치도 나쁠 때만 놓아 준다
 test("만드는 중 놓아 주기: 점수 차이가 크고 남은 골드당 가치도 나쁘면 놓아 주고, 거의 다 만들었으면 계속", async () => {
   const p = await loadPage({ simple: true });
