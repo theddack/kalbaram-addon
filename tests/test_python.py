@@ -531,6 +531,36 @@ class DataQuality(unittest.TestCase):
             self.assertEqual((round(e.lvl[0]), round(e.lvl[1])), want)
 
 
+class CalcNames(unittest.TestCase):
+    """해시 이름·증강 능력치 코드 (2026-10-20 증강 원본 대조: 설명에 '?' 16개 증강)"""
+    def test_hashed_name(self):
+        """CommunityDragon 이 이름을 모르는 계산식은 {fnv1a} 로 적는다 (승리를 위한 회전 SpinDamageAmp_Ult = {90a024ae})"""
+        from lol_calc import Calc, fnv1a
+        self.assertEqual(fnv1a("SpinDamageAmp_Ult"), "{90a024ae}")
+        sp = {"DataValues": [{"name": fnv1a("HiddenValue"), "values": [0, 7, 7]}],
+              "mSpellCalculations": {"{90a024ae}": {"mFormulaParts": [{"__type": "NumberCalculationPart", "mNumber": 0.5}],
+                                                    "mDisplayAsPercent": True}}}
+        c = Calc(sp)
+        self.assertEqual(c.calc("SpinDamageAmp_Ult", 1)[0].base, 0.5)
+        self.assertEqual(c.value("HiddenValue", 1), 7)
+
+    def test_augment_stat_codes(self):
+        """11 스킬 가속 · 22/23 마법 관통력 고정·% (1%당 → 0~1 비율이라 100배) · 34 회복·보호막 효과 (위키 증강 설명과 대조)"""
+        from lol_calc import Calc, fmt_expr_ranks
+        part = lambda stat, coef: {"__type": "StatByCoefficientCalculationPart", "mStat": stat, "mCoefficient": coef}
+        sp = {"mSpellCalculations": {
+            "Haste": {"mFormulaParts": [part(11, 0.7)]},
+            "Bear": {"mFormulaParts": [part(22, 2), part(23, 5)]},
+            "Faith": {"mFormulaParts": [part(34, 750)]},
+        }}
+        c = Calc(sp)
+        self.assertEqual(c.calc("Haste")[0].ratios, {"HASTE": 0.7})
+        self.assertEqual(c.calc("Bear")[0].ratios, {"MPEN": 2, "MPENP": 500})
+        e = c.calc("Faith")[0]
+        self.assertEqual(e.ratios, {"HSP": 750})
+        self.assertEqual(fmt_expr_ranks([e]), "회복·보호막 효과 1%당 7.5")  # '75000% 회복·보호막 효과' 로 나왔다
+
+
 class Measure(unittest.TestCase):
     EOG = {"mucJwtDto": {"jwt": "eyJsecret.abc"}, "multiUserChatPassword": "eyJsecret.abc", "gameId": 123, "gameLength": 900, "gameMode": "KIWI",
            "localPlayer": {"summonerName": "나", "puuid": "abc", "championId": 222, "level": 18,

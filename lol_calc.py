@@ -13,8 +13,16 @@ STAT = {
     6: ("MR", "마법 저항력"), 7: ("MS", "이동 속도"), 8: ("CRIT", "치명타 확률"),
     9: ("CRITDMG", "치명타 피해"), 12: ("HP", "최대 체력"), 14: ("CURHP", "현재 체력"),
     16: ("MISSINGHP", "잃은 체력"), 29: ("LETHALITY", "물리 관통력"), 31: ("RANGE", "사거리"),
+    # 증강에서 쓰는 번호 (2026-10-20, 위키 증강 설명과 대조 · docs/증강_원본_대조_결과.md):
+    # 11 = 'With Haste'(속행) 이동 속도 = 스킬 가속의 70%, 34 = 'Mercy's Strike'(자비의 일격) 회복·보호막 효과 10%당 +2%,
+    # 22·23 = 'Drop Bear'(곰 투하) 마법 관통력 1당 +2 · 1%당 +5
+    11: ("HASTE", "스킬 가속"), 22: ("MPEN", "마법 관통력"), 23: ("MPENP", "마법 관통력"), 34: ("HSP", "회복·보호막 효과"),
     -1: ("MANA", "최대 마나"),  # 번호 없음: AbilityResourceByCoefficient 전용
 }
+# 계수 단위 맞추기: 게임은 % 관통력 계수를 '1%당'으로 적는데 우리 능력치(MPENP)는 0~1 비율이라 100배 (위키 'Drop Bear' 1%당 +5)
+STAT_SCALE = {23: 100}
+# 0~1 비율로 계산하는 능력치 (설명에 '1%당 N' 으로 표시)
+PER_PCT = {"HSP", "MPENP"}
 # mStatFormula: 없음/0 = 전체, 1 = 기본, 2 = 추가
 FORMULA_PREFIX = {0: "", 1: "base", 2: "bonus"}
 PREFIX_NAME = {"": "", "base": "기본 ", "bonus": "추가 "}
@@ -98,6 +106,20 @@ def mul(a, b):
     return Node("*", [a, b])
 
 
+def fnv1a(name):
+    """CommunityDragon 이 이름을 모르는 값·계산식을 적는 해시 이름 {xxxxxxxx} (소문자 이름의 FNV-1a 32비트)"""
+    h = 0x811C9DC5
+    for c in (name or "").lower().encode():
+        h = ((h ^ c) * 0x01000193) & 0xFFFFFFFF
+    return "{%08x}" % h
+
+
+def hashed_key(table, name):
+    """이름 그대로 없으면 해시 이름으로 찾는다 (승리를 위한 회전 SpinDamageAmp_Ult = {90a024ae}: 설명에 '?' 가 나갔다)"""
+    key = (name or "").lower()
+    return key if key in table else fnv1a(key) if fnv1a(key) in table else key
+
+
 # 모드별 수치 덮어쓰기(DataValuesModeOverride) 우선순위: 칼바람 증강 모드 → 칼바람
 MODE_OVERRIDES = ("Kiwi", "ARAM")
 
@@ -128,7 +150,7 @@ class Calc:
         self.effects = effect_amounts or spell.get("mEffectAmount") or []
 
     def value(self, name, rank):
-        vals = self.values.get((name or "").lower())
+        vals = self.values.get(hashed_key(self.values, name))
         if vals is None:
             return None
         return vals[rank] if rank < len(vals) else vals[-1]
@@ -154,9 +176,10 @@ class Calc:
             if key is None:
                 return None
             if t == "StatByCoefficientCalculationPart":
-                coef = p.get("mCoefficient", 0)
+                coef = p.get("mCoefficient", 0) * STAT_SCALE.get(p.get("mStat", 0), 1)
             elif t == "StatByNamedDataValueCalculationPart":
                 coef = self.value(p.get("mDataValue"), rank)
+                coef = None if coef is None else coef * STAT_SCALE.get(p.get("mStat", 0), 1)
             else:
                 # 계수가 레벨에 따라 변하면 18레벨 값을 쓴다 (빌드 비교는 풀템 기준이라)
                 sub = self.part(p.get("mSubpart"), rank, depth + 1)
@@ -223,7 +246,7 @@ class Calc:
 
     def calc(self, name, rank=1, depth=0):
         """(Expr | None, 백분율 표시 여부)"""
-        c = self.calcs.get((name or "").lower())
+        c = self.calcs.get(hashed_key(self.calcs, name))
         if c is None or depth > 10:
             return None, False
         t = c.get("__type")
@@ -309,6 +332,11 @@ def fmt_expr_ranks(exprs, pct=False):
     for key in keys:
         if key == "STACKS":
             parts.append(f"중첩당 {fmt_num(exprs[-1].ratios[key] * k)}{unit}")
+            continue
+        if key in PER_PCT:  # 0~1 비율 능력치는 '1%당 N' (계수 750 × 회복·보호막 효과 → 1%당 7.5. '75000%'로 나왔다)
+            vals = [fmt_num(e.ratios.get(key, 0) * k / 100) for e in exprs]
+            uniq = list(dict.fromkeys(vals))
+            parts.append(f"{stat_label(key)} 1%당 {'/'.join(vals) if len(uniq) > 1 else uniq[0]}{unit}")
             continue
         vals = [fmt_num(e.ratios.get(key, 0) * 100) for e in exprs]
         uniq = list(dict.fromkeys(vals))
