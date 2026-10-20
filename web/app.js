@@ -1097,6 +1097,10 @@ function renderOfferResult() {
   // 추천: 연계 티어가 가장 높은 것, 같으면 빌드 가치(없으면 효과 점수)가 큰 것
   const rank = (r) => [TIER_ORDER[(tiers[r.a.id] || {}).tier] ?? 9, -(gains[r.a.id] ? gains[r.a.id].gain : r.sc.score / 100)];
   const best = rows.slice().sort((x, y) => { const a = rank(x), b = rank(y); return a[0] - b[0] || a[1] - b[1]; })[0];
+  // 등급·가치가 같으면 한쪽에만 1순위를 붙이지 않고 '공동 1순위' (보석 건틀릿·한 발에 두 놈 1,083 → 1,112 동점, 피드백 #13)
+  const coBest = best ? rows.filter((r) => { const a = rank(r), b = rank(best); return a[0] === b[0] && Math.abs(a[1] - b[1]) < 1e-4; }) : [];
+  const isBest = (r) => coBest.includes(r);
+  const bestLabel = coBest.length > 1 ? "공동 1순위" : "1순위";
   const rerollable = rows.filter((r) => !state.rerolled[r.i] && r.p && r.p.top >= 1 - REROLL_PCT);
   const worst = rerollable.length ? rerollable.reduce((x, y) => (y.p.top > x.p.top ? y : x)) : null;
   const fun = funPick(rows, best, tiers);
@@ -1111,9 +1115,9 @@ function renderOfferResult() {
       <tr><th>선택지</th><th>평가</th><th title="빌드 가치">강해지는 정도</th><th>같은 등급 순위</th><th title="콤보">스킬 피해</th><th title="DPS">초당 피해</th><th title="유효 체력">버티는 힘</th><th>이걸 고르면 살 아이템</th><th></th></tr>
       ${rows.map((r) => {
         const f = r.aug && r.aug.final;
-        return `<tr class="${r === best ? "best" : ""}">
+        return `<tr class="${isBest(r) ? "best" : ""}">
           <td><img src="${icon("augment", r.a.id)}" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
-            ${newChips(r.a)}${r === best ? `<span class="chip best">👍 1순위</span>` : ""}${counterAug.has(r.a.id) ? `<span class="chip adv" title="${esc(enemyItemSummary())}">🛡️ 적 대응</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
+            ${newChips(r.a)}${isBest(r) ? `<span class="chip best">👍 ${bestLabel}</span>` : ""}${counterAug.has(r.a.id) ? `<span class="chip adv" title="${esc(enemyItemSummary())}">🛡️ 적 대응</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
             ${r === fun ? `<span class="chip fun" title="가장 강한 선택은 아니지만 플레이 방식이 크게 바뀌어요. 색다르게 해 보고 싶으면 이것">🎉 재미 픽</span>` : ""}
             ${r.twistKey ? `<span class="chip on" title="고르면 '변칙' 탭 빌드가 이 증강 덕분에 진짜로 성립해요 (성향만 뒤집은 실험 빌드 → 증강이 받쳐 주는 변칙)">🎭 변칙 열쇠</span>` : ""}
             ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
@@ -1143,7 +1147,7 @@ function renderOfferResult() {
   draw();
   // 게임의 선택 화면이 이미 닫혔으면(고른 증강을 못 정해 선택지만 남긴 경우) 게임 화면 카드 표시는 지운다 (2026-10-14 지적: 팁이 안 없어짐)
   if (state.offersClosed) pushOverlay([], "clear:closed");
-  else pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: r === best, reroll: r === worst, fun: r === fun, counter: counterAug.has(r.a.id), reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
+  else pushOverlay(rows.map((r) => ({ r, t: tiers[r.a.id], best: isBest(r), bestLabel, reroll: r === worst, fun: r === fun, counter: counterAug.has(r.a.id), reason: augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]) })));
   // 다음 차례에 몰빵 빌드를 채운다. 그 사이 선택지가 바뀌었으면(새 화면) 버린다
   const seq = ++offerSeq;
   setTimeout(() => {
@@ -1162,7 +1166,7 @@ function pushOverlay(rows, src) {
     const t = x.t;
     // 등급이 없으면 빈칸으로 보내지 말고 '평가 없음' (2026-10-19 외부 테스터: 무한 반복 카드에 라벨이 안 보였다, 안정화 기획서 UX-02)
     const [icon, label] = noEffect(t) ? ["⛔", "효과 없음"] : t ? TIER_LABEL[t.tier] : ["❔", "평가 없음"];
-    const tag = x.best ? " · 1순위" : x.reroll ? " · 새로고침?" : x.fun ? " · 재미 픽" : "";
+    const tag = x.best ? ` · ${x.bestLabel || "1순위"}` : x.reroll ? " · 새로고침?" : x.fun ? " · 재미 픽" : "";
     const tr = transform(x.r.a);
     overlayCards[x.r.i] = {
       name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier, best: !!x.best,
@@ -1315,7 +1319,11 @@ function sendOverlay(src) {
   const INFO_ONLY = /^(적별|적 증강)/;
   const adv = enemyAdvice();
   // 적 증강 근거 ' (적 증강: …)' 는 애드온 창에만 (게임 화면 상자는 짧게)
-  hud.push(...adv.filter((l) => !INFO_ONLY.test(l)).map((l) => l.replace(/ \(적 증강: [^)]*\)/, "")));
+  // 게임 화면 상자는 짧게: '적 구성 추정: 마법 80% · 물리 20% → 마법 저항 우선: 멜모셔스의 아귀 또는 …' 를
+  // '적 마법 80% → 마법 저항 우선: 멜모셔스의 아귀' 로 (아이템 이름이 잘려 '멜모셔스의 …'로 보였다, 피드백 #20)
+  const shortAdv = (l) => l.replace(/ \(적 증강: [^)]*\)/, "").replace(/^적 구성 (\(산 아이템 반영\)|추정): /, "적 ")
+    .replace(/ · 물리 \d+%/, "").replace(/ \(많이 큼: [^)]*\)/, "").replace(/ 또는 [^·→)]+/g, "");
+  hud.push(...adv.filter((l) => !INFO_ONLY.test(l)).map(shortAdv));
   const v = itemVerdicts();
   if (v.length) hud.push("산 아이템: " + v.map((x) => `${x.item.name} ${x.mark}`).join(" · "));
   if (state.chosen.length) hud.push("고른 증강: " + state.chosen.map((a) => a.name).join(", "));
@@ -1341,6 +1349,16 @@ function sendOverlay(src) {
 function renderAugs() {
   const list = $("#aug-list");
   if (!state.champ) { list.innerHTML = ""; return; }
+  // 증강 4개를 다 골랐으면 더 고를 게 없다: 목록 대신 완료 요약 (등급 계산도 건너뛴다. 피드백 #15)
+  if (state.chosen.length >= 4 && !state.showAllAugs) {
+    $("#aug-title").textContent = "증강 4개 완료";
+    $("#tier-basis").textContent = state.chosen.map((a) => a.name).join(" + ");
+    $("#tier-mode").hidden = true;
+    list.innerHTML = `<p class="muted small">증강을 다 골랐어요. 오른쪽 '다음에 살 아이템'을 보세요.</p>`
+      + `<button class="more-augs reset">다른 증강이었다면? 목록 보기</button>`;
+    list.querySelector(".more-augs").addEventListener("click", () => { state.showAllAugs = true; renderAugs(); });
+    return;
+  }
   const featLabel = state.data.rules.features;
   let ranked = S.rankAugments(state.data.augments, state.weights, state.chosen, state.items, state.champ, state.data.rules);
   const { gains } = S.numericAugmentGains(state.data.augments, state.data.items, state.weights, state.chosen, state.items, state.data.rules, state.champ, statOpts());
@@ -1588,7 +1606,8 @@ function renderBuyNow() {
     + (b.done ? `→ <b>지금 ${esc(top.name)} 완성할 수 있어요</b>`
       : b.part ? `→ 지금 <img src="${icon("item", b.part.id)}" alt=""> <b>${esc(b.part.name)}</b> (${fmt(b.part.cost)}G)부터 사세요`
         : `→ 아직 살 수 있는 부품이 없어요 (가장 싼 부품보다 골드가 적어요)`);
-  state.buyNowText = b.done ? `지금 ${top.name} 완성 가능` : b.part ? `지금 ${b.part.name} (${b.part.cost}G)` : "";
+  // 계산에 쓴 골드를 같이 적는다: 산 직후 게임 데이터가 늦게 오면 화면 골드와 달라 바로 알아볼 수 있게 (피드백 #12)
+  state.buyNowText = b.done ? `지금 ${top.name} 완성 가능 (${fmt(g)}G 기준)` : b.part ? `지금 ${b.part.name} (${b.part.cost}G · ${fmt(g)}G 기준)` : "";
 }
 
 // 산 부품으로 만들던 아이템: 순위가 조금 바뀌어도 그대로 1순위로 (중간에 바꾸면 산 부품이 남는다).
@@ -1677,7 +1696,9 @@ function renderNextBuy(rows) {
   if (prev && changed && now.names.length) {
     // 마지막으로 바뀐 뒤 새로 고른 증강이 여럿이면 가장 최근 것 (먼저 고른 것으로는 안 바뀌었으니)
     const newAug = now.augs.filter((n) => !prev.augs.includes(n)).at(-1);
-    const why = (r) => r.advice ? (adv.find((l) => l.includes(r.item.name)) || adv.find((l) => l.includes(r.advice)) || r.advice).split(" → ")[0]
+    // 조언 때문이면 짧은 이유 이름만 ('마법 저항' 등). 예전엔 그 순간의 '적 구성 … 마법 77% · 물리 23%' 문장을 통째로 붙여
+    // 다음 구매가 바뀔 때까지 옛 %가 남아, 상자에 지금 값 줄(76%)과 같은 줄이 두 번 보였다 (피드백 #20)
+    const why = (r) => r.advice ? r.advice
       : r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
       : now.enemy !== prev.enemy && now.enemy ? `${now.enemy}에 맞춰` : null;
     const added = pick.filter((r) => !prev.names.includes(r.item.name)).map((r) => [r.item.name, why(r)]).filter(([, w]) => w);
@@ -1738,7 +1759,7 @@ function renderWeights() {
   }));
 }
 
-// ---- 상점 추천 등록 (아이템 세트): 챔피언이 정해지면 한 번. 블록 = 기본 / 첫 증강 상위 3개별 / 변칙
+// ---- 상점 추천 등록 (아이템 세트): 챔피언이 정해지면 한 번. 블록 = 기본 빌드 한 줄 (v0.1.12 부터)
 let itemSetDone = null;
 function itemSetBlocks(champ) {
   // 상점 추천은 기본 빌드 한 줄만: 증강별 후보를 여러 줄 넣으면 뭘 사야 할지 모른다 (2026-10-14 지적).
@@ -1776,7 +1797,9 @@ async function applyLcu(api, L) {
     let blocks;
     try { blocks = itemSetBlocks(champ); } finally { if (prev) setTargetChamp(prev); }
     const r = await api.write_item_set(champ.key, `칼바람 증강 Addon · ${champ.name}`, blocks);
-    el.textContent = r && r.ok ? `· ${champ.name} 상점 추천 등록됨 (${r.blocks}개 블록)` : `· 등록 실패: ${(r && r.error) || "알 수 없음"}`;
+    // '1개 블록'은 실패로 오해했다 (2026-10-20 피드백 #17) → 무엇이 등록됐는지로
+    el.textContent = r && r.ok ? `· 상점 추천: ${champ.name} 기본 빌드 등록됨` : `· 등록 실패: ${(r && r.error) || "알 수 없음"}`;
+    el.title = el.textContent;
     if (!r || !r.ok) itemSetDone = null;
   } catch (e) {
     el.textContent = `· 등록 실패: ${String(e && e.message || e).slice(0, 80)}`;
@@ -1816,10 +1839,17 @@ function applyAug(A) {
       full = true;
     }
     if (state.chosen.length < 4) {
-      state.offers = A.offers.map(byName);
+      // 새로고침 씀: 증강 인식이 새로고침 버튼 클릭을 본 칸 + 같은 선택 화면이면 직접 체크한 칸 (다른 화면이면 새로, 피드백 #9)
+      const next = A.offers.map(byName);
+      const same = state.offers.some((a, i) => a && next[i] && a.id === next[i].id);
+      state.rerolled = [0, 1, 2].map((i) => !!(A.rerolled && A.rerolled[i]) || (same && state.rerolled[i]));
+      state.offers = next;
       state.offersClosed = false;
       offersOnly = true;
     }
+  } else if (A.offers && A.rerolled && A.rerolled.some((v, i) => v && !state.rerolled[i])) {
+    state.rerolled = state.rerolled.map((v, i) => v || !!A.rerolled[i]);  // 새로고침을 눌렀는데 새 이름은 아직 못 읽음
+    offersOnly = true;
   }
   // 선택 화면이 닫혔는데 고른 것이 아직 안 정해짐(카드 클릭을 못 잡음): 게임 화면 카드는 바로 지운다.
   // 2026-10-19 퀸 판: '못 정함'(20초 뒤)까지 카드 평가가 남고, 카드 위치를 잃어 화면 아래쪽(기본 위치)으로 내려가 있었다
@@ -1863,9 +1893,27 @@ function setAutoChamp() {
 // 게임 연동: 챔피언·레벨·아이템을 게임에 맞춘다 (증강은 직접 고름). 같은 값이면 다시 그리지 않는다
 let liveLast = "";
 let liveEnded = false;
-let liveShop = false, goldDrawnAt = 0;
+let liveShop = false, goldDrawnAt = 0, boxSent = null;
 let enemyBuildKey = "";
 const BOX_START = 75;  // 초. 상자 '자세히'일 때 게임 시작 후 이 시간까지 띄운다 (처음 아이템을 사는 때)
+// ⚙ 표시 설정·⚙ 더보기 팝업: 바깥을 누르거나 Esc 로 닫는다 (summary 를 다시 누르는 것 말고는 닫을 방법이 없어
+// 4분 넘게 열린 채 오른쪽 '다음에 살 아이템'을 가렸다, 2026-10-20 피드백 #22)
+function closeMenusOnOutside() {
+  const menus = () => ["#ov-settings", "#more-menu"].map((q) => $(q)).filter((m) => m && m.open);
+  document.addEventListener("click", (e) => { for (const m of menus()) if (!m.contains(e.target)) m.open = false; });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape") for (const m of menus()) m.open = false; });
+  const x = $("#ov-close");
+  if (x) x.addEventListener("click", () => { $("#ov-settings").open = false; });
+}
+
+// 표시 창 상태 → 짧은 말: '표시 중 · 테두리 없음 1440×900 · 상점 상자 (가로 …)' → '상점 상자'
+function overlayShort(st) {
+  const m = /^표시 중 · .*? · ([^(]+?)(?: \(|$)/.exec(st || "");
+  if (m) return m[1].trim();
+  if (/전체 화면/.test(st)) return "전체 화면이라 표시 못 함";
+  return String(st || "").replace(/\s*\(.*$/, "");
+}
+
 function applyLive(L) {
   const el = $("#live-status");
   // 게임 중엔 챔피언 목록(아이콘 173개)을 접는다: 챔피언은 게임에서 정해지고, 화면 엔진 메모리를 덜 쓴다. 검색하면 다시 보인다
@@ -1894,14 +1942,18 @@ function applyLive(L) {
   const items = (L.items || []).map((id) => d.items.find((i) => i.id === id)).filter(Boolean)
     .filter((it, i, arr) => arr.findIndex((x) => x.name === it.name) === i).slice(0, S.SLOTS);
   const level = Math.max(1, Math.min(18, L.level || 1));
-  const statusText = `게임 중 · ${L.championName || L.champion || "?"} ${level}레벨`
-    + (L.augmentFields && L.augmentFields.length ? ` · 증강 필드 발견(${L.augmentFields.length})` : "")
-    // 게임 화면 위 표시가 안 보일 때 이유를 바로 보이게 (윈도우)
-    + (L.overlayStatus ? ` · 게임 화면 표시: ${L.overlayStatus}` : "")
-    // 증강 인식이 안 되면 이유가 바로 보이게 (v0.1.12 는 기록 파일을 열어야만 알 수 있었다)
-    + (L.aug && L.aug.status ? ` · 증강 인식: ${L.aug.status}` : "");
+  // 상태 글은 짧고 쉬운 말로 (좌표·글자 인식 방식 같은 진단 값은 마우스를 올리면 보이는 설명으로, 피드백 #21).
+  // 게임 시작 순간엔 게임 데이터가 1레벨·골드 0을 준다 → '시작 중' (아수라장은 3레벨 시작, 피드백 #16)
+  const starting = (L.gameTime ?? 99) < 3 && level === 1;
+  const preview = $("#ov-preview") && $("#ov-preview").checked;
+  const statusText = `게임 중 · ${L.championName || L.champion || "?"} ${starting ? "시작 중" : `${level}레벨`}`
+    + (L.overlayStatus ? ` · 게임 화면: ${overlayShort(L.overlayStatus)}${preview ? " (미리 보기 켜짐)" : ""}` : "")
+    + (L.aug && L.aug.offers ? " · 증강 카드 읽는 중" : "");
   if (el.textContent !== statusText) el.textContent = statusText;  // 같은 글이면 안 건드린다 (1초마다 다시 그리지 않게)
-  el.title = (L.augmentFields && L.augmentFields.length ? "API 증강 필드: " + L.augmentFields.slice(0, 8).join(", ") + "\n" : "")
+  el.title = statusText + "\n"
+    + (L.overlayStatus ? `게임 화면 표시: ${L.overlayStatus}\n` : "")
+    + (L.aug && L.aug.status ? `증강 인식: ${L.aug.status}\n` : "")
+    + (L.augmentFields && L.augmentFields.length ? "API 증강 필드: " + L.augmentFields.slice(0, 8).join(", ") + "\n" : "")
     + `원본 저장 위치: ${L.logDir}`;
   // 골드·부품은 3초마다 바뀌어도 순위는 그대로라 '지금 살 것'만 다시 그린다.
   // 골드는 칼바람에서 1초마다 오른다 → 상점이 열려 있을 때(게임 화면 상자에 보일 때)·부품이 바뀌었을 때만 바로,
@@ -1919,6 +1971,10 @@ function applyLive(L) {
     && (shopOpen || shopOpen !== liveShop || Date.now() - goldDrawnAt > 10000));
   liveShop = shopOpen;
   if (goldChanged) goldDrawnAt = Date.now();
+  // 상자를 띄울 이유(상점·죽음)가 바뀌면 골드·아이템이 그대로여도 바로 다시 보낸다.
+  // 예전엔 골드·아이템이 바뀔 때만 보내서 상점을 닫거나 부활한 뒤에도 최대 약 13초 상자가 남았다 (피드백 #11·#10)
+  const boxChanged = state.boxWhy !== boxSent;
+  boxSent = state.boxWhy;
   state.gold = L.gold ?? null;
   state.liveStats = L.stats && Object.keys(L.stats).length ? L.stats : null;
   state.liveLevel = level;
@@ -1952,6 +2008,7 @@ function applyLive(L) {
     // 부품을 샀으면 다음 구매도 다시 (만드는 중인 아이템을 1순위로 묶는다). 골드만 바뀌면 '지금 살 것'만
     if (invChanged && state.champ) { renderNextBuy(itemRanking()); renderChosenItems(); }
     else if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay("gold"); }
+    else if (boxChanged) sendOverlay("box");
     return;
   }
   const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));
@@ -1962,6 +2019,7 @@ function applyLive(L) {
     $("#level").value = level;
     $("#level-val").textContent = level;
     if (!document.body.classList.contains("simple")) renderStats();
+    if (boxChanged || goldChanged) { renderBuyNow(); sendOverlay("box"); }
     return;
   }
   if (champ && (!state.champ || state.champ.id !== champ.id)) {
@@ -2095,7 +2153,8 @@ window.addEventListener("pywebviewready", async () => {
     let L = null;
     try { L = await api.get_live(); applyLive(L); applyAug(L && L.aug); } catch (e) { /* 다음에 다시 */ }
     liveBusy = false;
-    const busy = L && L.inGame && L.aug && (L.aug.offers || L.aug.shop);
+    // 죽어 있을 때도 1초마다: 칼바람에서 아이템을 사는 때라 '지금 살 것'이 늦으면 틀린 안내가 된다 (피드백 #12)
+    const busy = L && L.inGame && ((L.aug && (L.aug.offers || L.aug.shop)) || L.dead);
     liveTimer = setTimeout(livePoll, liveAgain ? 0 : busy ? 1000 : 3000);
   };
   window.livePoke = livePoll;
@@ -2144,3 +2203,4 @@ window.addEventListener("pywebviewready", async () => {
 });
 
 init();
+closeMenusOnOutside();

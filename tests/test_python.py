@@ -322,6 +322,10 @@ class FakeCanvas:
     def tag_raise(self, *a):
         pass
 
+    def move(self, i, dx, dy):
+        v = self.items[i]
+        self.items[i] = (v[0] + dx, v[1] + dy, v[2]) if len(v) == 3 else (v[0] + dx, v[1] + dy, v[2] + dx, v[3] + dy)
+
 
 class Overlay(unittest.TestCase):
     def test_draw_handles_empty_label(self):
@@ -413,6 +417,14 @@ class Overlay(unittest.TestCase):
         overlay.draw(c, {"cards": [short], "pos": pos}, W, H, scale=H / 1080)
         self.assertIn(("Malgun Gothic" if overlay.IS_WINDOWS else "Apple SD Gothic Neo", -round(overlay.FONT_PX[1] * H / 1080)),
                       c.fonts.values(), "짧으면 줄이지 않는다")
+        # 카드 아래 끝(edge)에 바닥을 맞춘다: 짧은 이유는 설명을 덮지 않게 아래로 (2026-10-20 피드백 #18)
+        edge = {**pos, "edge": name_y + overlay.CARD_EDGE, "bottom": name_y + overlay.CARD_EDGE}
+        c = FontCanvas()
+        overlay.draw(c, {"cards": [short], "pos": edge}, W, H, scale=H / 1080)
+        texts = [i for i, v in c.items.items() if len(v) == 3 and v[2]]
+        low = max(c.bbox(i)[3] for i in texts)
+        self.assertEqual(low + 4, int(H * edge["edge"]), "바닥이 카드 아래 끝")
+        self.assertGreaterEqual(min(c.items[i][1] for i in texts), int(H * edge["y"]), "이름 밑보다 위로 가지 않는다")
 
     def test_swap_marker_below_box(self):
         """아이템 칸이 다 찼을 때 바꾸기: 상자가 뜰 때만, 상자 밑에 아이콘 (판다 ✕ → 산다)"""
@@ -2007,13 +2019,16 @@ class OverlayStates(unittest.TestCase):
 
     def test_box_limits_and_presets(self):
         import overlay
-        long = ["적 회복 많음 " + "가" * 80] + [f"줄 {i}" for i in range(12)]
+        long = ["적 회복 많음 " + "가" * 80] + [f"줄 {i}" for i in range(12)]  # '→' 없는 정보 줄은 자른다
         items = overlay.layout({"hud": long, "shop": {"left": 0.2}}, 1920, 1080)
         lines = items[0][3][0]
         self.assertEqual(len(lines), overlay.HUD_MAX_LINES)
         self.assertTrue(lines[0].endswith("…") and len(lines[0]) == overlay.HUD_MAX_CHARS)
-        r = overlay.layout({"hud": self.HUD, "shop": {"left": 0.2}, "boxPos": "right-middle"}, 1920, 1080)[0]
+        # 오른쪽 가운데: 죽어 있을 때(상점 닫힘)는 오른쪽, 상점이 열려 있으면 상점 창과 겹쳐 왼쪽 위로 (피드백 #19)
+        r = overlay.layout({"hud": self.HUD, "shop": "dead", "dead": True, "boxPos": "right-middle"}, 1920, 1080)[0]
         self.assertEqual((r[1], r[2], r[3][1]), (1920 - 16, int(1080 * 0.30), "ne"))
+        r = overlay.layout({"hud": self.HUD, "shop": {"left": 0.2}, "boxPos": "right-middle"}, 1920, 1080)[0]
+        self.assertEqual((r[1], r[3][1]), (overlay.BOX_X, "nw"))
         d = overlay.layout({"hud": self.HUD, "shop": {"left": 0.2}, "boxPos": "없는 자리"}, 1920, 1080)[0]
         self.assertEqual((d[1], d[3][1]), (overlay.BOX_X, "nw"), "모르는 자리면 기본(왼쪽 위)")
 
@@ -2042,6 +2057,62 @@ class CardsAndBox0150(unittest.TestCase):
         self.assertEqual(len(grabs), 1, "못 읽은 칸 하나만")
         self.assertEqual(grabs[0][4], grabs[0][2] * 2, "2배로 키워 읽는다")
         self.assertEqual(r._counts.get("이름 다시 읽어 찾음"), 1)
+
+    def test_reread_budget_not_spent_before_screen(self):
+        """선택 화면 전 조각 글자(0~1개)로 다시 읽어도 화면이 뜬 뒤 빈 칸 다시 읽기 횟수는 남는다 (피드백 #7)"""
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r.selection_likely = lambda: True
+        m = augocr.Matcher(["궁극의 각성", "최상급 조준경 부착", "주문 분산"])
+
+        class Cap:
+            def grab(self, *a):
+                return b""
+
+        class Ocr:
+            def words(self, img, w, h):
+                return [("주문", 10, 5, 40, 20), ("분산", 60, 5, 40, 20)]
+        gw, gh = 1440, 900
+        for _ in range(5):  # 조각 하나만 읽힌 회차 (증강 레벨을 찍고 고르기 전)
+            r._verified = set()
+            r.reread_cards(Cap(), Ocr(), (0, 0, gw, gh), [("궁극의 각성", 0.29 * gw, 0.41 * gh)], m, {"궁극의 각성": 0.8})
+        self.assertEqual(r._reread_n, 0, "화면 전 조각으로는 횟수를 안 쓴다")
+        offers = [("궁극의 각성", 0.291 * gw, 0.41 * gh), ("최상급 조준경 부착", 0.504 * gw, 0.41 * gh)]
+        got = r.reread_cards(Cap(), Ocr(), (0, 0, gw, gh), offers, m, {"궁극의 각성": 1.0, "최상급 조준경 부착": 1.0})
+        self.assertEqual(len(got), 3)
+
+    def test_reroll_click_marks_slot_and_clears_old_name(self):
+        """새로고침 버튼 클릭 → 그 칸 '새로고침 씀', 새 이름을 읽기 전엔 옛 카드 평가를 남기지 않는다 (피드백 #7·#9)"""
+        import augocr
+        t = augocr.Tracker()
+        pos = {"xs": [0.29, 0.50, 0.71], "nameY": 0.41}
+        t.feed(["가", "나", "다"], pos)
+        self.assertEqual(augocr.reroll_at(pos, 0.71, 0.71), 2, "1440×900 영상의 새로고침 버튼 높이")
+        self.assertIsNone(augocr.reroll_at(pos, 0.71, 0.50), "카드 몸통은 새로고침 아님")
+        t.reroll(2)
+        self.assertEqual(t.state["rerolled"], [False, False, True])
+        seq = t.state["seq"]
+        t.feed(["가", "나", None], pos)  # 새 카드 이름을 아직 못 읽음
+        self.assertEqual(t.state["offers"], ["가", "나", None], "옛 이름 '다'를 남기지 않는다")
+        self.assertGreater(t.state["seq"], seq)
+        t.feed(["가", "나", "라"], pos)
+        self.assertEqual(t.state["offers"], ["가", "나", "라"])
+        self.assertEqual(t.state["rerolled"], [False, False, True], "같은 선택 화면에선 그대로")
+        # 설명 창이 가린 칸(새로고침 안 함)은 예전처럼 같은 선택지로
+        seq = t.state["seq"]
+        t.feed([None, "나", "라"], pos)
+        self.assertEqual(t.state["seq"], seq)
+        # 닫히면 새로
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["rerolled"], [False, False, False])
+
+    def test_shop_button_click(self):
+        """닫힌 상점: 아래 골드 버튼 클릭이면 바로 상점을 읽는다 (피드백 #10). 게임 창 1440×900 이 화면 (240, 90) 에"""
+        import augocr
+        rect = (240, 90, 1440, 900)
+        self.assertTrue(augocr.shop_button_at(rect, (240 + int(1440 * 0.62), 90 + int(900 * 0.98))))
+        self.assertFalse(augocr.shop_button_at(rect, (240 + 720, 90 + 450)), "화면 가운데 클릭은 아님")
 
     def test_dead_box_shows_next_buy_and_buy_now(self):
         import overlay
@@ -2136,6 +2207,30 @@ class BoxNoObstruct(unittest.TestCase):
             self.assertGreaterEqual(it[2], int(1080 * overlay.DEAD_Y), mode)
         shop = overlay.layout({"hud": ["다음 구매: 가"], "shop": {"left": 0.2}}, 1920, 1080)[0]
         self.assertEqual(shop[2], int(1080 * overlay.BOX_Y), "상점 창이 열렸을 땐 원래 자리")
+        # 죽은 채 상점을 열어도 죽음 정보 창 밑 (2026-10-20 피드백 #19: 상점 인식 값이 먼저라 창을 덮었다)
+        both = overlay.layout({"hud": ["다음 구매: 가"], "shop": {"left": 0.2}, "dead": True}, 1920, 1080)[0]
+        self.assertGreaterEqual(both[2], int(1080 * overlay.DEAD_Y))
+
+    def test_box_follows_live_state(self):
+        """그릴 때의 상점·죽음으로 상자를 정한다 (피드백 #11: 상점을 닫거나 부활해도 화면이 다시 보낼 때까지 상자가 남았다)"""
+        import overlay
+        sent = {"hud": ["다음 구매: 가"], "shop": {"left": 0.3}, "box": "shop"}  # 보낼 땐 상점이 열려 있었다
+        self.assertFalse(overlay.layout(overlay.with_live(sent, {"shop": None, "dead": False}), 1920, 1080), "닫히고 살아 있으면 상자 없음")
+        dead = overlay.layout(overlay.with_live(sent, {"shop": None, "dead": True}), 1920, 1080)
+        self.assertEqual(dead[0][0], "hud")
+        self.assertTrue(overlay.layout(overlay.with_live({"hud": ["다음 구매: 가"]}, {"shop": {"left": 0.3}, "dead": False}), 1920, 1080),
+                        "보낼 땐 닫혀 있었어도 지금 열려 있으면 띄운다")
+        self.assertEqual(overlay.with_live({"shop": "preview"}, {"shop": None})["shop"], "preview", "미리 보기는 그대로")
+        # 오른쪽 가운데 자리는 상점이 열려 있으면 상점 창과 겹쳐 왼쪽 위로
+        r = overlay.layout({"hud": ["다음 구매: 가"], "shop": {"left": 0.3}, "boxPos": "right-middle"}, 1440, 900)[0]
+        self.assertLess(r[1], 1440 / 2)
+
+    def test_hud_keeps_item_names(self):
+        """살 아이템이 든 조언 줄은 자르지 않고, 컬러 이모지는 기호로 (피드백 #20)"""
+        import overlay
+        line = "적 마법 80% → 마법 저항 우선: 멜모셔스의 아귀 · 관통: 도미닉 경의 인사 · 세릴다의 원한"
+        self.assertEqual(overlay.hud_fit([line]), [line])
+        self.assertEqual(overlay.hud_text("산 아이템: 정수 약탈자 ✅"), "산 아이템: 정수 약탈자 ✔")
 
 
 

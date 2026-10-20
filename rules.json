@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
+  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -780,9 +780,11 @@
       "note": "눈덩이(소환사 주문) 가속이라 스킬 가속 아이템과 상관없어요"
     },
     "ARAM_ApexInventor": {
+      "tags": {},
       "lift": {},
       "itemsActive": true,
-      "note": "아이템 가속은 사용 효과가 있는 아이템에만 들어요 (스킬 가속 아님)"
+      "note": "아이템 가속은 사용 효과가 있는 아이템에만 들어요 (스킬 가속 아님)",
+      "_why": "설명의 '아이템 가속'이 자동 태그에서 스킬 가속(HASTE)으로 잡혀 대마법사와 연계 S(🔥)인데 이유는 '스킬 가속 아님'이었다 (2026-10-20 피드백 #14)"
     },
     "BrushPower": {
       "tags": {
@@ -969,8 +971,10 @@
     },
     "ARAM_DoubleTap": {
       "stats": {
-        "CRIT": 0.25
-      }
+        "CRIT": {"calc18": "Calc_Crit_Chance"},
+        "onhitOnCrit": "AdditionalOnHitCount"
+      },
+      "_why": "치명타 평타 때 적중 효과 한 번 더(원본 AdditionalOnHitCount)가 계산에 없었다. 원본 Cooldown 5 는 설명·위키에 없어 넣지 않음 (2026-10-20 피드백 #13)"
     },
     "Twinfire": {
       "stats": {
@@ -988,8 +992,11 @@
     },
     "ARAM_JeweledGauntlet": {
       "stats": {
-        "CRIT": "CritChance"
-      }
+        "CRIT": "CritChance",
+        "APtoCRIT": "CritConverRatio",
+        "skillCritDmg": "CritDamage"
+      },
+      "_why": "스킬 치명타(145% + 추가 치명타 피해)·주문력 비례 치명타 확률이 계산에 없어서 한 발에 두 놈과 수치가 똑같았다 (2026-10-20 피드백 #13)"
     },
     "HandOfBaron": {
       "stats": {

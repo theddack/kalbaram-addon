@@ -180,6 +180,9 @@ def live_url():
 LIVE_URL = live_url()
 LOG_KEEP = 30  # 게임 기록 파일은 최근 30개만 남긴다
 LIVE_INTERVAL = 3  # 초 (게임 중·챔피언 선택 중)
+# 상점이 열려 있거나 죽어 있을 때(아이템을 사는 때)는 1초마다: 3초 + 화면 3초가 겹쳐 산 직후 몇 초 동안
+# 산 아이템을 다시 권하거나 못 사는 아이템을 '지금 살 것'으로 냈다 (2026-10-20 피드백 #12). 레벨 표시도 늦었다 (#16)
+LIVE_FAST_INTERVAL = 1
 CHAMP_SELECT_INTERVAL = 1  # 초 (롤 클라이언트: 챔피언 선택·로딩 중. 상점 추천은 이때 써야 상점에 보인다)
 STALL_EXTRA = 7  # 초. 게임 연동 한 바퀴가 이만큼 더 늦으면 '멈춤'으로 기록 (읽기 제한 2초 + 여유)
 RES_EVERY = 30  # 초. 게임 중 자원 기록 간격
@@ -323,6 +326,10 @@ class LiveWatcher(threading.Thread):
         self._game_key = None
         self._last_snap = 0
         self.beat = time.time()  # 마지막으로 한 바퀴 돈 시각 (멈춤 진단용)
+        self.wake = threading.Event()  # 상점이 열리고 닫힐 때 등: 기다리지 않고 바로 다시 읽는다
+        self.fast = lambda: False  # 상점이 열려 있는가 (desktop 이 증강 인식과 연결)
+        self.on_change = None  # 죽음·레벨·골드·아이템이 바뀌면 화면을 깨운다 (화면은 3초마다만 묻는다)
+        self._last_key = None
 
     def run(self):
         while True:
@@ -335,8 +342,17 @@ class LiveWatcher(threading.Thread):
                     self.poll()
                 except Exception as e:
                     self.state = {"inGame": False, "error": str(e)[:120]}
-            # 게임 중이면 3초마다, 아니면 10초마다 (게임 시작은 최대 10초 늦게 알아챈다)
-            time.sleep(LIVE_INTERVAL if self.state.get("inGame") else IDLE_INTERVAL)
+            # 게임 중이면 3초마다(상점·죽음이면 1초), 아니면 10초마다 (게임 시작은 최대 10초 늦게 알아챈다)
+            if not self.state.get("inGame"):
+                wait = IDLE_INTERVAL
+            else:
+                try:
+                    quick = self.state.get("dead") or self.fast()
+                except Exception:
+                    quick = False
+                wait = LIVE_FAST_INTERVAL if quick else LIVE_INTERVAL
+            self.wake.wait(wait)
+            self.wake.clear()
 
     def watch_resources(self, now, gap):
         """게임 중 자원 기록 (2026-10-15 실게임 '중간에 컴퓨터가 멈춤': 그땐 기록이 없어 원인을 못 봤다).
@@ -386,6 +402,15 @@ class LiveWatcher(threading.Thread):
             self.rec.event("items", {"items": st.get("items"), "level": st.get("level"), "gold": round(st.get("gold") or 0),
                                      "gameTime": round(st.get("gameTime") or 0)})
         self.state = st  # 다 채운 뒤에 내보낸다 (화면이 읽는 도중 바뀌지 않게)
+        key = (st.get("dead"), st.get("level"), tuple(st.get("items") or ()), int(st.get("gold") or 0) // 50)
+        if key != self._last_key:
+            changed = self._last_key is not None
+            self._last_key = key
+            if changed and self.on_change:
+                try:
+                    self.on_change()
+                except Exception:
+                    pass
 
     def _items_changed(self, st):
         cur = tuple(st.get("items") or ())
@@ -866,8 +891,10 @@ class Api:
                     and not getattr(self._ov, "preview", False):
                 payload["cards"] = [None] * 3  # 선택 화면이 닫혔다: 남은 카드 평가를 엉뚱한 자리(기본 위치)에 그리지 않게
             if cards:
-                payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME,
-                                  "bottom": cards["nameY"] + overlay.CARD_BOTTOM}
+                # ⚙ 세로 위치 설정은 게임 중에도 기본값과의 차이만큼 옮긴다 (예전엔 카드를 읽으면 덮어써서 설정이 듣지 않았다, 피드백 #18)
+                off = float(payload["pos"].get("y", overlay.DEFAULT_POS["y"])) - overlay.DEFAULT_POS["y"]
+                payload["pos"] = {**payload["pos"], "xs": cards["xs"], "y": cards["nameY"] + overlay.BELOW_NAME + off,
+                                  "bottom": cards["nameY"] + overlay.CARD_EDGE + off, "edge": cards["nameY"] + overlay.CARD_EDGE + off}
             self._ov.update(payload)
         if self._reader is not None and payload.get("shopMarks") is not None:
             self._reader.shop_targets = list(payload.get("shopMarks") or [])  # 상점 안 아이템 자리 찾기(시험) 대상
@@ -1173,6 +1200,8 @@ def lower_priority():
 WEBVIEW2_ARGS = ("--disable-gpu --disable-gpu-compositing --in-process-gpu --renderer-process-limit=1 "
                  "--enable-low-end-device-mode --disable-background-networking --disable-component-update "
                  "--js-flags=--optimize-for-size --enable-features=NetworkServiceInProcess2 "
+                 # 애드온 창이 게임 뒤에 있어도 화면 타이머(게임 상태 묻기)를 늦추지 않게 (상자가 늦게 내려가던 원인 후보, 피드백 #11)
+                 "--disable-background-timer-throttling --disable-renderer-backgrounding --disable-backgrounding-occluded-windows "
                  "--disable-features=msSmartScreenProtection,Translate,AutofillServerCommunication,MediaRouter,"
                  "SpareRendererForSitePerProcess,BackForwardCache")
 
@@ -1523,6 +1552,11 @@ def main():
         reader.board_on = bool(settings.get("board", False))  # Tab 점수판 읽기 (시험, 기본 꺼짐)
         watcher.on_new_game = lambda st: reader.new_game()
         reader.start()
+    # 표시 창은 그릴 때마다 지금 상점·죽음을 직접 본다 (화면이 다시 보낼 때까지 상자가 남지 않게, 피드백 #11)
+    ov.live_fn = lambda: {"shop": reader.state.get("shop") if reader else None,
+                          "dead": bool(watcher.state.get("inGame") and watcher.state.get("dead"))}
+    if reader:
+        watcher.fast = lambda: bool(reader.state.get("shop"))
     api = Api(settings, watcher, ov, lw, reader)
     # 한 판 기록: logs/games/날짜_챔피언/ (끝나면 zip). 빗나간 인식·추천을 고치려고 읽은 화면 조각까지 남긴다
     rec = gamelog.GameRecorder(user_dir() / "logs" / "games")
@@ -1647,12 +1681,17 @@ def main():
     )
     api._window = window
     webmem.window = window
+    def poke():
+        # 기다리지 않고 따로: 증강 인식이 창 스레드를 기다리며 서지 않게
+        threading.Thread(target=lambda: _safe(lambda: window.run_js("window.livePoke && window.livePoke()")),
+                         daemon=True, name="화면 깨우기").start()
+
+    def reader_changed():
+        watcher.wake.set()  # 상점이 열리고 닫히면 게임 데이터도 바로 다시 읽는다 (골드·아이템이 같은 순간 값이게)
+        poke()
     if reader:
-        def poke():
-            # 기다리지 않고 따로: 증강 인식이 창 스레드를 기다리며 서지 않게
-            threading.Thread(target=lambda: _safe(lambda: window.run_js("window.livePoke && window.livePoke()")),
-                             daemon=True, name="화면 깨우기").start()
-        reader.on_change = poke
+        reader.on_change = reader_changed
+    watcher.on_change = poke  # 죽음·레벨·골드·아이템이 바뀌면 화면을 바로 깨운다
     # 기준 초: 게임 연동 최대 10초 쉬고 2초 대기, 롤 클라이언트 10초 + 요청 3번 x 5초, 표시 창 최대 1초,
     # 화면은 3초마다 묻지만 창을 내려 두면 브라우저가 타이머를 늦추므로 넉넉히
     diag = Diag(user_dir() / "logs" / "diag.log", {

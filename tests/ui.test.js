@@ -290,7 +290,7 @@ test("챔피언 선택 중: 롤에서 고른 챔피언을 따라가고, 대기�
   await p.w.applyLcu(api, { connected: true, phase: "ChampSelect", championKey: 799 });  // 대기석에서 암베사로
   assert.match(p.text("#champ-card"), /암베사/);
   assert.match(writes.at(-1), /암베사/);
-  assert.match(p.text("#itemset-status"), /암베사 상점 추천 등록됨/);
+  assert.match(p.text("#itemset-status"), /상점 추천: 암베사 기본 빌드 등록됨/);
   p.pickChamp("Jinx");  // 그 사이 다른 챔피언을 눌러 보면
   await p.w.applyLcu(api, { connected: true, phase: "ChampSelect", championKey: 799 });
   assert.match(p.text("#champ-card"), /징크스/, "롤 챔피언이 그대로면 덮어쓰지 않는다");
@@ -352,7 +352,7 @@ test("적 구성: 받는 피해 비율·회복·탱커 조언이 뜨고 계산�
   assert.match(adv, /적 탱커 많음/);
   assert.notEqual(adv, before);
   p.w.sendOverlay();
-  assert.match(sent.at(-1).hud.join("\n"), /적 구성 추정: 마법/);
+  assert.match(sent.at(-1).hud.join("\n"), /적 마법 \d+%/, "게임 화면 상자는 짧게 (피드백 #20)");
   assert.deepEqual(p.errors, []);
 });
 
@@ -991,7 +991,7 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],
     enemyBuilds: [heal, heal2, { champion: "Aatrox", level: 9, items: [] }] });
   p.w.renderItemList();
-  assert.match(p.text("#next-buy"), /🔁 필멸자의 운명 ← 적 회복 많음 \(소라카·유미\)/);
+  assert.match(p.text("#next-buy"), /🔁 필멸자의 운명 ← 치유 감소/);
   assert.deepEqual(p.errors, []);
 });
 
@@ -1071,4 +1071,52 @@ test("게임 중 챔피언 칸을 숨겼으면(autochamp) 3칸 규칙을 쓰지 
   assert.ok(three.length >= 1, "게임 중 3칸 규칙");
   for (const l of three) assert.match(l, /:not\(\.autochamp\)/, l);
   assert.doesNotMatch(css, /main \{[^}]*grid-template-columns: \d+px 1fr \d+px/, "큰 칸 3개를 고정 px 로 두지 않는다");
+});
+
+// 2026-10-20 피드백 #11·#10: 상자를 띄울 이유(상점·죽음)가 바뀌면 골드·아이템이 그대로여도 바로 다시 보낸다
+test("상점을 닫거나 부활하면 골드가 같아도 게임 화면 상자를 바로 다시 보낸다 (상자가 남지 않게)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const live = (extra) => p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: [], gold: 500, gameTime: 300, ...extra });
+  live({ aug: { shop: { left: 0.3 } } });
+  assert.equal(sent.at(-1).box, "shop");
+  const n = sent.length;
+  live({ aug: { shop: null } });  // 상점 닫힘 (골드 그대로)
+  assert.ok(sent.length > n, "다시 보냄");
+  assert.equal(sent.at(-1).box, null);
+  live({ dead: true });  // 죽음
+  assert.equal(sent.at(-1).box, "dead");
+  live({ dead: false });  // 부활
+  assert.equal(sent.at(-1).box, null);
+  // 레벨만 바뀌어도(같은 빌드) 이유가 바뀌었으면 보낸다
+  live({ dead: true, level: 10 });
+  assert.equal(sent.at(-1).box, "dead");
+  assert.deepEqual(p.errors, []);
+});
+
+// 2026-10-20 피드백 #22·#21·#15·#17
+test("⚙ 팝업은 바깥 클릭·Esc·✕ 로 닫히고, 상태 글은 짧은 말 · 증강 4개면 완료 요약", async () => {
+  const p = await loadPage({ simple: true });
+  const ov = p.q("#ov-settings"), more = p.q("#more-menu");
+  ov.open = true;
+  p.click(p.q("main"));
+  assert.equal(ov.open, false, "바깥 클릭");
+  more.open = true;
+  p.doc.dispatchEvent(new p.w.KeyboardEvent("keydown", { key: "Escape" }));
+  assert.equal(more.open, false, "Esc");
+  ov.open = true;
+  p.click(p.q("#ov-close"));
+  assert.equal(ov.open, false, "✕");
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Corki", championName: "코르키", level: 1, gameTime: 1, items: [],
+    overlayStatus: "표시 중 · 테두리 없음 1440×900 · 상점 상자 (가로 0.00~0.25 세로 0.05~0.40)", aug: { status: "증강 선택 화면 아님 (ko · 버퍼 4인자)" } });
+  const st = p.text("#live-status");
+  assert.match(st, /코르키 시작 중 · 게임 화면: 상점 상자/);
+  assert.doesNotMatch(st, /가로|버퍼/, "진단 값은 툴팁으로");
+  assert.match(p.q("#live-status").title, /가로 0\.00/);
+  // 증강 4개
+  const four = ["ARAM_Archmage", "BurstingTeeth", "ARAM_DrawYourSword", "ARAM_GiantSlayer"];
+  for (const id of four) p.click(p.augRow(id) || p.qa(".aug").find((e) => !p.text("#chosen").includes(e.dataset.id)));
+  assert.equal(p.text("#aug-title"), "증강 4개 완료");
+  assert.deepEqual(p.errors, []);
 });

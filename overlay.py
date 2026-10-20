@@ -29,6 +29,9 @@ BELOW_NAME = 0.15
 # 카드 밑 표시는 이름 줄 + 이만큼 위에서 끝낸다 (그 밑은 새로고침 버튼. 실제 화면: 이름 0.46 · 새로고침 0.70).
 # 이유가 길면 글자를 줄여 이 안에 맞춘다 (2026-10-15 지적: 설명이 커서 새로고침 버튼이 안 보임)
 CARD_BOTTOM = 0.22
+# 카드 아래 끝 (이름 줄 + 이만큼). 평가 상자는 이 위에 바닥을 맞춰 쌓는다: 이름 밑에서부터 내려 쓰면 설명 줄이 많은 카드에서
+# 설명을 덮었다 (2026-10-20 피드백 #18). 실제 화면: 16:10 이름 0.41 · 카드 끝 0.66, 16:9 이름 0.46 · 빈 곳 ~0.69
+CARD_EDGE = 0.23
 FONT_PX = (20, 15, 11)  # 글자 크기(픽셀, 1080p 기준): 제목, 이유·상자, 가장 작게.
 # 포인트로 주면 화면 배율(150% 등)만큼 한 번 더 커졌다 (게임 창 크기 비례 + 배율 = 두 번 키움)
 # 상점 상자 글자(픽셀, 1080p 기준). 이유 글자(15)와 같이 쓰면 작아서 읽기 어려웠다 (2026-10-19 지적)
@@ -209,6 +212,29 @@ def set_dpi_aware():
 
 
 # ---------------------------------------------------------------- 그리기 (OS 무관, 맥에서도 확인 가능)
+def with_live(payload, live):
+    """그리는 순간의 상점 열림·죽음으로 상자를 띄울지 다시 정한다.
+    예전엔 화면(JS)이 보낼 때의 값으로만 정해서, 상점을 닫거나 부활해도 화면이 다시 보낼 때까지(최대 약 13초)
+    상자가 남았다 (2026-10-20 피드백 #11 영상: 부활 후 이동·교전 중에도 상자). live = {"shop": 상점 위치|None, "dead": bool}"""
+    if not live or payload.get("shop") == "preview":
+        return payload
+    p = dict(payload)
+    shop, dead = live.get("shop"), bool(live.get("dead"))
+    p["shop"] = shop or ("dead" if dead else ("start" if p.get("box") == "start" else None))
+    p["dead"] = dead
+    return p
+
+
+# Tk 는 컬러 이모지를 못 그려 흑백 대체 글자(☑ 등)로 어색하게 보였다 (2026-10-20 피드백 #20) → 상자 글자에선 기호로
+HUD_GLYPHS = {"✅": "✔", "⚠️": "⚠", "👍": "✔", "🤔": "△"}
+
+
+def hud_text(line):
+    for k, v in HUD_GLYPHS.items():
+        line = line.replace(k, v)
+    return line
+
+
 def layout(payload, w, h):
     """그릴 항목 목록: (종류, x, y, 내용). 좌표는 표시 창 기준"""
     pos = {**DEFAULT_POS, **(payload.get("pos") or {})}
@@ -231,10 +257,14 @@ def layout(payload, w, h):
     shop = payload.get("shop")
     if hud and shop and not picking:
         pos_name = payload.get("boxPos") or "left-top"
+        # 오른쪽 가운데는 상점 창(16:10 에서 게임 폭 약 0.31~0.91)과 겹친다 → 상점이 열려 있으면 왼쪽 위로 (피드백 #19)
+        if pos_name == "right-middle" and isinstance(shop, dict):
+            pos_name = "left-top"
         bx, by, anchor = BOX_PRESETS.get(pos_name, BOX_PRESETS["left-top"])
         x = w + bx if bx < 0 else bx
-        if shop == "dead" and by < DEAD_Y:
-            by = DEAD_Y  # 죽음 정보 창 밑으로
+        # 죽어 있으면 상점이 열려 있어도 죽음 정보 창(왼쪽 위 0~27%) 밑으로 (예전엔 상점 인식 값이 먼저라 창을 덮었다, 피드백 #19)
+        if (shop == "dead" or payload.get("dead")) and by < DEAD_Y:
+            by = DEAD_Y
         if shop == "dead" and not detail:
             # 죽어 있을 때 = 칼바람에서 아이템을 사는 때. 간단히: 다음 구매·지금 살 것 / 보통: 거기에 가장 중요한 적 대응 1줄.
             # 첫 줄만 보이던 v0.1.49 는 '지금 살 것'까지 빠지고 다음 구매가 잘려 '나오다 마는' 상자였다 (2026-10-19 퀸 판).
@@ -266,7 +296,8 @@ def hud_fit(lines, detail=False):
     out = []
     for line in lines[:HUD_MAX_LINES]:
         line = str(line)
-        keep = len(line) <= HUD_MAX_CHARS or line.startswith("다음 구매: ")
+        # 살 아이템이 들어 있는 조언 줄(→)은 자르지 않고 줄을 바꾼다 (이름이 '도미닉 경의 인사 또는 세릴…'로 잘렸다, 피드백 #20)
+        keep = len(line) <= HUD_MAX_CHARS or line.startswith("다음 구매: ") or "→" in line
         out.append(line if keep else line[:HUD_MAX_CHARS - 1] + "…")
     return out
 
@@ -358,12 +389,14 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                                        font=(font, big, "bold"), fill="#111111", anchor="n")
             tb = canvas.bbox(title)  # 글자가 비면 None
             y2 = tb[3] if tb else y
-            reason = canvas.create_text(x, y2 + 12, text=c.get("reason", ""), width=int(w * 0.18),
+            # 이유 글 폭은 카드 안쪽 (카드 폭 ≈ 창 너비 18%에서 상자 여백을 뺀 만큼. 넘쳐서 옆 카드·설명을 덮었다)
+            reason = canvas.create_text(x, y2 + 12, text=c.get("reason", ""), width=max(80, int(w * 0.18) - 28),
                                         font=(font, small), fill="#ffffff", anchor="n")
             # 1순위 카드는 금색 굵은 테두리로 한눈에 (선택 순간 3초 안에 보이게)
             edge, ew = (BEST_EDGE, 3) if c.get("best") else ("", 0)
+            parts = [title, reason]
             if tb:
-                canvas.create_rectangle(tb[0] - 10, tb[1] - 4, tb[2] + 10, tb[3] + 4, fill=color, outline=edge, width=ew)
+                parts.append(canvas.create_rectangle(tb[0] - 10, tb[1] - 4, tb[2] + 10, tb[3] + 4, fill=color, outline=edge, width=ew))
             rb = canvas.bbox(reason)
             # 새로고침 버튼을 가리지 않게: 넘치면 이유 글자를 한 픽셀씩 줄인다 (가장 작게까지)
             size = small
@@ -381,9 +414,15 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                 canvas.itemconfig(reason, text=text)
                 rb = canvas.bbox(reason)
             if rb:
-                canvas.create_rectangle(rb[0] - 8, rb[1] - 4, rb[2] + 8, rb[3] + 4, fill="#111820", outline=edge or color, width=ew or 1)
+                parts.append(canvas.create_rectangle(rb[0] - 8, rb[1] - 4, rb[2] + 8, rb[3] + 4, fill="#111820", outline=edge or color, width=ew or 1))
             canvas.tag_raise(title)
             canvas.tag_raise(reason)
+            # 카드 아래 끝에 바닥을 맞춘다 (pos.edge). 위로 올라가도 이름 밑(y)보다는 위로 가지 않는다
+            edge_y = int(h * pos["edge"]) if pos.get("edge") else None
+            low = max([b[3] for b in (canvas.bbox(title), canvas.bbox(reason)) if b] or [0])
+            if edge_y and low and low + 4 < edge_y:
+                for it in parts:
+                    canvas.move(it, 0, edge_y - (low + 4))
         elif kind == "timers":
             # 상자 글자가 커져 길어지면 쿨타임 아이콘과 겹친다 → 상자(·바꾸기) 밑으로 내린다
             canvas.timer_y = max(y, left_bottom + 8) if left_bottom is not None else y  # 쿨타임만 다시 그릴 때도 같은 자리
@@ -395,7 +434,7 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
             gap = max(2, round(4 * scale))
             ty, texts = y, []
             limit = h * BOX_MAX_BOTTOM - abs(px) * 1.4  # 이 밑으로는 글자를 안 쓴다 (채팅·능력치 창을 가리지 않게)
-            for i, (line, head) in enumerate(hud_lines(lines_list)):
+            for i, (line, head) in enumerate(hud_lines([hud_text(str(l)) for l in lines_list])):
                 if head and i:
                     ty += gap * 2  # 묶음 사이를 조금 띄운다
                 if ty > limit and texts:
@@ -415,9 +454,14 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                 # 상자 크기를 고정: 폭은 글자 폭 한도 그대로, 높이는 이 게임 창에서 본 가장 큰 높이 (줄 수가 바뀔 때마다
                 # 상자가 커졌다 작아졌다 해서 '창이 움직인다'고 느꼈다, 2026-10-17 로그: 가로 0.20↔0.25 · 세로 0.15~0.30)
                 if compact:
-                    # 짧은 상자 (죽어 있을 때 다음 구매·지금 살 것): 글자 크기 그대로. 큰 상자 높이를 이어받지 않는다
-                    bw, bh = hb[2] - hb[0], hb[3] - hb[1]
-                    x0 = hb[0]
+                    # 짧은 상자 (죽어 있을 때 다음 구매·지금 살 것): 큰 상자 높이를 이어받지 않되, 짧은 상자끼리는 가장 큰 크기로 고정
+                    # (💰 줄이 골드에 따라 생겼다 없어져 상자가 5초마다 커졌다 작아졌다, 2026-10-20 피드백 #20)
+                    small_box = getattr(canvas, "hud_small", {})
+                    pw, ph = small_box.get((w, h), (0, 0))
+                    bw, bh = max(pw, hb[2] - hb[0]), max(ph, hb[3] - hb[1])
+                    small_box[(w, h)] = (bw, bh)
+                    canvas.hud_small = small_box
+                    x0 = hb[0] if anchor == "nw" else hb[2] - bw
                 else:
                     x0 = hb[0] if anchor == "nw" else hb[2] - bw
                     tall = getattr(canvas, "hud_tall", {})
@@ -544,6 +588,7 @@ class Overlay(threading.Thread):
         self._mode_checked = False  # 이번 게임 창에서 화면 모드를 읽어 봤는지 (없으면 0.2초마다 다시 찾지 않게)
         self.icon_dir = None  # 증강 아이콘 폴더 (쿨타임 표시)
         self._perf = {}  # 그리기 처리 시간(ms): 전체 다시 그리기 · 쿨타임만 (한 판 기록에 요약)
+        self.live_fn = None  # 지금 상점 열림·죽음 {"shop", "dead"} (desktop 이 연결). 그릴 때마다 묻는다 (with_live)
 
     def _perf_add(self, kind, t0):
         v = self._perf.setdefault(kind, [])
@@ -641,7 +686,12 @@ class Overlay(threading.Thread):
                 self._mode_checked = False
             # 실제로 그릴 것(카드 평가·상점 상자)이 있을 때만 띄운다. 예전엔 그릴 게 없어도 게임 크기의 투명 창이
             # 게임 위에 늘 떠 있어서, 화면 합성(DWM)이 게임 프레임마다 그 창까지 섞느라 렉이 생길 수 있었다
-            entries = layout(self.payload, rect[2], rect[3]) if rect else []
+            try:
+                live = self.live_fn() if self.live_fn else None
+            except Exception:
+                live = None
+            pay = with_live(self.payload, live)
+            entries = layout(pay, rect[2], rect[3]) if rect else []
             visible = self.enabled and rect and (front or self.preview) and entries and self.mode != "전체 화면"
             if not visible:
                 if shown:
@@ -671,7 +721,7 @@ class Overlay(threading.Thread):
                 elif key != last:  # 내용·게임 창 크기가 바뀌었을 때만 다시 그린다
                     t0 = time.time()
                     canvas.config(width=w, height=h)
-                    draw(canvas, self.payload, w, h, scale=h / 1080, icon_dir=self.icon_dir)
+                    draw(canvas, pay, w, h, scale=h / 1080, icon_dir=self.icon_dir)
                     # 창은 그린 것 둘레만큼만 (게임 크기 투명 창 X): 겹치는 영역이 작을수록 게임 화면 합성이 가볍다
                     bb = canvas.bbox("all") or (0, 0, 1, 1)
                     bx0, by0 = max(0, bb[0] - 4), max(0, bb[1] - 4)

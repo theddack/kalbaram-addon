@@ -20,9 +20,10 @@
       <div class="menu ov-menu">
         <div class="ov-head"><b>게임 화면 표시 설정</b>
           <label class="small" title="게임이 뒤에 있어도 예시를 게임 화면에 띄워요"><input id="ov-preview" type="checkbox"> 미리 보기</label>
-          <span class="muted small" id="overlay-status"></span></div>
+          <span class="muted small" id="overlay-status"></span>
+          <button id="ov-close" class="reset" title="닫기 (바깥을 누르거나 Esc 로도 닫혀요)">✕</button></div>
         <fieldset><legend>상점 상자 <span class="muted small">상점을 열면 왼쪽에 뜨는 팁</span></legend>
-          <div class="opt-row"><span class="opt-name">자리</span><label><input type="radio" name="ov-box" value="left-top"> 왼쪽 위</label><label><input type="radio" name="ov-box" value="left-middle"> 왼쪽 가운데</label><label><input type="radio" name="ov-box" value="right-middle"> 오른쪽 가운데</label></div>
+          <div class="opt-row"><span class="opt-name">자리</span><label><input type="radio" name="ov-box" value="left-top"> 왼쪽 위</label><label><input type="radio" name="ov-box" value="left-middle"> 왼쪽 가운데</label><label title="상점이 열려 있으면 상점 창과 겹쳐서 왼쪽 위에 떠요"><input type="radio" name="ov-box" value="right-middle"> 오른쪽 가운데 (상점 열면 왼쪽 위)</label></div>
           <div class="opt-row"><span class="opt-name">내용</span><label><input type="radio" name="ov-detail" value="auto"> 보통 (추천)</label><label><input type="radio" name="ov-detail" value="simple"> 간단히</label><label><input type="radio" name="ov-detail" value="detail"> 자세히</label></div>
           <p class="muted small" id="ov-detail-help"></p>
           <div class="opt-row"><span class="opt-name">글자 크기</span><label><input type="radio" name="ov-font" value="small"> 작게</label><label><input type="radio" name="ov-font" value="normal"> 보통</label><label><input type="radio" name="ov-font" value="large"> 크게</label></div>
