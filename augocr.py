@@ -906,7 +906,7 @@ class Reader(threading.Thread):
         end = time.time() + INTERVAL
         if not (rect and self.tracker.showing):
             # 선택 화면이 아니면 2초마다 (글자 인식이 CPU 를 가장 많이 쓴다). 직전 10초 안에 떴었으면 1초 (새로고침·다음 화면)
-            recent = time.time() - getattr(self.tracker, "_full_at", 0) < 10 or self.aug_pending()
+            recent = time.time() - getattr(self.tracker, "_full_at", 0) < 10 or self.picking_time()
             self.wait_shop_keys(mouse, time.time() + (INTERVAL if recent else IDLE_INTERVAL), bool(rect))
             return
         while time.time() < end:
@@ -989,7 +989,7 @@ class Reader(threading.Thread):
         if not offers:
             segs = [t for t, cx, y in segments(list(words), gap=gw * 0.04)
                     if NAME_BAND[0] * gh <= y <= NAME_BAND[1] * gh and cx >= gw * OWN_BOX_RIGHT]
-            looks = not self.shop and not any(SHOP_TEXT.search(t) for t in segs) and any(matcher.partial(t) for t in segs)
+            looks = (not self.shop or self.picking_time()) and not any(SHOP_TEXT.search(t) for t in segs) and any(matcher.partial(t) for t in segs)
             if not looks:
                 return offers
         pos = card_pos(offers, gw, gh) if len(offers) >= 2 else (self._card_hint.get((gw, gh)) or default_card_pos(gw, gh))
@@ -1062,12 +1062,14 @@ class Reader(threading.Thread):
         self.apply_fix()
         # 상점이 열려 있으면 증강 선택 화면은 아니다 → 이름 줄은 3번에 한 번만 (상점 아이템 이름을 증강 일부로 읽고 CPU 도 아끼게)
         self._name_n = getattr(self, "_name_n", 0) + 1
-        if self.shop and not self.tracker.showing and self._name_n % 3:
+        picking = self.picking_time()
+        if self.shop and not self.tracker.showing and not picking and self._name_n % 3:
             self.scan_shop_only(cap, ocr, rect)
             return
         if getattr(self, "_shop_now", False) and not self.tracker.showing:
-            self.scan_shop_only(cap, ocr, rect)  # 상점 키를 봤다: 이름 줄은 건너뛰고 상점부터 (빨리 띄우게)
-            return
+            self.scan_shop_only(cap, ocr, rect)  # 상점 키를 봤다: 상점부터 (빨리 띄우게)
+            if not picking:
+                return  # 고를 수 있는 때면 이름 줄도 이어서 읽는다
         if not self.urgent() and self._name_n % CALM_EVERY:
             self._hud_tick(rect)
             self.scan_shop_only(cap, ocr, rect)
@@ -1328,15 +1330,22 @@ class Reader(threading.Thread):
             return HUD_SETTLED
         return HUD_EVERY if self.offered else HUD_EVERY_MISSING
 
-    def selection_likely(self):
-        """선택 화면이 떠 있었거나 곧 뜰 때: 떠 있음 · 증강 레벨에 올라 아직 안 고름 · 게임 시작 90초 안 (첫 증강)"""
-        if self.tracker.showing or self.aug_pending():
-            return True
+    def _live(self):
         try:
-            live = (self.live_fn() or {}) if self.live_fn else {}
+            return (self.live_fn() or {}) if self.live_fn else {}
         except Exception:
-            live = {}
-        t = live.get("gameTime")
+            return {}
+
+    def picking_time(self):
+        """증강을 고를 수 있는 때: 증강 레벨에 올라 아직 안 고름 · 죽어 있음 (칼바람에선 죽어 있을 때 고르는 일이 많다).
+        이때는 상점이 열려 있어도 이름 줄을 매번 읽는다 (예전엔 3번에 1번이라 죽어 있을 때 뜬 선택 화면을 약 5초 늦게 알아봤다, 피드백 #8)"""
+        return bool(self.aug_pending() or self._live().get("dead"))
+
+    def selection_likely(self):
+        """선택 화면이 떠 있었거나 곧 뜰 때: 떠 있음 · 증강 레벨에 올라 아직 안 고름 · 죽어 있음 · 게임 시작 90초 안 (첫 증강)"""
+        if self.tracker.showing or self.picking_time():
+            return True
+        t = self._live().get("gameTime")
         return t is not None and t < 90
 
     def aug_pending(self, now=None):
