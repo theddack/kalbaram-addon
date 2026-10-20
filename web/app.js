@@ -1529,7 +1529,7 @@ function renderBuild() {
     el.addEventListener("click", () => addItem(el.dataset.id)));
 }
 
-// 증강을 골랐으면 그 증강과 연계되는 아이템을 위로 (증강 몰빵 기준 점수)
+// 증강을 골랐으면 그 증강과 연계되는 아이템을 위로 (순위는 증강 몰빵 기준 점수, 연계는 증강 있음·없음을 같은 균형 기준으로 비교)
 const LINK_TOP = 6;
 function itemRanking() {
   const d = state.data;
