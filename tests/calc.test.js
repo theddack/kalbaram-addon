@@ -487,3 +487,12 @@ test("라이엇 칼바람 추천이 반대 유형 위주면(케일) 그 아이�
   const lux = S.rankItems(d.items, S.profile(champ("Lux"), d.tags), [], [], d.rules, champ("Lux"), { aram: true });
   assert.ok(lux.find((r) => r.item.name === "크라켄 학살자").offType);
 });
+
+test("점수 비슷 폭(tieOrder bandK): 0 이면 계산 순서 그대로 · 기본은 TIE_BAND 5%", () => {
+  const row = (id, score, p) => ({ item: { id }, score, p });
+  const rows = () => [row("a", 100, 3), row("b", 97, 1), row("c", 90, 2)];
+  assert.deepEqual(S.tieOrder(rows(), (r) => r.p, 0).map((r) => r.item.id), ["a", "b", "c"]);
+  assert.deepEqual(S.tieOrder(rows(), (r) => r.p).map((r) => r.item.id), ["b", "a", "c"]);
+  assert.deepEqual(S.tieOrder(rows(), (r) => r.p, 0.12).map((r) => r.item.id), ["b", "c", "a"]);
+  assert.equal(S.TIE_BAND, 0.05);
+});

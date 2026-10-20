@@ -24,7 +24,7 @@ const r4 = (x) => Math.round(x * 1e4) / 1e4;
 
 // app.js itemRanking 과 같은 순서: rankItems → (증강이 있으면) 연계 표시 → tieOrder
 const LINK_TOP = 6;
-function ranking(d, c, chosen, fixed, opts = OPTS) {
+function rankRows(d, c, chosen, fixed, opts = OPTS) {
   const w = S.profile(c, d.tags);
   const rows = S.rankItems(d.items, w, chosen, fixed, d.rules, c, opts, chosen.length ? "augment" : "balanced");
   const ctx = S.augContext(chosen, d.rules);
@@ -37,6 +37,10 @@ function ranking(d, c, chosen, fixed, opts = OPTS) {
   }
   const official = S.officialWeights(c, 1) || {};
   const prio = (r) => (ctx.wanted[r.item.name] ? 0 : r.synergy ? 1 : official[r.item.id] ? 2 : 3);
+  return { rows, prio };
+}
+function ranking(d, c, chosen, fixed, opts = OPTS) {
+  const { rows, prio } = rankRows(d, c, chosen, fixed, opts);
   const raw = rows.filter((r) => r.item.kind === "legendary" && !r.offType).map((r) => r.item.name);
   const ordered = S.tieOrder(rows, prio).filter((r) => r.item.kind === "legendary" && !r.offType);
   return {
@@ -180,4 +184,4 @@ if (require.main === module) {
   }
 }
 
-module.exports = { snapshot, compare, report, ranking, load, REPS, FILE };
+module.exports = { snapshot, compare, report, ranking, rankRows, load, REPS, FILE };
