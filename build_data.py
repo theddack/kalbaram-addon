@@ -1349,6 +1349,10 @@ def main():
             c["melee"] = False
         if rc and (rc.get("fight") or rc.get("rangeAt18")):
             c["fightBasis"] = rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
+        if rc and rc.get("aramOff") and c.get("aram"):  # 실게임 능력치 대조로 증강 모드에 없다고 확인한 일반 칼바람 보정
+            c["aramOff"] = {k: c["aram"].pop(k) for k in rc["aramOff"]["keys"] if k in c["aram"]}
+            c["aramOffWhy"] = rc["aramOff"]["why"]
+            c["aram"] = c["aram"] or None
         if rc and (rc.get("stats") or rc.get("stacks")):  # 중첩형 패시브·스킬: 게임 중반 평균 중첩
             c["stackStats"] = rc.get("stats") or {}
             c["stacks"] = rc.get("stacks", 0)

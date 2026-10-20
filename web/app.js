@@ -638,14 +638,15 @@ function renderChampCard() {
 const ARAM_NAME = { dmg_dealt: "가하는 피해", dmg_taken: "받는 피해", healing: "회복", shielding: "보호막",
   ability_haste: "스킬 가속", tenacity: "강인함", total_as: "공격 속도", energyregen_mod: "기력 회복" };
 function aramChips(c) {
-  if (!c.aram) return `<div><span class="muted small">칼바람 보정 없음</span></div>`;
+  const off = c.aramOff ? ` <span class="muted small" title="${esc(c.aramOffWhy || "")}">(실게임 대조로 뺌: ${Object.keys(c.aramOff).map((k) => esc(ARAM_NAME[k] || k)).join(", ")})</span>` : "";
+  if (!c.aram) return `<div><span class="muted small">칼바람 보정 없음</span>${off}</div>`;
   const chips = Object.entries(c.aram).map(([k, v]) => {
     const pct = k === "ability_haste" ? `+${Number(v)}` : `${Math.round(Number(v) * 100)}%`;
     const good = k === "dmg_taken" ? v < 1 : k === "ability_haste" ? v > 0 : v > 1;
     const neutral = k !== "ability_haste" && v === 1;
     return `<span class="chip ${neutral ? "" : good ? "syn" : "bad"}">${esc(ARAM_NAME[k] || k)} ${pct}</span>`;
   });
-  return `<div><span class="muted small">${c.aramSource === "칼바람 + 증강 모드" ? "칼바람 + 증강 모드 보정" : "칼바람 보정"} (위키)</span> ${chips.join("")}</div>`;
+  return `<div><span class="muted small">${c.aramSource === "칼바람 + 증강 모드" ? "칼바람 + 증강 모드 보정" : "칼바람 보정"} (위키)</span> ${chips.join("")}${off}</div>`;
 }
 
 function renderStats() {
