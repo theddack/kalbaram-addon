@@ -2,7 +2,7 @@
 
 > **어떤 증강도 재밌게.** 서포터가 원딜처럼, 탱커가 근접 딜러처럼 — 고른 증강에 맞춰 다음 증강과 아이템을 안내하는 칼바람 증강 모드(아수라장) 도우미예요.
 
-**[⬇️ 프로그램 받기 (윈도우·맥)](https://github.com/theddack/kalbaram-addon/releases/latest)** · [✅ 받은 파일 확인](https://theddack.github.io/kalbaram-addon/verify.html) · **[🌐 웹에서 바로 보기](https://theddack.github.io/kalbaram-addon/)** · [📖 사용 설명서](사용설명서.md) · [📝 업데이트 내역](업데이트내역.md) · [🔗 데이터 출처](https://theddack.github.io/kalbaram-addon/sources.html)
+**[⬇️ 프로그램 받기 (윈도우·맥)](https://github.com/theddack/kalbaram-addon/releases/latest)** · [✅ 받은 파일 확인](https://theddack.github.io/kalbaram-addon/verify.html) · **[🌐 웹에서 바로 보기](https://theddack.github.io/kalbaram-addon/)** · [📖 사용 설명서](사용설명서.md) · [🆕 이번 패치 새 증강](https://theddack.github.io/kalbaram-addon/new.html) · [📝 업데이트 내역](업데이트내역.md) · [🔗 데이터 출처](https://theddack.github.io/kalbaram-addon/sources.html)
 
 ![칼바람 증강 Addon 화면](docs/screenshot.png)
 
