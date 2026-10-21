@@ -1,0 +1,817 @@
+{
+ "note": "26.21 패치(게임 16.21)에서 삭제된 증강 13개의 마지막 데이터 (16.20.8248524+branch.releases-16-20.content.release). 옛 경기 기록 재생 테스트용 — 화면·추천엔 쓰지 않는다",
+ "dataVersion": "16.20.8248524+branch.releases-16-20.content.release",
+ "augments": [
+  {
+   "id": "BloodMoneyBurn",
+   "genericIcon": null,
+   "num": 2128,
+   "effects": [],
+   "enName": "Combusting Interest",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/combusting-interest/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "타오르는 이자",
+   "rarity": 1,
+   "rarityName": "골드",
+   "desc": "챔피언에게 적용한 화상 및 지속 피해 효과가 <span class=\"t-gold\">1~3(레벨 비례)+입힌 피해량의 0.75%만큼 골드</span>를 생성합니다.<br><br>생성한 골드: (게임 중 집계)",
+   "tags": {},
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "08e7f726e544",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "CritNCast",
+   "genericIcon": null,
+   "num": 2024,
+   "effects": [],
+   "enName": "Crit 'n Cast",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/crit-n-cast/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "치명적 가속",
+   "rarity": 0,
+   "rarityName": "실버",
+   "desc": "스킬 가속을 (게임 중 집계) 얻습니다. (40%)",
+   "tags": {
+    "HASTE": 0.6
+   },
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "f076c5fb3c48",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "CriticalMissile",
+   "genericIcon": null,
+   "num": 1356,
+   "effects": [
+    {
+     "kind": "magic",
+     "name": "Damage",
+     "base": [
+      0
+     ],
+     "lvl": [
+      15,
+      65
+     ],
+     "trigger": {
+      "type": "onhit",
+      "from": "적중 시"
+     },
+     "count": 1,
+     "countCrit": 2
+    }
+   ],
+   "enName": "Critical Missile",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/critical-missile/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "치명적 미사일",
+   "rarity": 1,
+   "rarityName": "골드",
+   "desc": "<span class=\"t-crit\">치명타</span> 적중 시 미사일 1+200% 치명타 확률개를 발사해 각각 <span class=\"t-magicdamage\">15~65(레벨 비례)의 마법 피해</span>를 입힙니다. <br><br><span class=\"t-crit\"> 치명타 확률이 25%</span> 증가합니다.",
+   "tags": {
+    "CRIT": 0.8,
+    "ONHIT": 0.6
+   },
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "8f8a079e73f7",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "DimensionShift_Active",
+   "genericIcon": null,
+   "num": 2063,
+   "effects": [],
+   "enName": "Dimension Shift",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/dimension-shift/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "차원 이동",
+   "rarity": 2,
+   "rarityName": "프리즘",
+   "desc": "<span class=\"t-spellname\">어둠이 드리우면</span> 소환사 주문을 얻습니다.<br><br><span class=\"t-spellname\">어둠이 드리우면</span>: 대상 위치에 눈부신 빛을 보냅니다. 빛이 당도하면 범위 내 살아있는 모든 유닛이 <span class=\"t-attention\">8</span>초 동안 다른 세계로 이동합니다.<br><br>이 세계에 있는 동안 다음 능력치를 얻습니다.<br> <span class=\"t-scalehealth\">체력 300~1500(레벨 비례)</span><br> <span class=\"t-scaleap\">주문력 35~150(레벨 비례)</span><br> <span class=\"t-scalead\">공격력 35~150(레벨 비례)</span><br> 크기 35%<br><br><br>이동한 세계에 있는 모든 유닛은 자유롭게 이동 및 행동할 수 있으나 포탑 또는 억제기 등 구조물을 대상으로 지정할 수 없습니다.<br><br><br>'빛을... 따라가라.' - 길 잃은 영혼",
+   "tags": {
+    "HP": 0.8,
+    "AP": 0.8,
+    "AD": 0.8
+   },
+   "category": "spell",
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "67184c783f3a",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "ARAM_DropBear",
+   "genericIcon": null,
+   "num": 2031,
+   "effects": [
+    {
+     "kind": "magic",
+     "name": "AOEDamage",
+     "base": [
+      0
+     ],
+     "lvl": [
+      250,
+      750
+     ],
+     "ratios": {
+      "AP": [
+       1
+      ],
+      "MPEN": [
+       2
+      ],
+      "MPENP": [
+       500
+      ]
+     },
+     "trigger": {
+      "type": "once",
+      "from": "사망 시"
+     }
+    }
+   ],
+   "enName": "DropBear",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/dropbear/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "곰 투하",
+   "rarity": 2,
+   "rarityName": "프리즘",
+   "desc": "사망 시 티버를 소환하여 주변 모든 적에게 <span class=\"t-magicdamage\">250~750(레벨 비례) + 100% 주문력 + 200% 마법 관통력 + 마법 관통력 1%당 5의 마법 피해</span>를 입히고 <span class=\"t-attention\">0.5</span>초 동안 <span class=\"t-status\">기절</span>시킵니다. 이후 티버가 처치자를 추격합니다.<br><br>티버는 플레이어의 모든 증강을 보유합니다.",
+   "tags": {
+    "CC": 0.8,
+    "AP": 0.6,
+    "MPEN": 0.6
+   },
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "ef151abe89ef",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "ARAM_Dropkick",
+   "genericIcon": null,
+   "num": 2006,
+   "effects": [
+    {
+     "kind": "heal",
+     "name": "Calc_Heal",
+     "base": [
+      0
+     ],
+     "lvl": [
+      100,
+      300
+     ],
+     "ratios": {
+      "bonusHP": [
+       0.25
+      ]
+     },
+     "trigger": {
+      "type": "once",
+      "from": "충돌"
+     }
+    },
+    {
+     "kind": "magic",
+     "name": "Calc_Damage",
+     "base": [
+      0
+     ],
+     "lvl": [
+      150,
+      500
+     ],
+     "ratios": {
+      "bonusARMOR": [
+       1
+      ],
+      "bonusMR": [
+       1
+      ]
+     },
+     "trigger": {
+      "type": "once",
+      "from": "충돌"
+     }
+    }
+   ],
+   "enName": "Dropkick",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/dropkick/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "드롭킥",
+   "rarity": 2,
+   "rarityName": "프리즘",
+   "desc": "기본 공격 및 스킬이 체력이 <span class=\"t-scalehealth\">최대 체력의 4% + 0% 추가 최대 체력 + 0.05% 기본 공격력</span> 아래인 적 챔피언을 처형하고, <span class=\"t-healing\">체력을 100~300(레벨 비례) + 25% 추가 최대 체력 회복</span>하며 대상을 <span class=\"t-status\">뒤로 밀어냅니다</span>.<br><br>대상이 적 또는 지형과 충돌하거나 한계에 도달하면 <span class=\"t-status\">밀려난</span> 적이 폭발해 주변 적에게 <span class=\"t-magicdamage\">150~500(레벨 비례) + 100% 추가 방어력 + 100% 추가 마법 저항력의 마법 피해</span>를 입힙니다.<br><br><br>이 폭발은 연쇄적으로 일어날 수 있습니다.<br><br>드롭킥에 맞은 적: (게임 중 집계)<br>체력 획득량: 총 (게임 중 집계)<br>입힌 피해량: (게임 중 집계)",
+   "tags": {
+    "HP": 0.8,
+    "HEALSHIELD": 0.8,
+    "CC": 0.8,
+    "AD": 0.6,
+    "ONHIT": 0.6,
+    "ARMOR": 0.6,
+    "MR": 0.6
+   },
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "7658ac1ccbea",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "ARAM_FanTheHammer",
+   "genericIcon": null,
+   "num": 1220,
+   "effects": [
+    {
+     "kind": "physical",
+     "name": "DamagePerBolt",
+     "base": [
+      0
+     ],
+     "lvl": [
+      8,
+      50.5
+     ],
+     "ratios": {
+      "bonusAD": [
+       0.14
+      ]
+     },
+     "trigger": {
+      "type": "onhit",
+      "from": "적중 시",
+      "cdFrom": "재사용 대기시간 8초 — 게임 데이터 값 'Cooldown'"
+     },
+     "cooldown": 8,
+     "count": 5
+    }
+   ],
+   "enName": "Fan The Hammer",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/fan-the-hammer/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "탄환 세례",
+   "rarity": 2,
+   "rarityName": "프리즘",
+   "desc": "적 챔피언 공격 시 투사체를 5개 발사해 각각 <span class=\"t-physicaldamage\">8~50.5(레벨 비례) + 14% 추가 공격력의 물리 피해</span>를 입힙니다. 피해량은 투사체가 이동한 거리에 비례해 50%까지 증가합니다. 방향마다 8초의 재사용 대기시간이 적용됩니다.<br><br>각 탄환은 치명타를 입힐 수 있고 적중 시 효과가 20%로 적용됩니다.<br><br>입힌 피해량: (게임 중 집계)",
+   "tags": {
+    "AD": 0.6,
+    "CRIT": 0.6,
+    "ONHIT": 0.6,
+    "HASTE": 0.6
+   },
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "43a54fab75e8",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "BrushPower",
+   "genericIcon": null,
+   "num": 2042,
+   "effects": [],
+   "enName": "Hide on Bush",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/hide-on-bush/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "Hide on bush",
+   "rarity": 1,
+   "rarityName": "골드",
+   "desc": "<span class=\"t-keyword\">수풀</span>에 들어가면 2초 동안 <span class=\"t-spellname\">수풀의 힘</span>을 얻습니다. <span class=\"t-spellname\">수풀의 힘</span>이 활성화된 동안 피해량이 20% 증가합니다.<br><br>입힌 피해량: <span class=\"t-attention\">(게임 중 집계)</span><br><br><br>수풀에 있으면 수풀의 힘이 초기화됩니다.",
+   "tags": {},
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "84e10d26ace6",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "ARAM_HighRoller",
+   "genericIcon": null,
+   "num": 2095,
+   "effects": [],
+   "enName": "High Roller",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/high-roller/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "도박꾼",
+   "rarity": 2,
+   "rarityName": "프리즘",
+   "desc": "주변 적이 죽을 때 일정 확률로 능력치 모루를 떨어뜨립니다.",
+   "tags": {},
+   "category": "random",
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "da8c0d7ddf3c",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "Equilibrium",
+   "genericIcon": null,
+   "num": 2082,
+   "effects": [],
+   "enName": "Our Healing",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/our-healing/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "우리의 치유",
+   "rarity": 1,
+   "rarityName": "골드",
+   "desc": "주변의 누군가가 체력을 회복할 때마다 그 회복량의 <span class=\"t-healing\">15%만큼 자신의 체력을 회복</span>합니다. 적의 체력 회복 효과는 두 배로 적용됩니다.",
+   "tags": {
+    "HEALSHIELD": 0.8
+   },
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "6e219a7e6b96",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "PoroCharge_Active",
+   "genericIcon": null,
+   "num": 2046,
+   "effects": [
+    {
+     "kind": "physical",
+     "name": "Damage",
+     "base": [
+      0
+     ],
+     "lvl": [
+      100,
+      200
+     ],
+     "ratios": {
+      "STACKS": [
+       20
+      ]
+     },
+     "trigger": {
+      "type": "once"
+     }
+    }
+   ],
+   "enName": "Poro Stampede",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/poro-stampede/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "포로 쇄도",
+   "rarity": 2,
+   "rarityName": "프리즘",
+   "desc": "<span class=\"t-attention\">25~15(레벨 비례)</span>초마다 주변에 포로 간식이 나타납니다. <span class=\"t-keyword\">포로</span>에게 먹이를 주면 <span class=\"t-spellname\">포로의 사랑</span> 중첩을 얻습니다. <span class=\"t-attention\">5</span>중첩 시 <span class=\"t-spellname\">포로 돌격</span> 소환사 주문을 잠금 해제합니다. <span class=\"t-keyword\">포로</span>에게 간식을 많이 줄수록 더 많은 무리를 날려 보냅니다.<br><br><span class=\"t-spellname\">포로 돌격</span>: <span class=\"t-keyword\">포로</span> 무리를 날려 보내 적 챔피언에게 <span class=\"t-physicaldamage\">100~200(레벨 비례) + 중첩당 20의 물리 피해</span>를 입힙니다. <br><br>현재 <span class=\"t-keyword\">포로</span> 무리 <span class=\"t-attention\">(게임 중 집계)</span>개를 날립니다. <br><br><br>포로는 적 1명만 타격할 수 있습니다. 또한 첫 번째 무리만 적을 공중으로 띄워 올립니다.<br><br><br>\"아! 어찌나 사랑스러운지!\" - 포로치기",
+   "tags": {
+    "CC": 0.6
+   },
+   "category": "spell",
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "70196a2cdcff",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "ARAM_SpiritualPurification",
+   "genericIcon": null,
+   "num": 1345,
+   "effects": [
+    {
+     "kind": "adaptive",
+     "name": "PercentCurrentHealthDamage",
+     "base": [
+      0
+     ],
+     "ratios": {
+      "TGT_CURHP": [
+       0.15
+      ]
+     },
+     "trigger": {
+      "type": "once",
+      "from": "처치"
+     }
+    }
+   ],
+   "enName": "Spiritual Purification",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/spiritual-purification/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "영혼의 정화",
+   "rarity": 1,
+   "rarityName": "골드",
+   "desc": "처치 관여 시 폭발을 일으켜 주변 적에게 적 <span class=\"t-scalehealth\">현재 체력</span>의 15%에 해당하는 피해를 입히고 둔화 지역을 생성합니다. 범위 내 적은 1.5초 동안 60% <span class=\"t-status\">둔화</span>됩니다.",
+   "tags": {
+    "HP": 0.8,
+    "CC": 0.8
+   },
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "549c354bb790",
+   "firstSeen": null,
+   "descChanged": null
+  },
+  {
+   "id": "SkipTheBasics",
+   "genericIcon": null,
+   "num": 2118,
+   "effects": [],
+   "enName": "Ult Bot",
+   "patch": null,
+   "patchCheck": null,
+   "refs": [
+    {
+     "label": "게임 데이터",
+     "url": "https://raw.communitydragon.org/latest/game/maps/modespecificdata/kiwi.bin.json"
+    },
+    {
+     "label": "위키",
+     "url": "https://wiki.leagueoflegends.com/en-us/ARAM:_Mayhem/Augments"
+    },
+    {
+     "label": "통계 보기 (외부)",
+     "url": "https://arammayhem.com/augments/ult-bot/",
+     "external": true
+    }
+   ],
+   "eligible": null,
+   "name": "궁극기 봇",
+   "rarity": 2,
+   "rarityName": "프리즘",
+   "desc": "<span class=\"t-scaleabilityhaste\">스킬 가속</span>이 <span class=\"t-keyword\">궁극기</span>에만 적용되지만, 효과가 50% 증가합니다. <span class=\"t-scaleabilityhaste\">스킬 가속이 100</span> 증가합니다.",
+   "tags": {
+    "HASTE": 0.8,
+    "ULT": 0.6
+   },
+   "category": null,
+   "unresolved": 0,
+   "icon": true,
+   "srcHash": "185aee9a2b77",
+   "firstSeen": null,
+   "descChanged": null
+  }
+ ],
+ "rules": {
+  "BloodMoneyBurn": {
+   "tags": {
+    "AP": 0.4
+   },
+   "stats": {
+    "goldValue": 300
+   },
+   "model": "지속 피해 골드 → 약 300골드",
+   "basis": {
+    "calc": "화상·지속 피해마다 1~3골드 + 피해의 0.75% → 한 게임 약 300골드",
+    "assume": [
+     {
+      "what": "한 게임 약 300골드",
+      "why": "지속 피해를 자주 거는 챔피언 기준 대략값이에요",
+      "noData": true
+     }
+    ]
+   },
+   "statsResolved": {
+    "goldValue": 300
+   },
+   "basisView": [
+    {
+     "t": "calc",
+     "text": "화상·지속 피해마다 1~3골드 + 피해의 0.75% → 한 게임 약 300골드"
+    },
+    {
+     "t": "assume",
+     "text": "한 게임 약 300골드",
+     "why": "지속 피해를 자주 거는 챔피언 기준 대략값이에요",
+     "noData": true
+    }
+   ]
+  },
+  "CritNCast": {
+   "stats": {
+    "critToHaste": "CritToHasteConversion"
+   },
+   "model": "치명타 확률 1%당 스킬 가속 0.4",
+   "statsResolved": {
+    "critToHaste": 0.4000000059604645
+   },
+   "basisView": [
+    {
+     "t": "game",
+     "text": "치명타 → 스킬 가속 0.4 — 게임 데이터 값 'CritToHasteConversion'"
+    }
+   ]
+  },
+  "CriticalMissile": {
+   "stats": {
+    "CRIT": "CrtiChance"
+   },
+   "effectCount": {
+    "critPer": "AdditionalMisDivision",
+    "why": "2026-10-20 미구현 정리: 미사일 1 + 치명타 확률 100%당 2개 (원본 AdditionalMisDivision, 위키 '최대 3개')"
+   },
+   "statsResolved": {
+    "CRIT": 0.25
+   },
+   "basisView": [
+    {
+     "t": "game",
+     "text": "치명타 확률 25% — 게임 데이터 값 'CrtiChance'"
+    }
+   ]
+  },
+  "ARAM_DropBear": {
+   "stats": {
+    "controlSec": "StunDuration"
+   },
+   "model": "사망 시 기절 0.5초",
+   "statsResolved": {
+    "controlSec": 0.5
+   },
+   "basisView": [
+    {
+     "t": "game",
+     "text": "제어력(초) 0.5 — 게임 데이터 값 'StunDuration'"
+    }
+   ]
+  },
+  "ARAM_FanTheHammer": {
+   "tags": {
+    "AD": 0.6,
+    "CRIT": 0.6,
+    "ONHIT": 0.6
+   },
+   "_why": "방향마다 8초 재사용 대기시간은 스킬 가속과 무관해서 HASTE 태그를 뺐다 (2026-10-17 그레이브즈 판: 세릴다·히드라·그림자 검이 추천됨)",
+   "effectCooldown": {
+    "dv": "Cooldown",
+    "why": "설명 '방향마다 8초의 재사용 대기시간' (위키는 5초로 옛 값). 한 상대를 계속 칠 때는 8초에 1번"
+   },
+   "effectCount": {
+    "dv": "AdditionalBolts",
+    "why": "2026-10-20 미구현 정리: 설명 '투사체를 5개 발사해 각각' — 한 발만 셌다"
+   }
+  },
+  "BrushPower": {
+   "tags": {
+    "AD": 0.4,
+    "AP": 0.4
+   },
+   "stats": {
+    "dmgDealtMult": 0.04
+   },
+   "model": "칼바람 수풀이 적어 피해 +20% 가동률 20% 가정",
+   "basis": {
+    "calc": "피해 +20% × 켜져 있는 시간 20% = 4%",
+    "assume": [
+     {
+      "what": "수풀의 힘 가동률 20%",
+      "why": "칼바람 다리는 수풀이 몇 군데뿐이라 한타 중 켜져 있는 시간이 짧아요",
+      "noData": true
+     }
+    ]
+   },
+   "statsResolved": {
+    "dmgDealtMult": 0.04
+   },
+   "basisView": [
+    {
+     "t": "calc",
+     "text": "피해 +20% × 켜져 있는 시간 20% = 4%"
+    },
+    {
+     "t": "assume",
+     "text": "수풀의 힘 가동률 20%",
+     "why": "칼바람 다리는 수풀이 몇 군데뿐이라 한타 중 켜져 있는 시간이 짧아요",
+     "noData": true
+    }
+   ]
+  },
+  "ARAM_HighRoller": {
+   "generic": true
+  },
+  "SkipTheBasics": {
+   "tags": {
+    "ULT": 1,
+    "HASTE": 0.6
+   },
+   "note": "스킬 가속이 궁극기에만 적용. 궁극기 의존 챔피언용",
+   "stats": {
+    "ultHaste": "Haste"
+   },
+   "statsResolved": {
+    "ultHaste": 100
+   },
+   "basisView": [
+    {
+     "t": "game",
+     "text": "궁극기 가속 효과 100 — 게임 데이터 값 'Haste'"
+    }
+   ]
+  }
+ }
+}
