@@ -146,9 +146,13 @@ class AutoAndWiki(unittest.TestCase):
         for a in DATA["augments"]:
             st, _ = B.auto_stats(a["desc"])
             hand = (R.get(a["id"]) or {})
-            if st and not hand.get("auto"):
+            # 가정(평균 중첩 등)을 근거와 함께 적은 규칙은 설명의 1중첩 값과 일부러 다르다 (26.21 왕관의 무게)
+            if st and not hand.get("auto") and not (hand.get("basis") or {}).get("assume"):
+                res = hand["statsResolved"]
                 for k, v in st.items():
-                    self.assertAlmostEqual(hand["statsResolved"][k], v, places=3, msg=a["name"])
+                    # '추가 공격력 %'를 손 규칙은 추가 공격력만(bonusADmult)으로 정확히 적는다 (26.21 묵직한 한 방)
+                    key = k if k in res else {"ADmult": "bonusADmult"}.get(k, k)
+                    self.assertAlmostEqual(res[key], v, places=3, msg=a["name"])
 
     def test_wiki_check(self):
         self.assertEqual(B.wiki_check({"AS": 1.0}, "Additionally, you gain {{as|100% '''bonus''' attack speed}}."), {"AS": True})
