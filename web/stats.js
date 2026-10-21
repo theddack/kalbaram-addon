@@ -115,6 +115,13 @@
     t.bonusHP = t.HP - base.HP;
     let bonusAD = add.AD;
     let AP = add.AP;
+    // 26.21 변환 증강: 아이템에서 얻은 능력치만 다른 능력치로 (간지럼 괴물: 아이템 공격력 → 공격 속도, 마나 없음 상관없음: 아이템 마나 → 주문력)
+    const itemSum = (k) => items.reduce((a, it) => a + ((it.stats && it.stats[k]) || 0), 0);
+    let itemASfromAD = 0;
+    if (conv.itemADtoAS) { const ad = itemSum("AD"); bonusAD -= ad; itemASfromAD = ad * conv.itemADtoAS; }
+    let itemManaGone = 0;
+    if (conv.itemMANAtoAP) { itemManaGone = itemSum("MANA"); AP += itemManaGone * conv.itemMANAtoAP; }
+    if (conv.bonusADmult) bonusAD *= 1 + conv.bonusADmult;  // 추가 공격력만 % 증가 (묵직한 한 방·왕관의 무게)
     // 적응형은 게임 규칙대로: 추가 공격력과 주문력 중 큰 쪽, 같으면(둘 다 0 등) 스킬이 마법 위주면 주문력.
     // 챔피언 성향만 보면 공격력을 쌓은 트리스타나(마법 비중 높음)가 주문력을 받았다 (2026-10-17 판: 계산 주문력 18.75 · 실제 공격력 +11.25)
     const adaptiveAP = () => AP !== bonusAD ? AP > bonusAD : apMain(champ);
@@ -140,13 +147,16 @@
     t.ARMOR = base.ARMOR + t.bonusARMOR;
     t.bonusMR = add.MR * resMult;
     t.MR = base.MR + t.bonusMR;
-    t.MANA = champ.partype === "마나" ? base.MANA + add.MANA : 0;
-    t.bonusMANA = champ.partype === "마나" ? add.MANA : 0;
+    t.MANA = champ.partype === "마나" ? base.MANA + add.MANA - itemManaGone : 0;
+    t.bonusMANA = champ.partype === "마나" ? add.MANA - itemManaGone : 0;
     if (conv.bonusMANAtoAP) t.AP += t.bonusMANA * conv.bonusMANAtoAP * (1 + mult.APmult);
     if (conv.manaToHP && t.MANA) { t.HP += t.MANA * conv.manaToHP; t.bonusHP = t.HP - base.HP; }  // 정신 변환: 최대 마나의 50% 체력
     if (conv.bonusHPtoAP) t.AP += t.bonusHP * conv.bonusHPtoAP * (1 + mult.APmult);  // 균열 생성기: 추가 체력의 2% 주문력
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
-    let bonusAS = base.asLevelBonus + add.AS;
+    let bonusAS = base.asLevelBonus + add.AS + itemASfromAD;
+    // 묵직한 한 방: 공격 속도의 일부를 치명타 피해로 (AStoCRITDMG = 옮기는 비율, AStoCRITDMGper = 공속 1%당 치명타 피해 %)
+    let critDmgFromAS = 0;
+    if (conv.AStoCRITDMG) { const moved = bonusAS * conv.AStoCRITDMG; bonusAS -= moved; critDmgFromAS = moved * (conv.AStoCRITDMGper || 0); }
     if (conv.AStoHASTE) { t.HASTE += add.AS * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }  // 순수주의자 - 마법사
     // 보석 건틀릿: 주문력 1당 치명타 확률 (conv.APtoCRIT, 원본 CritConverRatio 0.00045 = 주문력 100당 4.5%)
     t.CRIT = Math.min(1, add.CRIT + (conv.APtoCRIT ? t.AP * conv.APtoCRIT : 0));
@@ -162,7 +172,7 @@
       bonusAS += conv.critStackAS * t.critStacks;
     }
     t.AS = asOf(bonusAS);
-    t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG;
+    t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG + critDmgFromAS;
     // 진처럼 공격 속도가 고정인 챔피언 (champ.asFixed, rules.json champions.asFixed): 공격 속도는 레벨로만 오르고,
     // 레벨별 % + 치명타 확률·추가 공격 속도 비례 %만큼 공격력이 늘며 치명타 피해는 줄어든다 (위키 Jhin '속삭임')
     if (champ.asFixed) {
@@ -181,6 +191,8 @@
     t.bonusMS = t.MS - base.MS;
     t.bonusAP = t.AP;  // 주문력은 전부 추가 주문력 (기본 주문력이 없다)
     for (const k of ["LETHALITY", "MPEN", "ARPEN", "MPENP", "LS", "OMNIVAMP", "HSP"]) t[k] = add[k];
+    // 가라앉은 자의 축복: 추가 체력을 물리 관통력으로 전환 (추가 체력은 없어진다)
+    if (conv.bonusHPtoLETHALITY) { t.LETHALITY += t.bonusHP * conv.bonusHPtoLETHALITY; t.HP = base.HP; t.bonusHP = 0; }
     t.RANGE = base.RANGE;
     t.CSTACKS = champ.stacks || 0;  // 스킬의 '중첩당' 피해 (나서스 Q, 스몰더 Q …)
     for (const [k, raw] of late) {
@@ -433,7 +445,9 @@
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
       let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0;
       // 보석 건틀릿: 스킬도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값
-      const skillCrit = cv.skillCritDmg ? 1 + Math.min(1, t.CRIT) * (cv.skillCritDmg + (t.CRITDMG - BASE_CRIT_DMG) - 1) : 1;
+      // 보석 팔찌(26.21): 궁극기만 치명타 (ultCritDmg)
+      const critMul = cv.skillCritDmg || (sp.slot === "R" && cv.ultCritDmg) || 0;
+      const skillCrit = critMul ? 1 + Math.min(1, t.CRIT) * (critMul + (t.CRITDMG - BASE_CRIT_DMG) - 1) : 1;
       for (const v of vals) {
         if (v.onhit && DMG_KINDS.includes(v.kind)) {
           // 스킬의 '기본 지속 효과' 적중 시 피해: 기본 공격마다 (초당 피해의 평타 쪽). 스킬 피해 증폭은 안 받는다
