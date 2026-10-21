@@ -1250,5 +1250,6 @@ test("새 증강 페이지: 이번 패치 firstSeen·미리 보기만 등급별�
   assert.match(text, /미리 보기 \(PBE\)/);
   assert.equal(w.document.getElementById("warn").hidden, false);
   assert.match(w.document.getElementById("removed").textContent, /탄환 세례/);
-  assert.equal(w.document.getElementById("title").textContent, "16.21 새 증강");
+  assert.equal(w.document.getElementById("title").textContent, "26.21 새 증강", "라이엇 패치 이름 (게임 16.21 = 패치 26.21)");
+  assert.match(w.document.getElementById("kicker").textContent, /패치 26\.21 \(게임 16\.21\)/);
 });
