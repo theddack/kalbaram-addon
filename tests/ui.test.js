@@ -1197,3 +1197,31 @@ test("만드는 중 놓아 주기: 점수 차이가 크고 남은 골드당 가�
   assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: it("크라켄 학살자").gold - 300, score: 1 }, top), true, "남은 300G → 계속");
   assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: 600, score: 1.9 }, top), true, "점수 차이 5% → 계속");
 });
+
+// 26.21 헤드라이너(K/DA 등)는 증강을 하나 더 준다: 4개가 모두 증강 칸 그림으로 확인된 뒤 선택 화면이 또 뜨면 짐작을 빼지 않고 5번째로 받는다
+test("추가 증강: 4개 확인 뒤 뜬 선택 화면은 카드를 띄우고 5번째로 받는다 · 확인 안 된 짐작이 있으면 예전처럼 짐작을 뺀다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 16, items: [] });
+  const id = (n) => p.data.augments.find((a) => a.name === n).id;
+  const four = ["무한 반복", "대마법사", "도주 계획", "강타자"];
+  p.w.applyAug({ offers: null, seq: 0, pickSeq: 0, hudPicked: four.map(id) });
+  for (const n of four) assert.match(p.text("#chosen"), new RegExp(n));
+  p.w.applyAug({ offers: ["불을 밝혀", "한 발에 두 놈", "열의"], seq: 5, pickSeq: 0, hudPicked: four.map(id) });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(sent.at(-1).cards.filter(Boolean).length, 3, "추가 선택 화면 카드 3장");
+  for (const n of four) assert.match(p.text("#chosen"), new RegExp(n), "확인된 4개는 그대로");
+  p.w.applyAug({ offers: null, seq: 5, picked: "열의", pickSeq: 1, hudPicked: four.map(id) });
+  assert.match(p.text("#chosen"), /열의/, "5번째로 받음");
+  // 짐작(증강 칸 미확인)이 섞여 있으면 예전처럼 그 짐작을 뺀다 (2026-10-15 케일 판)
+  const q = await loadPage({ simple: true });
+  q.w.pywebview = { api: { set_overlay: () => {} } };
+  q.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 16, items: [] });
+  q.w.applyAug({ offers: null, seq: 0, pickSeq: 0, hudPicked: four.slice(0, 3).map(id) });
+  q.w.applyAug({ offers: null, seq: 0, picked: "강타자", pickSeq: 1, hudPicked: four.slice(0, 3).map(id) });
+  q.w.applyAug({ offers: ["불을 밝혀", "한 발에 두 놈", "열의"], seq: 5, pickSeq: 1, hudPicked: four.slice(0, 3).map(id) });
+  assert.doesNotMatch(q.text("#chosen"), /강타자/, "확인 못 한 짐작은 뺀다");
+  assert.deepEqual(p.errors, []);
+  assert.deepEqual(q.errors, []);
+});
