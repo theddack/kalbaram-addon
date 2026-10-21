@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS(전환) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
+  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -1813,6 +1813,277 @@
       "effectCooldown": {
         "dv": "Cooldown",
         "why": "설명 '이 효과는 5초의 재사용 대기시간이 적용됩니다'. 스타일 S 등급을 채우는 시간은 따로 세지 않아 최대 빈도(5초에 1번)"
+      }
+    },
+    "LichBrain": {
+      "tags": {
+        "AP": 0.6,
+        "HP": 0.4
+      },
+      "stats": {
+        "AP": {
+          "calc": "Calc_AP"
+        }
+      },
+      "basis": {
+        "calc": "주문력 30 + 추가 체력의 4% (원본 Calc_AP). 체력 아이템이 주문력도 올려 줘서 계산이 체력 아이템을 같이 올린다. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+      }
+    },
+    "NoManaNoProblem": {
+      "tags": {
+        "AP": 0.7,
+        "MANA": 0.3
+      },
+      "stats": {
+        "itemMANAtoAP": 0.08,
+        "APmult": "APAmp"
+      },
+      "basis": {
+        "calc": "아이템 마나 10 → 주문력 0.8 (원본 Calc_ManaToAP 10 · Calc_APPerMana 0.8) + 총 주문력 15% (APAmp). 아이템 마나는 없어진다. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+      }
+    },
+    "GiftoftheDrowned": {
+      "tags": {
+        "LETHAL": 0.6,
+        "HP": 0.4
+      },
+      "stats": {
+        "bonusHPtoLETHALITY": 0.05,
+        "LETHALITY": {
+          "calc": "Calc_BonusLethality"
+        }
+      },
+      "basis": {
+        "calc": "추가 체력 100 → 물리 관통력 5 (원본 Calc_HPtoLethality 100 · Calc_LethalitytoHP 5), 추가 체력은 없어진다 + 물리 관통력 10~25 (레벨 비례, Calc_BonusLethality). 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+      }
+    },
+    "TickleMonster": {
+      "tags": {
+        "AS": 0.6,
+        "ONHIT": 0.4
+      },
+      "stats": {
+        "itemADtoAS": {
+          "dv": "CalcASVal"
+        }
+      },
+      "effects": [
+        {
+          "calc": "Calc_OnHitDamage",
+          "kind": "magic",
+          "trigger": {
+            "type": "onhit"
+          },
+          "from": "기본 공격 적중 시 추가 마법 피해 (레벨 비례)"
+        }
+      ],
+      "basis": {
+        "calc": "아이템 공격력 1 → 공격 속도 1.75% (원본 Calc_ADtoAS 1 · CalcASVal 0.0175), 아이템 공격력은 없어진다 + 적중 시 마법 피해 5~50. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+      }
+    },
+    "BigShot": {
+      "tags": {
+        "CRIT": 0.6,
+        "AD": 0.4
+      },
+      "stats": {
+        "CRITDMG": {
+          "calc18": "Calc_Bonus_Crit_Damage"
+        },
+        "bonusADmult": {
+          "calc18": "Calc_Bonus_AD"
+        },
+        "AStoCRITDMG": {
+          "calc18": "Calc_Percent_AS_To_Convert"
+        },
+        "AStoCRITDMGper": 0.67
+      },
+      "basis": {
+        "calc": "치명타 피해 35% · 추가 공격력 25% · 공격 속도의 75%를 치명타 피해로 (공격 속도 1%당 치명타 피해 0.67%: 원본 Calc_AS_To_Crit_Damage 0.01 · ConversionCritNum 0.0067). 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+      }
+    },
+    "HeavyIsTheCrown": {
+      "tags": {
+        "AD": 0.4,
+        "AP": 0.3,
+        "AS": 0.3
+      },
+      "stats": {
+        "AD": "InitialFlatAD",
+        "AP": "InitialFlatAP",
+        "bonusADmult": 0.3,
+        "APmult": 0.3,
+        "ASmult": 0.3,
+        "MSmult": -0.15
+      },
+      "uptime": [
+        "bonusADmult",
+        "APmult",
+        "ASmult",
+        "MSmult"
+      ],
+      "basis": {
+        "calc": "공격력 10·주문력 25 + 추가 공격력·주문력·총 공격 속도 10% (+처치 관여 중첩당 5%), 전투 중 이동 속도 −5% (중첩당 −2.5%) × 평균 4중첩 → 30%·−15%. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)",
+        "assume": [
+          {
+            "what": "평균 4중첩",
+            "why": "처치 관여마다 쌓이고 죽으면 절반(PercentStackLostOnDeath 50%)을 잃어서",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "UltimateRecursion": {
+      "tags": {
+        "ULT": 1
+      },
+      "stats": {
+        "ultHaste": {
+          "calc18": "UltimateHaste"
+        }
+      },
+      "basis": {
+        "calc": "궁극기 가속 50 (원본 UltimateHaste). 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+      }
+    },
+    "ArcaneAxiom": {
+      "tags": {
+        "ULT": 1
+      },
+      "stats": {
+        "ultHaste": 51
+      },
+      "basis": {
+        "calc": "처치 관여(3초 안 처치)마다 궁극기 재사용 대기시간 15~30% 반환 (원본 UltimateRefund) → 평균 22.5% × 궁극기 한 번에 1.5번 ≈ 34% 감소 ≈ 궁극기 가속 51. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)",
+        "assume": [
+          {
+            "what": "궁극기 한 번 쓰는 동안 처치 관여 약 1.5번",
+            "why": "원칙의 원형낫과 같은 가정 (칼바람은 처치가 자주 나와서)",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "JeweledBracelet": {
+      "tags": {
+        "CRIT": 0.5,
+        "ULT": 0.5
+      },
+      "stats": {
+        "CRIT": {
+          "calc18": "CritChance"
+        },
+        "ultCritDmg": {
+          "calc18": "CritDamage"
+        }
+      },
+      "basis": {
+        "calc": "치명타 확률 25% + 궁극기가 치명타 (145% + 추가 치명타 피해, 원본 CritChance·CritDamage). 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+      }
+    },
+    "LonelyWarrior": {
+      "tags": {
+        "AS": 0.4,
+        "ARMOR": 0.3,
+        "MR": 0.3
+      },
+      "stats": {
+        "AS": {
+          "dv": "ASPerEnemy",
+          "times": 3
+        },
+        "ARMOR": {
+          "dv": "ArmorPerEnemy",
+          "times": 3
+        },
+        "MR": {
+          "dv": "MRPerEnemy",
+          "times": 3
+        }
+      },
+      "uptime": [
+        "AS",
+        "ARMOR",
+        "MR"
+      ],
+      "basis": {
+        "calc": "600 거리 안 적 챔피언 한 명당 공격 속도 15%·방어력 10·마법 저항력 10 × 한타 중 평균 3명. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)",
+        "assume": [
+          {
+            "what": "한타 중 근처 적 평균 3명",
+            "why": "칼바람은 5명이 한곳에서 싸워 가까이 붙는 적이 많아서",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "StillHere": {
+      "tags": {
+        "AS": 0.5,
+        "VAMP": 0.5
+      },
+      "stats": {
+        "AS": {
+          "dv": "ASPerMissingPercentHP",
+          "times": 25
+        },
+        "OMNIVAMP": {
+          "dv": "OmnivampPerMissingPercentHP",
+          "times": 25
+        }
+      },
+      "uptime": [
+        "AS",
+        "OMNIVAMP"
+      ],
+      "basis": {
+        "calc": "잃은 체력 1%당 공격 속도 2%·흡혈 0.35% × 싸우는 동안 평균 잃은 체력 25%. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)",
+        "assume": [
+          {
+            "what": "싸우는 동안 평균 잃은 체력 25%",
+            "why": "한타 시작엔 체력이 차 있고 끝으로 갈수록 줄어서 중간값으로",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "FlowOfSpirit": {
+      "tags": {
+        "AS": 1
+      },
+      "stats": {
+        "AS": {
+          "calc18": "Calc_Attack_Speed",
+          "times": 0.5
+        }
+      },
+      "uptime": [
+        "AS"
+      ],
+      "basis": {
+        "calc": "특정 스킬을 쓰면 4초 동안 공격 속도 60~120% × 켜져 있는 시간 50%. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)",
+        "assume": [
+          {
+            "what": "가동률 50%",
+            "why": "스킬 재사용 대기시간마다 4초씩 켜져서 한타 중 절반쯤",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "Upgrade_Stormsurge": {
+      "items": [
+        "폭풍 쇄도"
+      ],
+      "tags": {
+        "AP": 0.7,
+        "MPEN": 0.3
+      },
+      "stats": {
+        "goldValue": 500
+      },
+      "basis": {
+        "calc": "폭풍 쇄도 질풍이 범위 폭발 + 500골드 (설명). 폭풍 쇄도를 같이 사야 효과가 난다. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
       }
     }
   },

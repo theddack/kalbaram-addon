@@ -585,3 +585,31 @@ test("균열 생성기: 추가 체력의 2% 주문력 + 주는 피해 증가 (�
   const ma = St.evaluate(c, 18, [rift], [], { aram: true }).m, mb = St.evaluate(c, 18, [plain], [], { aram: true }).m;
   assert.ok(ma.combo > mb.combo * 1.05, `콤보 ${ma.combo} vs ${mb.combo}`);
 });
+
+// 26.21 새 증강 변환 (원본 값은 rules.json — 여기선 엔진 계산만 합성 값으로)
+test("26.21 변환: 아이템 마나→주문력 · 아이템 공격력→공격 속도 · 추가 체력→물리 관통력 · 공격 속도→치명타 피해 · 궁극기 치명타", () => {
+  const ct = (c, items, aug) => St.computeStats(champ(c), 18, items, aug ? [aug] : [], { aram: true }).total;
+  // 마나 없음, 상관없음: 아이템 마나 10 → 주문력 0.8, 아이템 마나는 없어진다
+  const tear = [item("대천사의 지팡이")].filter(Boolean);
+  const mana = tear[0].stats.MANA;
+  const a0 = ct("Lux", tear), a1 = ct("Lux", tear, { itemMANAtoAP: 0.08 });
+  assert.ok(Math.abs(a1.MANA - (a0.MANA - mana)) < 0.01, `마나 ${a0.MANA} → ${a1.MANA}`);
+  assert.ok(a1.AP > a0.AP, `주문력 ${a0.AP} → ${a1.AP}`);
+  // 간지럼 괴물: 아이템 공격력 → 공격 속도 (1당 1.75%)
+  const ie = [item("무한의 대검")];
+  const b0 = ct("Jinx", ie), b1 = ct("Jinx", ie, { itemADtoAS: 0.0175 });
+  assert.ok(Math.abs(b1.bonusAD - (b0.bonusAD - ie[0].stats.AD)) < 0.01, `추가 공격력 ${b0.bonusAD} → ${b1.bonusAD}`);
+  assert.ok(b1.AS > b0.AS, `공격 속도 ${b0.AS} → ${b1.AS}`);
+  // 가라앉은 자의 축복: 추가 체력 100 → 물리 관통력 5, 추가 체력은 없어진다
+  const hp = [item("워모그의 갑옷")];
+  const c0 = ct("Darius", hp), c1 = ct("Darius", hp, { bonusHPtoLETHALITY: 0.05 });
+  assert.equal(c1.bonusHP, 0);
+  assert.ok(Math.abs(c1.LETHALITY - c0.LETHALITY - c0.bonusHP * 0.05) < 0.01, `관통 ${c0.LETHALITY} → ${c1.LETHALITY}`);
+  // 묵직한 한 방: 공격 속도의 75% → 치명타 피해 (1%당 0.67%)
+  const d0 = ct("Jinx", ie), d1 = ct("Jinx", ie, { AStoCRITDMG: 0.75, AStoCRITDMGper: 0.67 });
+  assert.ok(d1.AS < d0.AS && d1.CRITDMG > d0.CRITDMG, `공속 ${d0.AS}→${d1.AS} 치명타 피해 ${d0.CRITDMG}→${d1.CRITDMG}`);
+  // 보석 팔찌: 궁극기만 치명타 → 치명타 확률이 있으면 콤보 피해가 는다
+  const lux = champ("Lux");
+  const e0 = St.evaluate(lux, 18, [], [{ CRIT: 0.5 }], { aram: true }).m, e1 = St.evaluate(lux, 18, [], [{ CRIT: 0.5, ultCritDmg: 1.45 }], { aram: true }).m;
+  assert.ok(e1.combo > e0.combo, `콤보 ${e0.combo} → ${e1.combo}`);
+});
