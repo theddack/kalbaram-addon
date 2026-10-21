@@ -78,6 +78,19 @@ class PatchCheck(unittest.TestCase):
         self.assertEqual(presence(set(), "", "30/40/50", "", "30~50(레벨 비례)"), "ok")
 
 
+class RstStrings(unittest.TestCase):
+    """26.21(16.21)부터 게임 문자열 테이블의 새 키는 해시로만 들어 있다 (PBE 16.22 에서 확인)"""
+    def test_hash_key_fallback(self):
+        try:
+            import xxhash  # noqa: F401  requirements-data.txt (매일 갱신 CI 에 설치)
+        except ImportError:
+            self.skipTest("xxhash 없음")
+        s = B.RstStrings({"{3c19a691d2}": "리치 두뇌", "old_key": "예전 키"})
+        self.assertEqual(s.get("Kiwi_Augment_LichBrain_Name".lower()), "리치 두뇌", "PBE 실제 해시")
+        self.assertEqual(s.get("old_key"), "예전 키", "예전처럼 이름 키도")
+        self.assertEqual(s.get("없는 키", ""), "")
+
+
 class AutoAndWiki(unittest.TestCase):
     def test_auto_stats_conservative(self):
         self.assertEqual(B.auto_stats("치명타 확률이 25% 증가합니다.")[0], {"CRIT": 0.25})

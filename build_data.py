@@ -148,6 +148,25 @@ SAFE_SPAN = set(MARKUP_TAGS) | {"keywordmajor", "keyword", "rarityprismatic", "r
 BLOCK_TAGS = {"rules", "li", "flavortext", "maintext", "stats"}  # 줄을 바꿔서 표시
 
 
+class RstStrings(dict):
+    """게임 문자열 테이블. 26.21(16.21) 부터 새 키는 이름 대신 해시('{3c19a691d2}' = xxh3_64(소문자 키) 하위 40비트)로만 들어 있다
+    (PBE 16.22 에서 확인: 'Kiwi_Augment_LichBrain_Name' → '{3c19a691d2}' = '리치 두뇌'). 이름으로 못 찾으면 해시로 찾는다"""
+    BITS = 40
+
+    def _hash(self, key):
+        try:
+            import xxhash
+        except ImportError:  # requirements-data.txt 에 있다 (없으면 해시 키는 못 찾음)
+            return None
+        return "{%0*x}" % (self.BITS // 4, xxhash.xxh3_64_intdigest(key.lower().encode("utf-8")) & ((1 << self.BITS) - 1))
+
+    def get(self, key, default=None):
+        if key in self:
+            return dict.__getitem__(self, key)
+        h = self._hash(key) if isinstance(key, str) and key else None
+        return dict.get(self, h, default) if h else default
+
+
 def expand_templates(text, strings, depth=0):
     """{{ 키 }} 를 문자열 테이블 값으로 바꾼다. {{SpellName}} 같은 제목용 키는 지운다."""
     def sub(m):
@@ -1036,11 +1055,11 @@ def main():
                            "augment-lists.json")
     items_bin = fetch_json(f"{CDRAGON}/game/items.cdtb.bin.json", "items.cdtb.bin.json")
     print("문자열 테이블 받는 중 (약 35MB, 첫 실행만)...")
-    strings = fetch_json(f"{CDRAGON}/game/ko_kr/data/menu/en_us/lol.stringtable.json",
-                         "lol.stringtable.json")["entries"]
+    strings = RstStrings(fetch_json(f"{CDRAGON}/game/ko_kr/data/menu/en_us/lol.stringtable.json",
+                                    "lol.stringtable.json")["entries"])
     # 위키 증강 이름(영어)과 짝짓기용 영어 문자열
-    strings_en = fetch_json(f"{CDRAGON}/game/en_us/data/menu/en_us/lol.stringtable.json",
-                            "lol.stringtable.en.json")["entries"]
+    strings_en = RstStrings(fetch_json(f"{CDRAGON}/game/en_us/data/menu/en_us/lol.stringtable.json",
+                                       "lol.stringtable.en.json")["entries"])
     wiki_aug_text = fetch_wiki(f"{WIKI}/Module:MayhemAugmentData/data?action=raw", "wiki_mayhemaugments.lua", empty="")
     wiki_items = fetch_wiki(f"{WIKI}/Module:ItemData/data?action=raw", "wiki_itemdata.lua", parse_lua_table, {})
     wiki_mayhem_page = fetch_wiki(f"{WIKI}/ARAM:_Mayhem?action=raw", "wiki_mayhem_page.txt", empty="")
