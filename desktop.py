@@ -45,7 +45,7 @@ RELEASES_PAGE = "https://github.com/theddack/kalbaram-addon/releases/latest"
 
 def version_tuple(v):
     return tuple(int(x) for x in re.findall(r"\d+", str(v))[:3])
-CODE_FILES = ("index.html", "app.js", "scoring.js", "stats.js", "style.css", "changelog.html", "sources.html", "sources.js")
+CODE_FILES = ("index.html", "app.js", "scoring.js", "stats.js", "style.css", "changelog.html", "sources.html", "sources.js", "new.html", "new.js")
 
 
 def resource_dir():

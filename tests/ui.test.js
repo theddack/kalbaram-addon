@@ -1225,3 +1225,30 @@ test("추가 증강: 4개 확인 뒤 뜬 선택 화면은 카드를 띄우고 5�
   assert.deepEqual(p.errors, []);
   assert.deepEqual(q.errors, []);
 });
+
+// 새 증강 페이지 (web/new.html · new.js): 이번 패치에 처음 보인 증강과 PBE 미리 보기, 사라진 증강
+test("새 증강 페이지: 이번 패치 firstSeen·미리 보기만 등급별로 · 사라진 증강 · 이름 찾기", async () => {
+  const { JSDOM } = require("jsdom");
+  const fs = require("fs");
+  const path = require("path");
+  const WEB = path.join(__dirname, "..", "web");
+  const html = fs.readFileSync(path.join(WEB, "new.html"), "utf8").replace(/<script src="[^"]+"><\/script>/g, "");
+  const dom = new JSDOM(html, { runScripts: "outside-only", url: "http://localhost/new.html" });
+  const w = dom.window;
+  w.fetch = async () => ({ json: async () => ({}) });
+  w.eval(fs.readFileSync(path.join(WEB, "new.js"), "utf8"));
+  const aug = (id, name, rarityName, extra) => ({ id, name, enName: name, rarityName, desc: `${name} 설명`, effects: [], icon: false, num: 1, ...extra });
+  const d = { version: "16.21.1", iconExt: "webp", removedAugs: [{ id: "X", name: "탄환 세례", rarityName: "프리즘" }],
+    rules: { augments: { LichBrain: { stats: { AP: 30 }, statsResolved: { AP: { base: [30], ratios: { bonusHP: [0.04] } } } } } },
+    augments: [aug("LichBrain", "리치 두뇌", "실버", { firstSeen: "16.21.1" }), aug("BEES", "벌이다!!!", "골드", { preview: "PBE", effects: [{}] }),
+      aug("Old", "옛 증강", "골드", { firstSeen: "16.19.1" }), aug("Older", "더 옛 증강", "실버")] };
+  assert.equal(w.NewAugs.render(d), 2, "이번 패치 + 미리 보기만");
+  const text = w.document.getElementById("groups").textContent;
+  assert.match(text, /리치 두뇌/);
+  assert.doesNotMatch(text, /옛 증강/);
+  assert.match(text, /연계: 체력 아이템/, "추가 체력 비례 주문력 → 체력 아이템");
+  assert.match(text, /미리 보기 \(PBE\)/);
+  assert.equal(w.document.getElementById("warn").hidden, false);
+  assert.match(w.document.getElementById("removed").textContent, /탄환 세례/);
+  assert.equal(w.document.getElementById("title").textContent, "16.21 새 증강");
+});

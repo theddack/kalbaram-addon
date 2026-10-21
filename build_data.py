@@ -964,6 +964,17 @@ def augment_history(prev, out_augs, version):
     return new, changed
 
 
+def removed_augments(prev, out_augs, version):
+    """이전 data.json 에 있었는데 이번 데이터에 없는 증강 (패치로 삭제·비활성). 같은 패치 동안은 이어 간다 (새 증강 페이지 'new.html')"""
+    mm = lambda v: ".".join(str(v or "").split(".")[:2])
+    ids = {a["id"] for a in out_augs}
+    kept = [r for r in (prev or {}).get("removedAugs") or [] if mm(r.get("removedIn")) == mm(version) and r["id"] not in ids]
+    seen = {r["id"] for r in kept}
+    gone = [{"id": o["id"], "name": o.get("name"), "rarityName": o.get("rarityName"), "removedIn": version}
+            for o in (prev or {}).get("augments", []) if o["id"] not in ids and o["id"] not in seen]
+    return kept + gone
+
+
 PATCH_ARROW = re.compile(r"([\d.]+)\s*(?:%|초)?\s*(?:⇒|→|->)\s*([\d.]+)")
 
 
@@ -1490,6 +1501,7 @@ def main():
     except Exception:
         prev = None
     new_augs, changed_augs = augment_history(prev, out_augs, version)
+    removed_augs = removed_augments(prev, out_augs, version)
     mismatch = [(x, r) for x in out_augs + out_champs for r in (x.get("patchCheck") or [])
                 if r["status"] in ("applied", "stale", "differ")]
     no_number = {a["id"] for a in out_augs
@@ -1502,7 +1514,8 @@ def main():
             "builtAt": time.strftime("%Y-%m-%d %H:%M"), "mode": MODE, "iconExt": icon_ext, "iconWebpOnly": webp_only,
             "format": DATA_FORMAT, "tags": TAGS, "rules": rules,
             "disabled": disabled,
-            "champions": out_champs, "items": out_items, "parts": parts, "augments": out_augs}
+            "champions": out_champs, "items": out_items, "parts": parts, "augments": out_augs,
+            "removedAugs": removed_augs}
     tmp = WEB / "data.json.tmp"  # 쓰다 꺼져도 반쯤 쓰인 data.json 이 남지 않게
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp, WEB / "data.json")
