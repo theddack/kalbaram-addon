@@ -679,6 +679,9 @@ def resolve_rule_stats(rules, aug_spells):
             elif isinstance(v, dict):  # 스킬별 가속 {"Q": "QAbilityHaste"}
                 sub = {}
                 for slot, name in v.items():
+                    if isinstance(name, (int, float)):  # 설명 수치를 바로 적은 것 (펜타킬 강화 스킬 가속 20)
+                        sub[slot] = name
+                        continue
                     val = calc.value(name, 1)
                     if val is None:
                         warn.append(f"{aid}.{key}.{slot}: 데이터 값 '{name}' 없음")
@@ -705,7 +708,10 @@ def rule_effects(rules, aug_spells, out_augs, warn):
             if isinstance(trig.get("sec"), str):
                 trig["sec"] = calc.value(trig["sec"], 1) or 0
             trig["from"] = spec.get("from", "rules.json")
-            by_id[aid]["effects"].append({"kind": spec["kind"], "name": spec["calc"], **expr_json([e]), "trigger": trig})
+            fx = {"kind": spec["kind"], "name": spec["calc"], **expr_json([e]), "trigger": trig}
+            if spec.get("needsAuto"):  # 스킬 사용 후 다음 기본 공격에 터지는 효과 (장갑 충격 등: 주문 검과 같은 발동)
+                fx["needsAuto"] = True
+            by_id[aid]["effects"].append(fx)
 
 
 def rule_effect_cooldowns(rules, aug_spells, out_augs, warn):

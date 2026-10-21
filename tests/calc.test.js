@@ -664,3 +664,13 @@ test("아이템 연계(🔗): 아이템 능력치·효과 태그를 안 바꾸�
     assert.ok(worst < 0.1, `${id}: 연계 차이 ${worst}`);
   }
 });
+
+test("26.21 새 증강 규칙: 고반동 스킬 피해 25% · 장갑 충격 다음 기본 공격(10초) · 펜타킬 강화 스킬 가속 20 · 음속 장벽은 아군 지원 챔피언만", () => {
+  assert.equal(d.rules.augments.Recoil.statsResolved.skillDmgMult, 0.25);
+  const ai = aug("ArmoredImpact").effects[0];
+  assert.ok(ai.needsAuto && ai.cooldown === 10 && ai.ratios.bonusARMOR[0] === 2.5);
+  assert.deepEqual(d.rules.augments.GoH_PentakillAug_Q.statsResolved.slotHaste, { Q: 20 });
+  const tierOf = (cid, aid) => { const c = champ(cid); return S.augmentTiers(d.augments, d.items, S.profile(c, d.tags), [], [], d.rules, c, { aram: true })[aid].tier; };
+  assert.equal(tierOf("Garen", "Sound_Barrier"), "D", "아군 보호막이 없는 가렌");
+  assert.ok(["S", "A"].includes(tierOf("Janna", "Sound_Barrier")), "아군 보호막 잔나");
+});
