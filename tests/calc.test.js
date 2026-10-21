@@ -633,8 +633,10 @@ test("'무한히 중첩'되는 화상(화염 낙인)은 공격마다 쌓인다: 
   assert.ok(a.effects.some((e) => e.ticks && e.stacking));
   const c = champ("Kalista");
   const st = S.augStatsOf([a], d.rules, c);
-  const on = St.evaluate(c, 18, [], st, { aram: true }).m.augDps;
-  const off = St.evaluate(c, 18, [], [{ _effects: st[0]._effects.map((e) => ({ ...e, stacking: false })) }], { aram: true }).m.augDps;
+  // 화염 낙인 몫만 (칼리스타 창 중첩 같은 챔피언 효과는 빼고)
+  const none = St.evaluate(c, 18, [], [], { aram: true }).m.augDps;
+  const on = St.evaluate(c, 18, [], st, { aram: true }).m.augDps - none;
+  const off = St.evaluate(c, 18, [], [{ _effects: st[0]._effects.map((e) => ({ ...e, stacking: false })) }], { aram: true }).m.augDps - none;
   assert.ok(on > off * 2, `쌓임 ${on} vs 갱신만 ${off}`);
   // 리안드리(중첩 안 됨)는 그대로 지속 시간마다 1번
   assert.ok(!d.items.find((i) => i.name === "리안드리의 고통").effects.some((e) => e.stacking));
