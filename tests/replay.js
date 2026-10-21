@@ -9,6 +9,12 @@ global.Stats = global.Stats || require(path.join(WEB, "stats.js"));
 const S = require(path.join(WEB, "scoring.js"));
 const d = require(path.join(WEB, "data.json"));
 const GAMES = path.join(__dirname, "data", "games");
+// 패치로 삭제된 증강(26.21: 치명적 미사일·탄환 세례 등 13개)을 고른 옛 기록: 삭제 직전 데이터로 계산한다 (data/retired_augments.json)
+const RETIRED = JSON.parse(fs.readFileSync(path.join(__dirname, "data", "retired_augments.json"), "utf8"));
+const liveIds = new Set(d.augments.map((a) => a.id));
+const augById = (id) => d.augments.find((a) => a.id === id) || RETIRED.augments.find((a) => a.id === id);
+const rules = { ...d.rules, augments: { ...d.rules.augments,
+  ...Object.fromEntries(Object.entries(RETIRED.rules).filter(([id]) => !liveIds.has(id))) } };
 // 계산 키 → 게임 연동 championStats 키
 const LIVE = { HP: "maxHealth", AD: "attackDamage", AP: "abilityPower", ARMOR: "armor", MR: "magicResist", CRIT: "critChance", HASTE: "abilityHaste" };
 
@@ -29,14 +35,14 @@ function replay(name) {
     const drop = (st, keys) => { const o = { ...st }; for (const k of keys || []) delete o[k]; return o; };
     const items = ids.map((id) => d.items.find((i) => i.id === id) || ((d.parts || {})[id] && (d.parts[id].stats ? { id, name: d.parts[id].name, stats: d.parts[id].stats } : null))).filter(Boolean)
       .map((it) => { const up = ((d.rules.items || {})[it.name] || {}).uptime; return up && it.passiveStats ? { ...it, passiveStats: drop(it.passiveStats, up) } : it; });
-    const augs = game.augments.filter(([, at]) => at <= t).map(([id]) => d.augments.find((a) => a.id === id));
-    const c = S.withChosenFeatures(champ, augs, d.rules);
+    const augs = game.augments.filter(([, at]) => at <= t).map(([id]) => augById(id));
+    const c = S.withChosenFeatures(champ, augs, rules);
     // 게임 중 지금 능력치처럼 즉시 골드 환산은 뺀다 (app.js nowAugStats)
     // 가동률 능력치는 빼고, 처치 관여로 쌓는 능력치는 처치 관여 수만큼 더한다 (app.js nowAugStats)
     const takedowns = ((me.scores || {}).kills || 0) + ((me.scores || {}).assists || 0);
-    const augSt = S.augStatsOf(augs, d.rules, c).map((s, i) => {
+    const augSt = S.augStatsOf(augs, rules, c).map((s, i) => {
       if (!s) return s;
-      const rule = S.ruleOf(d.rules, augs[i]);
+      const rule = S.ruleOf(rules, augs[i]);
       const o = drop(s.goldValue ? { ...s, goldValue: 0 } : s, rule.uptime);
       for (const [k, v] of Object.entries(rule.perTakedown || {})) o[k] = (o[k] || 0) + v * takedowns;
       return o;

@@ -1007,6 +1007,9 @@ function clearOffers() {
   state.offersClosed = false;
 }
 
+// 게임이 알려 주는 고른 증강 수 상한. 보통 4개(7·11·15레벨)지만 26.21 헤드라이너(K/DA: 카드 4장을 모으면 증강 하나 더)로
+// 더 받을 수 있다. 경기 결과(eog)도 playerAugment1~6 칸이 있다. 화면의 '4개 완료'·직접 고르기는 그대로 4개 기준
+const AUG_MAX = 6;
 function renderOffers() {
   const box = $("#offers");
   const full = state.chosen.length >= 4;
@@ -1142,7 +1145,7 @@ function renderOfferResult() {
         추천 = 연계 티어가 가장 높은 것(같으면 빌드 가치 순).</p>`;
     out.querySelectorAll("button[data-pick]").forEach((el) => el.addEventListener("click", () => {
       const a = state.offers[Number(el.dataset.pick)];
-      if (a && state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
+      if (a && state.chosen.length < AUG_MAX && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
       clearOffers();
       renderAll();
     }));
@@ -1891,23 +1894,25 @@ function applyAug(A) {
   // 한 번 받은 정보로 화면은 한 번만 다시 그린다 (증강 칸 결과와 고른 증강이 같이 오면 전체 다시 그리기가 두 번이었다)
   let full = false, offersOnly = false, warn = false;
   const add = hud.filter((a) => !state.chosen.some((c) => c.id === a.id));
-  if (add.length && state.chosen.length < 4) {
-    state.chosen = [...state.chosen, ...add].slice(0, 4);
+  if (add.length && state.chosen.length < AUG_MAX) {
+    state.chosen = [...state.chosen, ...add].slice(0, AUG_MAX);
     clearOffers();
     full = true;
   }
   if (A.offers && A.seq !== augSeq) {
     augSeq = A.seq;
-    if (state.chosen.length >= 4) {
+    const sure = new Set(A.hudPicked || []);
+    // 4개가 모두 증강 칸 그림으로 확인됐는데 선택 화면이 또 떴다 = 헤드라이너(K/DA 등)가 주는 추가 증강 (26.21) → 그대로 받는다
+    const extra = state.chosen.length >= 4 && state.chosen.slice(0, 4).every((a) => sure.has(a.id));
+    if (state.chosen.length >= 4 && !extra) {
       // 선택 화면이 또 떴다 = 아직 4개를 다 고르지 않았다 → 증강 칸에서 확인 못 한 것(클릭 짐작)을 뒤에서부터 뺀다
       // (2026-10-15 케일 판: 틀린 짐작이 남아 4개로 차서 마지막 선택 화면 카드가 안 떴다)
-      const sure = new Set(A.hudPicked || []);
       const keep = [...state.chosen];
       for (let i = keep.length - 1; i >= 0 && keep.length >= 4; i--) if (!sure.has(keep[i].id)) keep.splice(i, 1);
       state.chosen = keep.slice(0, 3);
       full = true;
     }
-    if (state.chosen.length < 4) {
+    if (state.chosen.length < AUG_MAX) {
       // 새로고침 씀: 증강 인식이 새로고침 버튼 클릭을 본 칸 + 같은 선택 화면이면 직접 체크한 칸 (다른 화면이면 새로, 피드백 #9)
       const next = A.offers.map(byName);
       const same = state.offers.some((a, i) => a && next[i] && a.id === next[i].id);
@@ -1934,7 +1939,7 @@ function applyAug(A) {
       // 증강 칸 그림으로 확인했더니 클릭으로 짐작한 것과 달랐다 → 짐작한 것을 빼고 바꾼다
       const wrong = A.by === "hud" && byName(A.replaces);
       if (wrong) state.chosen = state.chosen.filter((x) => x.id !== wrong.id);
-      if (state.chosen.length < 4 && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
+      if (state.chosen.length < AUG_MAX && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
       clearOffers();
       full = true;
     } else if (A.pickedFrom) {

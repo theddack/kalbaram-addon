@@ -329,7 +329,7 @@ test("고른 증강을 못 정해도 게임 화면 카드 표시는 지운다", 
   const sent = [];
   p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
   p.w.applyLive({ enabled: true, inGame: true, champion: "DrMundo", level: 3, items: [] });
-  const offers = ["포로 쇄도", "강타자", "지옥불 난사 발동"];
+  const offers = ["도주 계획", "강타자", "지옥불 난사 발동"];
   p.w.applyAug({ offers, seq: 1, pickSeq: 0 });
   assert.equal(sent.at(-1).cards.filter(Boolean).length, 3);
   p.w.applyAug({ offers: null, seq: 1, picked: null, pickedFrom: offers, pickSeq: 1 });
@@ -823,7 +823,8 @@ test("우르곳 판 카드 문구: 역할에 있는 방향은 변신이 아니�
   const first = await cards(["강타자", "도주 계획", "불을 밝혀"], 1);
   assert.doesNotMatch(first[0].reason, /탱커형으로 변신/, "우르곳은 탱커 역할이 있다");
   p.w.applyAug({ offers: null, seq: 1, picked: "불을 밝혀", pickedFrom: ["강타자", "도주 계획", "불을 밝혀"], pickSeq: 1 });
-  const second = await cards(["궁극기 봇", "한 발에 두 놈", "열의"], 2);
+  // (원래 판의 '궁극기 봇'은 26.21 패치에서 삭제 → 같은 경우(궁합 +, 등급 애매)인 궁극기 대변혁으로)
+  const second = await cards(["궁극기 대변혁", "한 발에 두 놈", "열의"], 2);
   assert.match(second[0].label, /애매/);
   assert.doesNotMatch(second[0].reason, /잘 맞아요/, second[0].reason);
   assert.deepEqual(p.errors, []);
@@ -900,6 +901,7 @@ test("세나 판: 쌓는 능력치(안개)는 게임 실제 값으로 지금 쌓
   assert.deepEqual(p.errors, []);
 });
 
+// 원래 판의 '도박꾼'은 26.21 패치에서 삭제 → 같은 '능력치 모루'를 주는 '능력치!'로
 test("아우렐리온 솔(도박꾼) 판: 계산과 실제 차이가 30초 넘게 남으면 모루 능력치로 더한다 · 모루가 없는 판은 안 더한다", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
@@ -911,7 +913,7 @@ test("아우렐리온 솔(도박꾼) 판: 계산과 실제 차이가 30초 넘�
   const live = () => { p.w.applyLive({ enabled: true, inGame: true, champion: "AurelionSol", level: 9, items: ["3100", "3020"], stats }); p.w.sendOverlay(); return sent.at(-1).statCheck; };
   live();
   assert.equal(live().rows.HASTE[0], 10, "모루 증강 전엔 그대로");
-  p.w.applyAug({ offers: null, seq: 1, picked: "도박꾼", pickSeq: 1 });
+  p.w.applyAug({ offers: null, seq: 1, picked: "능력치!", pickSeq: 1 });
   live();
   now += 10;
   assert.equal(live().rows.HASTE[0], 10, "30초 전엔 아직");
@@ -985,10 +987,11 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   p.w.renderItemList();
   p.w.applyAug({ offers: null, seq: 1, picked: "무한 반복", pickSeq: 1 });
   p.w.renderItemList();
-  // 무한 반복만으론 다음 3개가 그대로 → 탄환 세례까지 고르면 바뀌고, 원인은 방금 고른 탄환 세례 (먼저 고른 무한 반복이 아니라)
-  p.w.applyAug({ offers: null, seq: 2, picked: "탄환 세례", pickSeq: 2 });
+  // 무한 반복만으론 다음 3개가 그대로 → 치명적 치유까지 고르면 바뀌고, 원인은 방금 고른 치명적 치유 (먼저 고른 무한 반복이 아니라)
+  // (원래 판의 탄환 세례는 26.21 패치에서 삭제)
+  p.w.applyAug({ offers: null, seq: 2, picked: "치명적 치유", pickSeq: 2 });
   p.w.renderItemList();
-  assert.match(p.text("#next-buy"), /🔁 .+ ← 탄환 세례 골라서/);
+  assert.match(p.text("#next-buy"), /🔁 .+ ← 치명적 치유 골라서/);
   assert.ok(sent.at(-1).hud.some((l) => l.startsWith("🔁 ")), "게임 화면 상자에도");
   const heal = { champion: "Soraka", level: 9, items: [] }, heal2 = { champion: "Yuumi", level: 9, items: [] };
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],
@@ -1031,7 +1034,7 @@ test("다음 구매 3개는 같이 가질 수 있는 것만 (같은 계열 고�
   const live = (items) => p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 16, items, stats, enemies: ["Soraka", "Yuumi", "Kalista"], enemyBuilds });
   live(["6672", "3085", "3032", "3006"]);
   p.w.applyAug({ offers: null, seq: 1, picked: "바늘에 실 끼우기", pickSeq: 1 });
-  p.w.applyAug({ offers: null, seq: 2, picked: "탄환 세례", pickSeq: 2 });
+  p.w.applyAug({ offers: null, seq: 2, picked: "치명적 치유", pickSeq: 2 });
   p.w.renderItemList();
   const ids = [...p.w.document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id);
   const lim = ids.map((id) => p.data.items.find((i) => i.id === id).limit).filter(Boolean);
@@ -1193,4 +1196,32 @@ test("만드는 중 놓아 주기: 점수 차이가 크고 남은 골드당 가�
   assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: 600, score: 1 }, top), false, "절반 점수 · 남은 돈 많음 → 놓아 줌");
   assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: it("크라켄 학살자").gold - 300, score: 1 }, top), true, "남은 300G → 계속");
   assert.equal(p.w.keepWorth({ item: it("크라켄 학살자"), sunk: 600, score: 1.9 }, top), true, "점수 차이 5% → 계속");
+});
+
+// 26.21 헤드라이너(K/DA 등)는 증강을 하나 더 준다: 4개가 모두 증강 칸 그림으로 확인된 뒤 선택 화면이 또 뜨면 짐작을 빼지 않고 5번째로 받는다
+test("추가 증강: 4개 확인 뒤 뜬 선택 화면은 카드를 띄우고 5번째로 받는다 · 확인 안 된 짐작이 있으면 예전처럼 짐작을 뺀다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 16, items: [] });
+  const id = (n) => p.data.augments.find((a) => a.name === n).id;
+  const four = ["무한 반복", "대마법사", "도주 계획", "강타자"];
+  p.w.applyAug({ offers: null, seq: 0, pickSeq: 0, hudPicked: four.map(id) });
+  for (const n of four) assert.match(p.text("#chosen"), new RegExp(n));
+  p.w.applyAug({ offers: ["불을 밝혀", "한 발에 두 놈", "열의"], seq: 5, pickSeq: 0, hudPicked: four.map(id) });
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(sent.at(-1).cards.filter(Boolean).length, 3, "추가 선택 화면 카드 3장");
+  for (const n of four) assert.match(p.text("#chosen"), new RegExp(n), "확인된 4개는 그대로");
+  p.w.applyAug({ offers: null, seq: 5, picked: "열의", pickSeq: 1, hudPicked: four.map(id) });
+  assert.match(p.text("#chosen"), /열의/, "5번째로 받음");
+  // 짐작(증강 칸 미확인)이 섞여 있으면 예전처럼 그 짐작을 뺀다 (2026-10-15 케일 판)
+  const q = await loadPage({ simple: true });
+  q.w.pywebview = { api: { set_overlay: () => {} } };
+  q.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 16, items: [] });
+  q.w.applyAug({ offers: null, seq: 0, pickSeq: 0, hudPicked: four.slice(0, 3).map(id) });
+  q.w.applyAug({ offers: null, seq: 0, picked: "강타자", pickSeq: 1, hudPicked: four.slice(0, 3).map(id) });
+  q.w.applyAug({ offers: ["불을 밝혀", "한 발에 두 놈", "열의"], seq: 5, pickSeq: 1, hudPicked: four.slice(0, 3).map(id) });
+  assert.doesNotMatch(q.text("#chosen"), /강타자/, "확인 못 한 짐작은 뺀다");
+  assert.deepEqual(p.errors, []);
+  assert.deepEqual(q.errors, []);
 });

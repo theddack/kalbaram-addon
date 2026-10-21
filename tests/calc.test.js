@@ -373,8 +373,6 @@ test("그레이브즈 공격 속도는 재장전 속도 상한(0.651~0.891, 레�
   assert.ok(Math.abs(St.computeStats(champ("Graves"), 18, its, [], { aram: true }).total.AS - 0.891) < 0.001);
   assert.ok(St.computeStats(champ("Graves"), 1, its, [], { aram: true }).total.AS <= 0.651 + 1e-9);
   assert.ok(St.computeStats(champ("Jinx"), 18, its, [], { aram: true }).total.AS > 1.5, "다른 챔피언은 그대로");
-  // 탄환 세례: 방향마다 8초 대기시간은 스킬 가속과 무관 → 가속 아이템을 끌어오지 않는다
-  assert.ok(!("HASTE" in d.rules.augments.ARAM_FanTheHammer.tags));
 });
 
 test("관통력 %는 곱해서 합친다 (35% + 35% = 57.75%, 게임 규칙)", () => {
@@ -534,9 +532,9 @@ test("진 4번째 탄은 항상 치명타: 치명타 0%여도 기본 공격 치�
 });
 
 // 2026-10-20 미구현 정리: 한 번에 여러 발·능력치 비례 값·아이템 효과 치명타 (원본 값 이름으로)
-test("효과 횟수(effectCount): 탄환 세례 5발·마법 미사일 3발·쌍둥이 불꽃 1 + 치명타 × 3 · 검무는 한타 1번 8회", () => {
+// (탄환 세례 5발은 26.21 패치에서 증강이 삭제돼 뺐다)
+test("효과 횟수(effectCount): 마법 미사일 3발·쌍둥이 불꽃 1 + 치명타 × 3 · 검무는 한타 1번 8회", () => {
   const fx = (id) => aug(id).effects[0];
-  assert.equal(fx("ARAM_FanTheHammer").count, 5);
   assert.equal(fx("ARAM_MagicMissile").count, 3);
   assert.deepEqual([fx("ARAM_BladeWaltz").count, fx("ARAM_BladeWaltz").trigger.type], [8, "once"]);
   assert.deepEqual([fx("Twinfire").count, fx("Twinfire").countCrit], [1, 3]);
