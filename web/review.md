@@ -7,7 +7,7 @@
 - **구원** (`Salvation`) — 효과 자동 추출됨
 - **트럼펫 폭발** (`BrassBlast`) — 효과 자동 추출됨
 - **모시핏 괴물** (`MoshMonster`) — 숫자 없음: 규칙 필요
-- **고반동** (`Recoil`) — 숫자 없음: 규칙 필요
+- **고반동** (`Recoil`) — 효과 자동 추출됨
 - **죽음의 춤** (`Totentanz`) — 효과 자동 추출됨
 - **간지럼 괴물** (`TickleMonster`) — 효과 자동 추출됨
 - **마나 없음, 상관없음** (`NoManaNoProblem`) — 효과 자동 추출됨
@@ -20,7 +20,7 @@
 - **벌이다!!!** (`BEES`) — 효과 자동 추출됨
 - **붐 앤 베이스** (`TheBoomAndTheBass`) — 효과 자동 추출됨
 - **전부 다 무너뜨려** (`TakeemDownDownDown`) — 효과 자동 추출됨
-- **장갑 충격** (`ArmoredImpact`) — 숫자 없음: 규칙 필요
+- **장갑 충격** (`ArmoredImpact`) — 효과 자동 추출됨
 - **과일화** (`Fruitify`) — 숫자 없음: 규칙 필요
 - **보석 팔찌** (`JeweledBracelet`) — 효과 자동 추출됨
 - **떴다, 징크스** (`GetJinxed`) — 효과 자동 추출됨
@@ -36,10 +36,10 @@
 - **궁극의 반복** (`UltimateRecursion`) — 효과 자동 추출됨
 - **아티스트 보호** (`HandsOffTheTalent`) — 효과 자동 추출됨
 - **고독한 전사** (`LonelyWarrior`) — 효과 자동 추출됨
-- **헤비** (`GoH_PentakillAug_Q`) — 숫자 없음: 규칙 필요
-- **파워** (`GoH_PentakillAug_W`) — 숫자 없음: 규칙 필요
-- **스래시** (`GoH_PentakillAug_E`) — 숫자 없음: 규칙 필요
-- **둠** (`GoH_PentakillAug_R`) — 숫자 없음: 규칙 필요
+- **헤비** (`GoH_PentakillAug_Q`) — 효과 자동 추출됨
+- **파워** (`GoH_PentakillAug_W`) — 효과 자동 추출됨
+- **스래시** (`GoH_PentakillAug_E`) — 효과 자동 추출됨
+- **둠** (`GoH_PentakillAug_R`) — 효과 자동 추출됨
 - **비전 원칙** (`ArcaneAxiom`) — 효과 자동 추출됨
 - **GoH_PentakillAug_Generic** (`GoH_PentakillAug_Generic`) — 숫자 없음: 규칙 필요
 - **폭풍 쇄도 업그레이드** (`Upgrade_Stormsurge`) — 효과 자동 추출됨

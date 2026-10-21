@@ -849,6 +849,31 @@ class AugOcr(unittest.TestCase):
         t.feed(None)
         self.assertEqual(t.state["picked"], "지옥불 난사 발동")
 
+    def test_tracker_click_then_new_screen_is_a_pick(self):
+        # 2026-10-22 하이머딩거 판: 유레카를 누르고 3초 뒤 닫힘 없이 다른 선택 화면이 바로 떴다 → 유레카를 고른 것으로
+        t = self.o.Tracker()
+        t.feed(["궁극의 각성", "결투의 대가", "유레카"])
+        t.click(2)
+        t.feed(["가속 추구", "신난다!", "소환술사"])
+        self.assertEqual(t.state["picked"], "유레카")
+        self.assertEqual(t.state["pickedFrom"], ["궁극의 각성", "결투의 대가", "유레카"])
+        self.assertEqual(t.state["offers"], ["가속 추구", "신난다!", "소환술사"])
+        # 새 화면에서 고르면 그것도 따로 센다
+        n = t.state["pickSeq"]
+        t.click(2)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["picked"], "소환술사")
+        self.assertEqual(t.state["pickSeq"], n + 1)
+
+    def test_tracker_new_screen_without_click_is_not_a_pick(self):
+        # 누르지 않았는데 세 칸이 다 바뀌면(새로고침 3번 등) 고른 것으로 세지 않는다
+        t = self.o.Tracker()
+        t.feed(["궁극의 각성", "결투의 대가", "유레카"])
+        t.feed(["가속 추구", "신난다!", "소환술사"])
+        self.assertIsNone(t.state["picked"])
+        self.assertEqual(t.state["pickSeq"], 0)
+
     def test_tracker_first_card_click_is_the_pick(self):
         # 2026-10-17 카이사 판: 광휘의 검 클릭 → 0.6초 뒤 사라지는 옆 카드(빵과 치즈) 클릭 → 빵과 치즈로 알렸다
         t = self.o.Tracker()

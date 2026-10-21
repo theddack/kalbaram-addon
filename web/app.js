@@ -1964,7 +1964,10 @@ function applyAug(A) {
       const wrong = A.by === "hud" && byName(A.replaces);
       if (wrong) state.chosen = state.chosen.filter((x) => x.id !== wrong.id);
       if (state.chosen.length < AUG_MAX && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
+      // 고른 것과 다음 선택 화면이 한 번에 왔으면(누르자마자 다른 선택 화면) 새 선택지는 남긴다 (2026-10-22 하이머딩거 판)
+      const next = offersOnly && A.offers ? { offers: state.offers, rerolled: state.rerolled } : null;
       clearOffers();
+      if (next && !next.offers.some((x) => x && x.id === a.id)) { state.offers = next.offers; state.rerolled = next.rerolled; }
       full = true;
     } else if (A.pickedFrom) {
       // 어느 카드였는지 못 정함 → 애드온엔 선택지를 남겨 '이걸로 선택'을 누르게 하고, 게임 화면 카드 표시는 지운다
@@ -1993,6 +1996,7 @@ let liveLast = "";
 let liveEnded = false;
 let liveShop = false, goldDrawnAt = 0, boxSent = null;
 let enemyBuildKey = "";
+const BUY_SHOW = 6;  // 초. 아이템을 산 직후 상자를 띄우는 시간 (상점 창 인식이 안 돼도)
 const BOX_START = 75;  // 초. 상자 '자세히'일 때 게임 시작 후 이 시간까지 띄운다 (처음 아이템을 사는 때)
 // ⚙ 표시 설정·⚙ 더보기 팝업: 바깥을 누르거나 Esc 로 닫는다 (summary 를 다시 누르는 것 말고는 닫을 방법이 없어
 // 4분 넘게 열린 채 오른쪽 '다음에 살 아이템'을 가렸다, 2026-10-20 피드백 #22)
@@ -2061,10 +2065,14 @@ function applyLive(L) {
   // 시작 직후(BOX_START)에 늘 띄우던 것은 없앴다: 게임 시작 1분 넘게 상자가 떠 있어 방해 (2026-10-19 외부 테스터, 안정화 기획서 UX-03).
   // 죽어 있을 때는 한 줄 요약만 (그리기 쪽 overlay.layout)
   // '자세히'(설정)를 고르면 예전처럼 시작 직후(BOX_START)에도 띄운다
-  state.boxWhy = L.aug && L.aug.shop ? "shop" : L.dead ? "dead"
+  // 아이템을 산 게 게임 연동으로 보이면(살아 있는데 가방이 바뀜) 상점이 열려 있다는 뜻 → BUY_SHOW 초 동안 상자를 띄운다.
+  // 상점 글자 인식이 안 되면 상자가 안 떠서 첫 완성 아이템 추천을 못 봤다 (2026-10-22 하이머딩거 판: 상점 읽기 265번 중 1번만 알아봄)
+  const invChanged = JSON.stringify(state.inventory) !== JSON.stringify((L.items || []).map(String));
+  if (invChanged && !L.dead && (L.gameTime ?? 0) > 5) state.buyUntil = Date.now() + BUY_SHOW * 1000;
+  const justBought = Date.now() < (state.buyUntil || 0);
+  state.boxWhy = (L.aug && L.aug.shop) || (justBought && !L.dead) ? "shop" : L.dead ? "dead"
     : state.boxDetail === "detail" && L.gameTime != null && L.gameTime < BOX_START ? "start" : null;
   const shopOpen = !!state.boxWhy;
-  const invChanged = JSON.stringify(state.inventory) !== JSON.stringify((L.items || []).map(String));
   const goldChanged = invChanged || (state.gold !== (L.gold ?? null)
     && (shopOpen || shopOpen !== liveShop || Date.now() - goldDrawnAt > 10000));
   liveShop = shopOpen;

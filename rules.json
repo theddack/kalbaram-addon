@@ -2085,6 +2085,111 @@
       "basis": {
         "calc": "폭풍 쇄도 질풍이 범위 폭발 + 500골드 (설명). 폭풍 쇄도를 같이 사야 효과가 난다. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
       }
+    },
+    "Sound_Barrier": {
+      "requires": "allysupport",
+      "note": "아군에게 보호막을 씌울 때만 발동 (설명). 아군 지원 스킬이 없으면 효과 없음"
+    },
+    "GroupHug": {
+      "requires": "allysupport",
+      "note": "스킬로 아군을 회복·보호막할 때만 발동 (설명). 아군 지원 스킬이 없으면 효과 없음"
+    },
+    "Recoil": {
+      "stats": {
+        "skillDmgMult": {
+          "calc18": "DamageAmp"
+        }
+      },
+      "basis": {
+        "calc": "스킬 피해량 25% 증가 (게임 데이터 값 DamageAmp)",
+        "assume": [
+          {
+            "what": "사용 시 뒤로 밀려나는 단점은 계산에 없음",
+            "why": "위치가 바뀌는 효과라 숫자로 못 셌어요"
+          }
+        ]
+      }
+    },
+    "ArmoredImpact": {
+      "effects": [
+        {
+          "calc": "ArmorDamage",
+          "kind": "physical",
+          "trigger": {
+            "type": "cast"
+          },
+          "needsAuto": true,
+          "from": "스킬 사용 후 다음 기본 공격 (주변 적)"
+        }
+      ],
+      "effectCooldown": {
+        "dv": "Cooldown"
+      },
+      "note": "스킬 사용 후 다음 기본 공격에 50~125 + 추가 방어력 250% 물리 피해, 재사용 대기시간 10초 (게임 데이터 값)"
+    },
+    "GoH_PentakillAug_Q": {
+      "stats": {
+        "slotHaste": {
+          "Q": 20
+        }
+      },
+      "basis": {
+        "calc": "강화 스킬(Q) 스킬 가속 20 (설명)",
+        "assume": [
+          {
+            "what": "강화 스킬(Q) 피해 10%·회복·보호막 10% 증가는 뺌",
+            "why": "스킬 하나만 키우는 피해 배율은 아직 계산이 없어요 (스킬 가속만 반영해서 조금 낮게 잡힘)"
+          }
+        ]
+      }
+    },
+    "GoH_PentakillAug_W": {
+      "stats": {
+        "slotHaste": {
+          "W": 20
+        }
+      },
+      "basis": {
+        "calc": "강화 스킬(W) 스킬 가속 20 (설명)",
+        "assume": [
+          {
+            "what": "강화 스킬(W) 피해 10%·회복·보호막 10% 증가는 뺌",
+            "why": "스킬 하나만 키우는 피해 배율은 아직 계산이 없어요 (스킬 가속만 반영해서 조금 낮게 잡힘)"
+          }
+        ]
+      }
+    },
+    "GoH_PentakillAug_E": {
+      "stats": {
+        "slotHaste": {
+          "E": 20
+        }
+      },
+      "basis": {
+        "calc": "강화 스킬(E) 스킬 가속 20 (설명)",
+        "assume": [
+          {
+            "what": "강화 스킬(E) 피해 10%·회복·보호막 10% 증가는 뺌",
+            "why": "스킬 하나만 키우는 피해 배율은 아직 계산이 없어요 (스킬 가속만 반영해서 조금 낮게 잡힘)"
+          }
+        ]
+      }
+    },
+    "GoH_PentakillAug_R": {
+      "stats": {
+        "slotHaste": {
+          "R": 20
+        }
+      },
+      "basis": {
+        "calc": "강화 스킬(R) 스킬 가속 20 (설명)",
+        "assume": [
+          {
+            "what": "강화 스킬(R) 피해 10%·회복·보호막 10% 증가는 뺌",
+            "why": "스킬 하나만 키우는 피해 배율은 아직 계산이 없어요 (스킬 가속만 반영해서 조금 낮게 잡힘)"
+          }
+        ]
+      }
     }
   },
   "items": {
