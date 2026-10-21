@@ -12,7 +12,8 @@ const base = JSON.parse(fs.readFileSync(R.FILE, "utf8"));
 const champ = (id) => d.champions.find((c) => c.id === id);
 const PICK = ["Varus", "Jinx", "Caitlyn", "Jhin", "Vayne", "Kayle", "Lux", "Malphite"];
 // 매일 데이터 갱신(refresh.yml)은 새 데이터로 테스트한다: 게임 데이터가 바뀌면 비교는 건너뛴다 (기준선은 사람이 보고 새로 저장)
-const stale = base.dataVersion !== d.dataVersion && "게임 데이터가 기준선과 달라요: node tools/rec_baseline.js 로 보고 --update";
+// (게임 패치(Data Dragon version)가 바뀐 것도 본다: 2026-10-21 커뮤니티 드래곤 표기는 16.20 인데 증강은 16.21 로 바뀌어 있었다)
+const stale = (base.dataVersion !== d.dataVersion || base.version !== d.version) && "게임 데이터가 기준선과 달라요: node tools/rec_baseline.js 로 보고 --update";
 
 test("기준선: 같은 입력을 두 번 계산해도 순위·점수가 같다", () => {
   for (const id of PICK) assert.deepStrictEqual(R.ranking(d, champ(id), [], []), R.ranking(d, champ(id), [], []), id);
