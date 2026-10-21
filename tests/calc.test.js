@@ -654,3 +654,13 @@ test("칼리스타 뽑아 찢기: 기본 공격마다 창 하나 (스킬 계산�
   assert.ok(!St.computeStats(c, 18, [], [], { aram: true, now: true }).effects.some((e) => e.src === "E 창 중첩"), "지금 능력치엔 없다");
   assert.ok(as.hit >= row.hit);
 });
+
+test("아이템 연계(🔗): 아이템 능력치·효과 태그를 안 바꾸는 증강(퀸카)은 어떤 아이템에도 연계가 생기지 않는다 (같은 지표 가중치로 비교)", () => {
+  const a = aug("PromQueen");
+  for (const id of ["Kalista", "Lux", "Garen"]) {
+    const c = champ(id);
+    const syn = S.itemSynergy(d.items, S.profile(c, d.tags), [a], [], d.rules, c, { aram: true });
+    const worst = Math.max(...Object.values(syn).map((v) => Math.abs(v.delta)));
+    assert.ok(worst < 0.1, `${id}: 연계 차이 ${worst}`);
+  }
+});

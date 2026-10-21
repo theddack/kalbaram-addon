@@ -347,6 +347,14 @@ function enemyAdvice() {
   const hasRes = (i, k) => !!(i.stats && !Array.isArray(i.stats) && (i.stats[k] || 0) > 0);
   const resItems = resWant && !state.items.some((i) => hasRes(i, resWant))
     ? byRank(items.filter((i) => hasRes(i, resWant) && (fits(i) || (tank && tankItem(i) && !(i.limit && ownedLimits.has(i.limit))))).map((i) => i.name)) : [];
+  // 앞에 보여 준 저항 아이템이 아직 후보면 그대로 첫째로: 순위가 거의 같은 둘(맬모셔스의 아귀·헤르메스의 시미터)이
+  // 적 마법 비율 70↔71% 같은 작은 변화로 몇 초마다 바뀌어 보였다 (2026-10-21 칼리스타 판)
+  const keyRes = `${state.champ.id}:${resWant}`;
+  if (state.resPick && state.resPick.key === keyRes && resItems.includes(state.resPick.name)) {
+    resItems.splice(resItems.indexOf(state.resPick.name), 1);
+    resItems.unshift(state.resPick.name);
+  }
+  state.resPick = resItems.length ? { key: keyRes, name: resItems[0] } : null;
   const resLabel = resWant === "MR" ? "마법 저항" : "방어력";
   // 실제로 받은 피해가 아니라 적 챔피언 유형(마법·물리·혼합)·산 아이템·킬로 짐작한 비율이라 '추정'이라고 쓴다
   out.push(`적 구성 ${e.fromItems ? "(산 아이템 반영)" : "추정"}: 마법 ${pct}% · 물리 ${100 - pct}%` + (e.fed.length ? ` (많이 큼: ${e.fed.join("·")})` : "")

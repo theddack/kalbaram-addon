@@ -632,15 +632,17 @@
 
   // 아이템 목록 정렬용: 균형 컨셉 기준으로 '지금 빌드에 하나 더 넣으면' 점수 (추천 빌드와 같은 가치 함수)
   // conceptKey: 아이템 목록 정렬 기준 컨셉 (증강을 골랐으면 "augment" 로 연계 아이템을 위로)
-  function rankItems(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, conceptKey = "balanced") {
-    champ = champ && withChosenFeatures(champ, chosen, rules);
+  // statsChosen: 능력치·효과를 넣을 증강 (기본 = chosen). 가중치·태그는 chosen 기준 그대로 두고 증강 능력치만 뺀 비교용 (itemSynergy)
+  function rankItems(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, conceptKey = "balanced", statsChosen = null) {
+    const sc = statsChosen || chosen;
+    champ = champ && withChosenFeatures(champ, sc, rules);
     const concept = CONCEPTS.find((c) => c.key === conceptKey) || CONCEPTS[1];
     const ctx = withOfficial(augContext(chosen, rules), champ, officialK(concept));
     const iw = conceptWeights(w, ctx, concept);
     const off = offTypeFilter(champ, ctx, concept, items);
     const covered = {};
     for (const it of fixed) addCovered(covered, convertTags(it.tags, ctx.convert));
-    const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts, mw: metricWeights(iw) } : null;
+    const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(sc, rules, champ), statOpts, mw: metricWeights(iw) } : null;
     let m0 = null;
     if (num) {
       const empty = Stats.evaluate(champ, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
@@ -812,9 +814,18 @@
   // 증강 효과가 아니라 기준 차이가 연계 점수로 잡혔다 (2026-10-20: 징크스 + 탄환 세례 → 고속 연사포 −0.93, 라바돈이 연계로 표시)
   function itemSynergy(items, w, chosen, fixed, rules, champ, statOpts = {}) {
     if (!chosen.length) return {};
+    // 증강 때문에 오른 점수 = 수치(같은 지표 가중치로 증강 능력치만 넣고 뺀 차이) + 태그(증강 효과와 맞는 태그 가산).
+    // 예전엔 '증강 있음'과 '없음'의 지표 가중치가 달라 관계없는 증강도 모든 아이템 점수를 흔들어 가짜 연계(🔗)가 생겼다
+    // (2026-10-21 칼리스타 판: '필멸자의 운명·루난 ← 떴다, 징크스', '윤 탈 ← 무한 반복')
     const withA = rankItems(items, w, chosen, fixed, rules, champ, statOpts, "balanced");
-    const without = Object.fromEntries(rankItems(items, w, [], fixed, rules, champ, statOpts, "balanced").map((r) => [r.item.id, r.score]));
-    return Object.fromEntries(withA.map((r) => [r.item.id, { delta: r.score - (without[r.item.id] || 0), score: r.score, reasons: r.reasons, gain: r.gain }]));
+    const bare = Object.fromEntries(rankItems(items, w, chosen, fixed, rules, champ, statOpts, "balanced", []).map((r) => [r.item.id, r]));
+    const noCtx = Object.fromEntries(rankItems(items, w, [], fixed, rules, champ, statOpts, "balanced").map((r) => [r.item.id, r]));
+    const numPart = (r) => (r ? r.score - (r.tagScore || 0) * TAG_K : 0);
+    return Object.fromEntries(withA.map((r) => {
+      const b = bare[r.item.id], n = noCtx[r.item.id];
+      const delta = numPart(r) - numPart(b) + ((r.tagScore || 0) - ((n && n.tagScore) || 0)) * TAG_K;
+      return [r.item.id, { delta, score: r.score, reasons: r.reasons, gain: r.gain }];
+    }));
   }
 
   // ---- 계산 결과 기억 (같은 챔피언·증강·아이템·가중치·상대면 다시 계산하지 않는다)
