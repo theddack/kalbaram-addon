@@ -92,6 +92,18 @@ class RstStrings(unittest.TestCase):
         self.assertEqual(s.get("없는 키", ""), "")
 
 
+class RemovedAugments(unittest.TestCase):
+    def test_removed_carried_within_patch(self):
+        prev = {"augments": [{"id": "A", "name": "가"}, {"id": "B", "name": "나", "rarityName": "프리즘"}], "removedAugs": []}
+        r = B.removed_augments(prev, [{"id": "A"}], "16.21.1")
+        self.assertEqual([x["name"] for x in r], ["나"])
+        # 다음 날 같은 패치: 이전 data.json 엔 B 가 이미 없어도 목록을 이어 간다
+        r2 = B.removed_augments({"augments": [{"id": "A"}], "removedAugs": r}, [{"id": "A"}], "16.21.1")
+        self.assertEqual([x["id"] for x in r2], ["B"])
+        # 다음 패치엔 지운다
+        self.assertEqual(B.removed_augments({"augments": [{"id": "A"}], "removedAugs": r}, [{"id": "A"}], "16.22.1"), [])
+
+
 class PatchBehind(unittest.TestCase):
     def test_patch_behind(self):
         self.assertTrue(B.patch_behind("16.21.1", "16.20.8248524+branch.releases-16-20.content.release"))

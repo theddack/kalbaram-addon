@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="ko"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>새 증강 · 칼바람 증강 Addon</title>
+<style>
+/* 레이아웃: 등급별 묶음 · 카드 격자 (아이콘 | 이름·설명·상태). 위에 요약과 걸러 보기. 내용은 new.js 가 data.json 에서 채운다 */
+:root {
+  --bg: #f3f4f8; --panel: #ffffff; --fg: #1b1d27; --mute: #636878; --line: #dcdfe8;
+  --silver: #8a93a6; --gold: #b8892b; --prism: #8a4fd6; --accent: #2f5fd0;
+  --ok: #1f8a5b; --auto: #2f5fd0; --none: #8a8f9c;
+  --magic: #2f5fd0; --phys: #c2571f; --heal: #1f8a5b; --speed: #9a7a10;
+  --body: -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", system-ui, sans-serif;
+  --mono: ui-monospace, "SF Mono", Consolas, monospace;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #12141b; --panel: #1b1e28; --fg: #e8eaf2; --mute: #9aa0b2; --line: #2c3040;
+  --silver: #aab3c6; --gold: #e0b354; --prism: #b98bf5; --accent: #7d9ef0; --ok: #4cc58e; --auto: #7d9ef0; --none: #8a90a2;
+  --magic: #7fb4ff; --phys: #ff9b5e; --heal: #5fd38d; --speed: #f0d36b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #12141b; --panel: #1b1e28; --fg: #e8eaf2; --mute: #9aa0b2; --line: #2c3040;
+  --silver: #aab3c6; --gold: #e0b354; --prism: #b98bf5; --accent: #7d9ef0; --ok: #4cc58e; --auto: #7d9ef0; --none: #8a90a2;
+  --magic: #7fb4ff; --phys: #ff9b5e; --heal: #5fd38d; --speed: #f0d36b; color-scheme: dark }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.55 var(--body);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 20px 48px; }
+.wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 28px; }
+a { color: var(--accent); }
+header { display: grid; gap: 10px; }
+.kicker { font-family: var(--mono); font-size: 12px; letter-spacing: .08em; color: var(--mute); }
+h1 { font-weight: 800; font-size: clamp(32px, 6vw, 48px); line-height: 1.08; letter-spacing: -0.02em; margin: 0; text-wrap: balance; }
+.lead { margin: 0; color: var(--mute); max-width: 68ch; }
+.stats { display: flex; flex-wrap: wrap; gap: 8px 18px; font-size: 14px; }
+.stats b { font-variant-numeric: tabular-nums; }
+.warn { font-size: 13px; color: var(--mute); border-left: 3px solid var(--gold); padding: 6px 10px; background: var(--panel); border-radius: 4px; max-width: 80ch; margin: 0; }
+.bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 8px; }
+body::before { content: ""; position: fixed; inset: 0 0 auto; height: env(safe-area-inset-top, 0px); z-index: 10; background: var(--bg); }
+.bar button { font: 600 13px var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 6px 12px; cursor: pointer; }
+.bar button[aria-pressed="true"] { background: var(--fg); color: var(--bg); border-color: var(--fg); }
+.bar button:focus-visible, .bar input:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.bar input { flex: 1 1 200px; min-width: 0; font: 14px var(--body); color: var(--fg); background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; }
+h2 { font-weight: 800; font-size: 24px; margin: 0 0 12px; display: flex; align-items: center; gap: 10px; }
+h2 .c { font-family: var(--mono); font-size: 14px; color: var(--mute); font-weight: 500; }
+.dot { width: 12px; height: 12px; border-radius: 3px; display: inline-block; flex: none; transform: rotate(45deg); }
+.d-s { background: var(--silver); } .d-g { background: var(--gold); } .d-p { background: linear-gradient(135deg, var(--prism), var(--accent)); }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 12px; }
+.aug { display: grid; grid-template-columns: 56px minmax(0, 1fr); gap: 12px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+.tile img, .ph { width: 56px; height: 56px; border-radius: 10px; display: grid; place-items: center; }
+.r-s .tile img, .r-s .ph { box-shadow: 0 0 0 2px var(--silver); }
+.r-g .tile img, .r-g .ph { box-shadow: 0 0 0 2px var(--gold); }
+.r-p .tile img, .r-p .ph { box-shadow: 0 0 0 2px var(--prism); }
+.ph { background: var(--bg); font-weight: 800; font-size: 24px; color: var(--mute); }
+.aug h3 { margin: 0; font-size: 16px; font-weight: 700; display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.aug h3 .en { font-weight: 400; font-size: 12px; color: var(--mute); }
+.aug .desc { margin: 4px 0 8px; font-size: 13.5px; }
+.desc .t-magicdamage, .desc .t-scaleap { color: var(--magic); }
+.desc .t-physicaldamage, .desc .t-scalead { color: var(--phys); }
+.desc .t-healing, .desc .t-scalehealth, .desc .t-health { color: var(--heal); }
+.desc .t-speed, .desc .t-attackspeed { color: var(--speed); }
+.desc .muted { color: var(--mute); }
+.meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; }
+.st { border-radius: 999px; padding: 2px 8px; font-weight: 600; border: 1px solid currentColor; }
+.st-rule { color: var(--ok); } .st-auto { color: var(--auto); } .st-none { color: var(--none); } .st-pre { color: var(--gold); }
+.link { color: var(--fg); background: var(--bg); border-radius: 999px; padding: 2px 8px; }
+.num { margin-left: auto; font-family: var(--mono); color: var(--mute); }
+.removed ul { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 8px; }
+.removed li { display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; font-size: 14px; text-decoration: line-through; text-decoration-color: var(--mute); }
+.note { font-size: 13px; color: var(--mute); margin: 0 0 12px; max-width: 72ch; }
+.empty { color: var(--mute); margin: 0; }
+footer { font-size: 12px; color: var(--mute); }
+</style></head><body>
+<div class="wrap">
+<a href="index.html">← 칼바람 증강 Addon으로 돌아가기</a>
+<header>
+  <div class="kicker" id="kicker">칼바람 증강 Addon · 이번 패치</div>
+  <h1 id="title">이번 패치 새 증강</h1>
+  <p class="lead" id="lead">게임 데이터를 불러오는 중이에요.</p>
+  <div class="stats" id="stats"></div>
+  <p class="warn" id="warn" hidden></p>
+</header>
+<div class="bar" role="toolbar" aria-label="걸러 보기">
+  <button type="button" data-f="all" aria-pressed="true" id="f-all">전체</button>
+  <button type="button" data-f="실버" aria-pressed="false" id="f-s">실버</button>
+  <button type="button" data-f="골드" aria-pressed="false" id="f-g">골드</button>
+  <button type="button" data-f="프리즘" aria-pressed="false" id="f-p">프리즘</button>
+  <input id="q" type="search" placeholder="이름으로 찾기 (한글·영어)" aria-label="이름으로 찾기">
+</div>
+<div id="groups"></div>
+<p class="empty" id="empty" hidden>찾는 이름이 없어요.</p>
+<section class="removed" id="removed" hidden>
+  <h2>사라진 증강 <span class="c" id="removed-n"></span></h2>
+  <ul id="removed-list"></ul>
+</section>
+<footer>출처: 게임 데이터(CommunityDragon) · 이번 패치에 처음 보인 증강만 모았어요. 이름 옆 번호는 게임 증강 번호예요. 계산 방법은 <a href="sources.html#assumptions">데이터 출처</a>에 있어요.</footer>
+</div>
+<script src="new.js"></script>
+</body></html>
