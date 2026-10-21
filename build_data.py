@@ -30,6 +30,16 @@ ICONS = WEB / "icons"
 
 DDRAGON = "https://ddragon.leagueoflegends.com"
 CDRAGON = "https://raw.communitydragon.org/latest"
+CDRAGON_PBE = "https://raw.communitydragon.org/pbe"
+PREVIEW = "--no-preview" not in sys.argv  # 게임이 새 패치인데 커뮤니티 드래곤이 아직이면 새 증강을 PBE 에서 미리 가져온다
+
+
+def patch_behind(game_version, data_version):
+    """게임(Data Dragon '16.21.1')이 데이터(커뮤니티 드래곤 '16.20.8248524+…')보다 새 패치인가"""
+    def mm(v):
+        m = re.match(r"(\d+)\.(\d+)", v or "")
+        return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
+    return mm(game_version) > mm(data_version)
 WIKI = "https://wiki.leagueoflegends.com/en-us"
 MODE = "KIWI"  # 칼바람 증강 모드 내부 이름
 MODE_PATH = "Maps/Shipping/Map12/Modes/KIWI"
@@ -149,16 +159,16 @@ BLOCK_TAGS = {"rules", "li", "flavortext", "maintext", "stats"}  # 줄을 바꿔
 
 
 class RstStrings(dict):
-    """게임 문자열 테이블. 26.21(16.21) 부터 새 키는 이름 대신 해시('{3c19a691d2}' = xxh3_64(소문자 키) 하위 40비트)로만 들어 있다
-    (PBE 16.22 에서 확인: 'Kiwi_Augment_LichBrain_Name' → '{3c19a691d2}' = '리치 두뇌'). 이름으로 못 찾으면 해시로 찾는다"""
-    BITS = 40
+    """게임 문자열 테이블. 26.21(16.21) 부터 새 키는 이름 대신 해시('{27215d72a6}' = xxh3_64(소문자 키) 하위 38비트, 16진 10자리)로만
+    들어 있다 (PBE 16.22 에서 확인: 'Kiwi_Augment_Sound_Barrier_Name' → '{27215d72a6}' = '음속 장벽'). 이름으로 못 찾으면 해시로 찾는다"""
+    BITS = 38
 
     def _hash(self, key):
         try:
             import xxhash
         except ImportError:  # requirements-data.txt 에 있다 (없으면 해시 키는 못 찾음)
             return None
-        return "{%0*x}" % (self.BITS // 4, xxhash.xxh3_64_intdigest(key.lower().encode("utf-8")) & ((1 << self.BITS) - 1))
+        return "{%010x}" % (xxhash.xxh3_64_intdigest(key.lower().encode("utf-8")) & ((1 << self.BITS) - 1))
 
     def get(self, key, default=None):
         if key in self:
@@ -1168,65 +1178,86 @@ def main():
     out_augs, unresolved_total, disabled, disabled_ids, aug_spells = [], 0, [], set(), {}
     wiki_matched = 0
     wiki_desc = {}  # 증강 id → 위키 영어 설명 (자동 추정 대조용)
-    for name in kiwi_names:
-        if not SAFE_ID.fullmatch(name):  # 화면 속성·아이콘 파일 이름에 쓰이므로 영문·숫자·밑줄만
-            print("  [건너뜀] 이상한 증강 id:", repr(name)[:60])
-            continue
-        a = aug_data.get(name)
-        if not a:
-            missing.append(name)
-            continue
-        en_name = strings_en.get((a.get("NameTra") or "").lower(), "")
-        wa = wiki_augs.get(norm_name(en_name)) or {}
-        if wa:
-            wiki_matched += 1
-        # 비활성: 게임 파일(Enabled=False) + 위키 '현재 비활성' 표시 (패치 없이 서버에서 끈 것까지)
-        if a.get("Enabled") is False or wa.get("disabled"):
-            label = strings.get((a.get("NameTra") or "").lower(), name)
-            disabled.append(label + ("" if a.get("Enabled") is False else " (위키 기준)"))
-            disabled_ids.add(name)
-            continue
-        wiki_desc[name] = wa.get("description", "")
-        spell = kiwi.get(a.get("RootSpell", ""), {}).get("mSpell", {})
-        raw = expand_templates(strings.get((a.get("AugmentTooltipTra") or "").lower()) or "", strings)
-        # 툴팁이 다른 문구를 참조하는데 그 문구가 비어 있으면(가속 추구·위력 추구·압력솥·초장거리 저격) 기본 설명을 쓴다
-        body = re.sub(r"<flavorText>.*?</flavorText>|<[^>]+>|\s+", "", raw, flags=re.S | re.I)
-        if len(body) < 15:
-            raw = expand_templates(strings.get((a.get("DescriptionTra") or "").lower()) or "", strings) or raw
-        text, unresolved = resolve_values(raw, spell)
-        ko_name = strings.get((a.get("NameTra") or "").lower(), "")
-        # 패치 노트 대조: 게임 데이터가 아직 이전 값이고 자리가 확실하면 패치 노트 값으로 다시 계산
-        p_check, patched = check_augment(spell, text, patch_lines.get(ko_name))
-        if patched:
-            spell = patched
-            text, unresolved = resolve_values(raw, spell)
-        aug_spells[name] = spell
-        unresolved_total += len(unresolved)
-        html, plain, names = to_html(text)
-        icon = (a.get("AugmentLargeIconPath") or "").replace(".tex", ".png").lower()
-        effects = augment_effects(raw, spell, plain)
-        out_augs.append({
-            "id": name,
-            # 게임 데이터 아이콘이 공용 그림(genericabilityaugmenticon 등)이면 게임 증강 칸엔 다른 그림이 뜬다
-            # (믿음직한 무기 = 챔피언 무기 그림) → 증강 칸 그림으로 확인할 수 없다
-            "genericIcon": "generic" in icon or None,
-            "num": a.get("AugmentPlatformId"),  # 경기 결과 파일(eog playerAugment1~6)의 증강 번호
-            "effects": effects,
-            "enName": en_name,
-            "patch": patch_lines.get(ko_name),  # 이번 패치 변경
-            "patchCheck": p_check or None,  # 줄마다 게임 데이터 대조 결과
-            "refs": aug_refs(en_name, wa, pn_url if strings.get((a.get("NameTra") or "").lower(), "") in patch_lines else None),
-            "eligible": wa.get("eligible"),  # 위키에 적용 스킬 목록이 있으면 그 챔피언들만 발동
-            "name": strings.get((a.get("NameTra") or "").lower(), name),
-            "rarity": a.get("rarity", 0),
-            "rarityName": rarity_name.get(a.get("rarity", 0), "?"),
-            "desc": html,
-            "tags": tag_text(plain, names),
-            "category": augment_category(plain),
-            "unresolved": len(unresolved),
-            "_icon": icon,
-            "_raw": raw,
-        })
+    # 커뮤니티 드래곤이 아직 지난 패치인데 게임은 새 패치가 나왔으면(새 증강이 게임엔 있는데 데이터엔 없음) PBE 데이터에서
+    # 새 증강만 미리 가져온다 (26.21: 게임 16.21 · 커뮤니티 드래곤 16.20 인 날, 새 증강 카드 이름을 못 읽어 평가가 비었다).
+    # 수치는 PBE 값이라 실제와 다를 수 있다 → preview 표시. 커뮤니티 드래곤이 새 패치가 되면 저절로 실제 데이터로 바뀐다
+    aug_sources = [(kiwi_names, aug_data, kiwi, strings, strings_en, None)]
+    if PREVIEW and patch_behind(version, cd_version):
+        try:
+            p_kiwi = fetch_json(f"{CDRAGON_PBE}/game/maps/modespecificdata/kiwi.bin.json", "pbe_kiwi.bin.json")
+            p_lists = fetch_json(f"{CDRAGON_PBE}/plugins/rcp-be-lol-game-data/global/ko_kr/v1/augment-lists.json", "pbe_augment-lists.json")
+            p_str = RstStrings(fetch_json(f"{CDRAGON_PBE}/game/ko_kr/data/menu/en_us/lol.stringtable.json", "pbe_lol.stringtable.json")["entries"])
+            p_en = RstStrings(fetch_json(f"{CDRAGON_PBE}/game/en_us/data/menu/en_us/lol.stringtable.json", "pbe_lol.stringtable.en.json")["entries"])
+            p_names = [p.split("/")[-1] for p in next(g["augmentList"] for g in p_lists if g["modeName"] == MODE)]
+            p_data = {v["AugmentNameId"]: v for v in p_kiwi.values() if isinstance(v, dict) and v.get("__type") == "AugmentData"}
+            new = [n for n in p_names if n not in aug_data and n in p_data and p_data[n].get("Enabled") is not False
+                   and len((p_str.get((p_data[n].get("NameTra") or "").lower()) or "").strip()) >= 2]  # 한 글자 이름(펜타킬 '둠')은 글자 인식 오인이 잦아 뺀다
+            aug_sources.append((new, p_data, p_kiwi, p_str, p_en, "PBE"))
+            print(f"  게임 {version} > 데이터 {cd_version}: PBE 에서 새 증강 {len(new)}개 미리 가져옴")
+        except Exception as e:
+            print("  [미리 보기] PBE 증강을 못 받음:", e)
+    for kiwi_names_, aug_data_, K_, S_, SE_, preview in aug_sources:
+      for name in kiwi_names_:
+          if not SAFE_ID.fullmatch(name):  # 화면 속성·아이콘 파일 이름에 쓰이므로 영문·숫자·밑줄만
+              print("  [건너뜀] 이상한 증강 id:", repr(name)[:60])
+              continue
+          a = aug_data_.get(name)
+          if not a:
+              missing.append(name)
+              continue
+          en_name = SE_.get((a.get("NameTra") or "").lower(), "")
+          wa = wiki_augs.get(norm_name(en_name)) or {}
+          if wa:
+              wiki_matched += 1
+          # 비활성: 게임 파일(Enabled=False) + 위키 '현재 비활성' 표시 (패치 없이 서버에서 끈 것까지)
+          if a.get("Enabled") is False or wa.get("disabled"):
+              label = S_.get((a.get("NameTra") or "").lower(), name)
+              disabled.append(label + ("" if a.get("Enabled") is False else " (위키 기준)"))
+              disabled_ids.add(name)
+              continue
+          wiki_desc[name] = wa.get("description", "")
+          spell = K_.get(a.get("RootSpell", ""), {}).get("mSpell", {})
+          raw = expand_templates(S_.get((a.get("AugmentTooltipTra") or "").lower()) or "", S_)
+          # 툴팁이 다른 문구를 참조하는데 그 문구가 비어 있으면(가속 추구·위력 추구·압력솥·초장거리 저격) 기본 설명을 쓴다
+          body = re.sub(r"<flavorText>.*?</flavorText>|<[^>]+>|\s+", "", raw, flags=re.S | re.I)
+          if len(body) < 15:
+              raw = expand_templates(S_.get((a.get("DescriptionTra") or "").lower()) or "", S_) or raw
+          text, unresolved = resolve_values(raw, spell)
+          ko_name = S_.get((a.get("NameTra") or "").lower(), "")
+          # 패치 노트 대조: 게임 데이터가 아직 이전 값이고 자리가 확실하면 패치 노트 값으로 다시 계산
+          p_check, patched = check_augment(spell, text, patch_lines.get(ko_name))
+          if patched:
+              spell = patched
+              text, unresolved = resolve_values(raw, spell)
+          aug_spells[name] = spell
+          unresolved_total += len(unresolved)
+          html, plain, names = to_html(text)
+          icon = (a.get("AugmentLargeIconPath") or "").replace(".tex", ".png").lower()
+          effects = augment_effects(raw, spell, plain)
+          out_augs.append({
+              "id": name,
+              # 게임 데이터 아이콘이 공용 그림(genericabilityaugmenticon 등)이면 게임 증강 칸엔 다른 그림이 뜬다
+              # (믿음직한 무기 = 챔피언 무기 그림) → 증강 칸 그림으로 확인할 수 없다
+              "genericIcon": "generic" in icon or None,
+              "num": a.get("AugmentPlatformId"),  # 경기 결과 파일(eog playerAugment1~6)의 증강 번호
+              "effects": effects,
+              "enName": en_name,
+              "patch": patch_lines.get(ko_name),  # 이번 패치 변경
+              "patchCheck": p_check or None,  # 줄마다 게임 데이터 대조 결과
+              "refs": aug_refs(en_name, wa, pn_url if S_.get((a.get("NameTra") or "").lower(), "") in patch_lines else None),
+              "eligible": wa.get("eligible"),  # 위키에 적용 스킬 목록이 있으면 그 챔피언들만 발동
+              "name": S_.get((a.get("NameTra") or "").lower(), name),
+              "rarity": a.get("rarity", 0),
+              "rarityName": rarity_name.get(a.get("rarity", 0), "?"),
+              "desc": ('<span class="muted small">미리 보기: 아직 정식 데이터가 없어 PBE(테스트 서버) 값이에요. 실제와 다를 수 있어요.</span><br>' + html) if preview else html,
+              "tags": tag_text(plain, names),
+              "category": augment_category(plain),
+              "unresolved": len(unresolved),
+              "_icon": icon,
+              "_cdragon": CDRAGON_PBE if preview else CDRAGON,
+              "preview": preview,  # "PBE" = 커뮤니티 드래곤에 아직 없는 새 증강을 PBE 데이터로 미리 (수치가 실제와 다를 수 있음)
+              "_raw": raw,
+          })
 
     # --- 챔피언 (상세 데이터에서 스킬 특성 추출)
     (CACHE / "champion").mkdir(exist_ok=True)
@@ -1384,7 +1415,7 @@ def main():
             for c in out_champs]
     jobs += [(f"{DDRAGON}/cdn/{version}/img/item/{i}.png", ICONS / "item" / f"{i}.png")
              for i in [x["id"] for x in out_items] + list(parts)]
-    jobs += [(f"{CDRAGON}/game/{a['_icon']}", ICONS / "augment" / f"{a['id']}.png")
+    jobs += [(f"{a['_cdragon']}/game/{a['_icon']}", ICONS / "augment" / f"{a['id']}.png")
              for a in out_augs if a["_icon"]]
     jobs = [(u, p) for u, p in jobs if REFRESH or not (p.exists() or p.with_suffix(".webp").exists())]
     failed = []
@@ -1407,7 +1438,7 @@ def main():
                        if not p.with_suffix(".png").exists()) if icon_ext == "png" else []
     for a in out_augs:
         a["icon"] = any((ICONS / "augment" / f"{a['id']}.{x}").exists() for x in ("png", "webp"))
-        del a["_icon"]
+        del a["_icon"], a["_cdragon"]
 
     rules = json.loads((ROOT / "rules.json").read_text(encoding="utf-8"))
     aug_ids = {a["id"] for a in out_augs}
