@@ -207,6 +207,9 @@ def text_effects(raw_tooltip, spell, plain_text):
         tk = TICKS.search(ctx)
         if tk and e["kind"] != "shield":
             e["ticks"] = float(tk.group(1))
+            # '무한히 중첩'되는 지속 피해(화염 낙인·지옥의 전도체)는 다시 걸면 시간만 갱신되는 게 아니라 하나씩 더 쌓인다
+            if re.search(r"무한히 중첩", plain_text or "") or re.search(r"무한히 중첩", ctx):
+                e["stacking"] = True
         elif "매초" in ctx and e["trigger"]["type"] == "once":
             e["trigger"] = {"type": "time", "sec": 1.0}
     return effects

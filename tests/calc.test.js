@@ -614,3 +614,53 @@ test("26.21 변환: 아이템 마나→주문력 · 아이템 공격력→공격
   const e0 = St.evaluate(lux, 18, [], [{ CRIT: 0.5 }], { aram: true }).m, e1 = St.evaluate(lux, 18, [], [{ CRIT: 0.5, ultCritDmg: 1.45 }], { aram: true }).m;
   assert.ok(e1.combo > e0.combo, `콤보 ${e0.combo} → ${e1.combo}`);
 });
+
+test("궁합(같이 − 따로)은 같은 지표 가중치로: 상관없는 증강을 골랐다고 공격 속도 증강이 '충돌'이 되지 않는다 (칼리스타 판)", () => {
+  const c = champ("Kalista");
+  const w = S.profile(c, d.tags);
+  const byName = (n) => d.augments.find((a) => a.name === n);
+  const chosen = ["무한 반복", "전부 다 무너뜨려", "떴다, 징크스"].map(byName);
+  const t = S.augmentTiers(d.augments, d.items, w, chosen, [], d.rules, c, { aram: true });
+  const z = t[byName("광신자").id];
+  assert.ok(!z.reasons.includes("충돌"), `광신자 ${z.tier} ${z.reasons}`);
+  assert.ok(["S", "A"].includes(z.tier), `광신자 ${z.tier}`);
+  const t2 = S.augmentTiers(d.augments, d.items, w, chosen.slice(0, 2), [], d.rules, c, { aram: true });
+  assert.ok(Math.abs(t2[byName("떴다, 징크스").id].interaction) < 0.05, "공격과 상관없는 소환사 주문 증강은 궁합 거의 0");
+});
+
+test("'무한히 중첩'되는 화상(화염 낙인)은 공격마다 쌓인다: 공격 속도 높은 원딜에서 지속 시간마다 1번보다 훨씬 크다", () => {
+  const a = d.augments.find((x) => x.name === "화염 낙인");
+  assert.ok(a.effects.some((e) => e.ticks && e.stacking));
+  const c = champ("Kalista");
+  const st = S.augStatsOf([a], d.rules, c);
+  // 화염 낙인 몫만 (칼리스타 창 중첩 같은 챔피언 효과는 빼고)
+  const none = St.evaluate(c, 18, [], [], { aram: true }).m.augDps;
+  const on = St.evaluate(c, 18, [], st, { aram: true }).m.augDps - none;
+  const off = St.evaluate(c, 18, [], [{ _effects: st[0]._effects.map((e) => ({ ...e, stacking: false })) }], { aram: true }).m.augDps - none;
+  assert.ok(on > off * 2, `쌓임 ${on} vs 갱신만 ${off}`);
+  // 리안드리(중첩 안 됨)는 그대로 지속 시간마다 1번
+  assert.ok(!d.items.find((i) => i.name === "리안드리의 고통").effects.some((e) => e.stacking));
+});
+
+test("칼리스타 뽑아 찢기: 기본 공격마다 창 하나 (스킬 계산은 창 2개로만 센다) → 공격 속도가 E 피해를 키운다", () => {
+  const c = champ("Kalista");
+  const fx = c.fightStats._effects.find((e) => e.src === "E 창 중첩");
+  assert.ok(fx && fx.trigger.type === "onhit");
+  const m = St.evaluate(c, 18, [], [], { aram: true }).m;
+  const row = m.effects.find((e) => e.src === "E 창 중첩");
+  assert.ok(row && row.hit > 0);
+  const as = St.evaluate(c, 18, [item("구인수의 격노검")], [], { aram: true }).m.effects.find((e) => e.src === "E 창 중첩");
+  assert.ok(c.fightBasis.some((b) => b.t === "assume"));
+  assert.ok(!St.computeStats(c, 18, [], [], { aram: true, now: true }).effects.some((e) => e.src === "E 창 중첩"), "지금 능력치엔 없다");
+  assert.ok(as.hit >= row.hit);
+});
+
+test("아이템 연계(🔗): 아이템 능력치·효과 태그를 안 바꾸는 증강(퀸카)은 어떤 아이템에도 연계가 생기지 않는다 (같은 지표 가중치로 비교)", () => {
+  const a = aug("PromQueen");
+  for (const id of ["Kalista", "Lux", "Garen"]) {
+    const c = champ(id);
+    const syn = S.itemSynergy(d.items, S.profile(c, d.tags), [a], [], d.rules, c, { aram: true });
+    const worst = Math.max(...Object.values(syn).map((v) => Math.abs(v.delta)));
+    assert.ok(worst < 0.1, `${id}: 연계 차이 ${worst}`);
+  }
+});
