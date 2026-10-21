@@ -85,10 +85,18 @@ class RstStrings(unittest.TestCase):
             import xxhash  # noqa: F401  requirements-data.txt (매일 갱신 CI 에 설치)
         except ImportError:
             self.skipTest("xxhash 없음")
-        s = B.RstStrings({"{3c19a691d2}": "리치 두뇌", "old_key": "예전 키"})
+        s = B.RstStrings({"{3c19a691d2}": "리치 두뇌", "{27215d72a6}": "음속 장벽", "old_key": "예전 키"})
         self.assertEqual(s.get("Kiwi_Augment_LichBrain_Name".lower()), "리치 두뇌", "PBE 실제 해시")
+        self.assertEqual(s.get("Kiwi_Augment_Sound_Barrier_Name"), "음속 장벽", "하위 38비트 (40비트면 {67215d72a6} 로 틀림)")
         self.assertEqual(s.get("old_key"), "예전 키", "예전처럼 이름 키도")
         self.assertEqual(s.get("없는 키", ""), "")
+
+
+class PatchBehind(unittest.TestCase):
+    def test_patch_behind(self):
+        self.assertTrue(B.patch_behind("16.21.1", "16.20.8248524+branch.releases-16-20.content.release"))
+        self.assertFalse(B.patch_behind("16.21.1", "16.21.8300000+branch.releases-16-21.content.release"))
+        self.assertFalse(B.patch_behind("16.21.1", "16.22.8301522+branch.main.content.beta"))
 
 
 class AutoAndWiki(unittest.TestCase):
