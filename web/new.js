@@ -4,6 +4,8 @@
   const RAR = ["실버", "골드", "프리즘"];
   const CLS = { 실버: "s", 골드: "g", 프리즘: "p" };
   const mm = (v) => String(v || "").split(".").slice(0, 2).join(".");
+  // 게임 버전(Data Dragon 16.21.1) → 라이엇 패치 이름(26.21): 2026년부터 연도 기준 번호 (build_data.patch_notes_url 과 같은 규칙)
+  const patchName = (v) => { const [a, b] = String(v || "").split("."); return a && b ? `${Number(a) + 10}.${b}` : "?"; };
   // 증강이 아이템 능력치를 바꾸는 변환 → 같이 사면 좋은 아이템 (stats.js conv)
   const CONV_LINK = { bonusHPtoAP: "체력 아이템", bonusHPtoLETHALITY: "체력 아이템", itemMANAtoAP: "마나 아이템", itemADtoAS: "공격력 아이템",
     AStoCRITDMG: "공격 속도 아이템", ultCritDmg: "치명타 아이템", bonusMANAtoAP: "마나 아이템", bonusADtoAP: "공격력 아이템" };
@@ -52,9 +54,9 @@
     };
     const groups = RAR.filter((r) => cnt[r]).map((r) => `<section class="grp" data-grp="${r}"><h2><span class="dot d-${CLS[r]}"></span>${r} <span class="c">${cnt[r]}</span></h2>
 <div class="grid">${list.filter((a) => a.rarityName === r).sort((x, y) => x.name.localeCompare(y.name, "ko")).map(card).join("")}</div></section>`).join("");
-    document.getElementById("groups").innerHTML = groups || `<p class="empty">이번 패치(${esc(mm(d.version))})에 새로 들어온 증강이 없어요.</p>`;
-    document.getElementById("kicker").textContent = `칼바람 증강 Addon · 게임 ${mm(d.version)}`;
-    document.getElementById("title").textContent = `${mm(d.version)} 새 증강`;
+    document.getElementById("groups").innerHTML = groups || `<p class="empty">${esc(patchName(d.version))} 패치에 새로 들어온 증강이 없어요.</p>`;
+    document.getElementById("kicker").textContent = `칼바람 증강 Addon · 패치 ${patchName(d.version)} (게임 ${mm(d.version)})`;
+    document.getElementById("title").textContent = `${patchName(d.version)} 새 증강`;
     document.getElementById("lead").textContent = list.length
       ? `이번 패치에 새로 들어온 증강 ${list.length}개예요. 애드온이 각 증강을 어떻게 계산하는지도 같이 적었어요.`
       : "이번 패치에 새로 들어온 증강이 없어요.";
@@ -102,7 +104,7 @@
     q.addEventListener("input", apply);
   }
 
-  window.NewAugs = { newAugments, render, status, linkOf };
+  window.NewAugs = { newAugments, render, status, linkOf, patchName };
   if (document.getElementById("groups")) {
     bindFilter();
     fetch("data.json").then((r) => r.json()).then(render).catch(() => {
