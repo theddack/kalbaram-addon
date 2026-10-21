@@ -18,8 +18,8 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from champion_data import (augment_effects, item_spell, parse_lua_table, passive_spell, process_champion,
-                           spell_cc_seconds, text_effects, wiki_extras, wiki_growth_fix)
+from champion_data import (augment_effects, game_as_ratio, item_spell, mode_cooldown, parse_lua_table, passive_spell,
+                           process_champion, spell_cc_seconds, text_effects, wiki_extras, wiki_growth_fix)
 from lol_calc import Calc, expr_json, fmt_expr_ranks
 from patch_check import check_augment, check_champion
 
@@ -964,7 +964,35 @@ def augment_history(prev, out_augs, version):
     return new, changed
 
 
-CHAMP_WIKI_KEYS = ("aram", "aramSource", "asRatio", "stats", "modeStats", "aramOff", "aramOffWhy")
+# 위키에서만 오는 챔피언 값 (공속 계수·근접/원거리 체력·모드 재사용 대기시간은 게임 파일에서 읽어서 뺐다)
+CHAMP_WIKI_KEYS = ("aram", "aramSource", "stats", "aramOff", "aramOffWhy")
+
+
+def game_mode_hp(map12):
+    """게임 파일 map12 'Kiwi_Balance' 상수 → 근접·원거리 추가 체력 {melee: [1레벨, 18레벨], ranged: […]} (없으면 None)
+    (2026-10-21 확인: 근접 20·최대 600, 원거리 20·최대 400 = 위키 'Global stat changes' 와 같다)"""
+    for v in (map12 or {}).values():
+        if isinstance(v, dict) and v.get("mName") == "Kiwi_Balance":
+            k = {n: (c or {}).get("mValue") for n, c in (v.get("mConstants") or {}).items()}
+            if all(isinstance(k.get(n), (int, float)) for n in ("MeleeHealthBonus", "MeleeHealthBonusMax", "RangeHealthBonus", "RangeHealthBonusMax")):
+                return {"melee": [k["MeleeHealthBonus"], k["MeleeHealthBonusMax"]], "ranged": [k["RangeHealthBonus"], k["RangeHealthBonusMax"]]}
+    return None
+
+
+def wiki_fallback_champs(prev, out_champs):
+    """위키를 못 받았을 때 챔피언의 위키 값(칼바람 보정·레벨당 능력치 보정·모드 공속 상한 등)을 이전 data.json 에서"""
+    pc = {c["id"]: c for c in (prev or {}).get("champions", [])}
+    for c in out_champs:
+        o = pc.get(c["id"])
+        if not o:
+            continue
+        for k in CHAMP_WIKI_KEYS:
+            if k in o:
+                c[k] = o[k]
+        if o.get("modeStats") and c.get("modeStats") is not None:  # 체력은 게임 파일 값 그대로, 공속 상한·치명타 초과분만
+            c["modeStats"] = {**{k: v for k, v in o["modeStats"].items() if k != "hp"}, **c["modeStats"]}
+        elif o.get("modeStats"):
+            c["modeStats"] = o["modeStats"]
 
 
 def wiki_fallback(prev, out_champs, out_items, out_augs, disabled):
@@ -973,19 +1001,6 @@ def wiki_fallback(prev, out_champs, out_items, out_augs, disabled):
     (테스트가 막아 새 패치 데이터가 하루 넘게 못 들어갔다). 이어 쓴 것은 data.json wikiFallback 에 남긴다"""
     if not prev:
         return None
-    pc = {c["id"]: c for c in prev.get("champions", [])}
-    for c in out_champs:
-        o = pc.get(c["id"])
-        if not o:
-            continue
-        for k in CHAMP_WIKI_KEYS:
-            if k in o:
-                c[k] = o[k]
-        slots = {sp["slot"]: sp for sp in o.get("spells", [])}
-        for sp in c.get("spells", []):
-            osp = slots.get(sp["slot"])
-            if osp and osp.get("cooldownBase"):  # 증강 모드 전용 재사용 대기시간 (위키)
-                sp["cooldownBase"], sp["cooldown"] = osp["cooldownBase"], osp["cooldown"]
     pi = {i["id"]: i for i in prev.get("items", [])}
     for it in out_items:
         o = pi.get(it["id"])
@@ -1353,6 +1368,9 @@ def main():
         tacticals = dict(zip(champs, ex.map(tactical, champs)))
     out_champs, spell_unresolved, no_wiki, passive_found = [], 0, [], 0
     mode_global = mayhem_global_stats(wiki_mayhem_page)  # 모든 챔피언 공통 모드 능력치 (체력·공속 상한·치명타 초과분)
+    game_hp = game_mode_hp(map12)  # 근접·원거리 추가 체력은 게임 파일 값이 우선 (위키가 멈춰도 최신)
+    if game_hp:
+        mode_global["hp"] = game_hp
     print(f"  모드 공통 능력치 (위키): {mode_global or '못 읽음'}")
     growth_fixed = []  # Data Dragon 성장치가 0 이라 위키 값으로 채운 칸
     mayhem_mods = mayhem_champion_overrides(wiki_mayhem_page, wiki)
@@ -1374,14 +1392,23 @@ def main():
             p_effects = text_effects(p_raw, p_spell, p_plain)
             passive_found += 1
         spell_unresolved += unresolved
-        for sp in spells:
+        for i, sp in enumerate(spells):
             sp["tooltip"], _, _ = to_html(sp["tooltip"])
+            # 증강 모드 재사용 대기시간: 게임 파일이 우선, 게임 파일에 없을 때만 위키 표
+            game_cd = mode_cooldown(bins[cid], d["spells"][i]["id"], len(sp["cooldown"])) if i < len(d["spells"]) else None
+            if game_cd and game_cd != [round(v, 3) for v in sp["cooldown"]]:
+                sp["cooldownBase"], sp["cooldown"] = sp["cooldown"], game_cd
+                cd_applied.append(f"{c['name']} {sp['slot']} {sp['cooldownBase'][0]:g}→{game_cd[0]:g} (게임 파일)")
+                continue
+            if game_cd:
+                continue
             line = mayhem_cd.get(cid, {}).get(sp["slot"])
             vals = _wiki_ranks(line, sp["ranks"]) if line else None
             if vals:  # 증강 모드 전용 재사용 대기시간 (위키)
                 sp["cooldownBase"], sp["cooldown"] = sp["cooldown"], vals
                 cd_applied.append(f"{c['name']} {sp['slot']} {sp['cooldownBase'][0]:g}→{vals[0]:g}")
         aram, as_ratio = wiki_extras(wiki, c["name"], cid)
+        as_ratio = game_as_ratio(bins[cid], cid) or as_ratio  # 공격 속도 계수는 게임 파일 우선
         c["stats"], fixed = wiki_growth_fix(wiki, c["name"], cid, c["stats"])
         growth_fixed.extend(fixed)
         # 칼바람 증강 모드: 일반 칼바람 보정 위에 모드 전용 보정을 덮어쓴다 (위키)
@@ -1421,6 +1448,13 @@ def main():
                         "cc": spell_cc_seconds(re.sub(r"<[^>]+>", "", p_html or d["passive"]["description"]))},
             "spells": spells,
         })
+    try:
+        prev = json.loads((WEB / "data.json").read_text(encoding="utf-8"))
+    except Exception:
+        prev = None
+    # 위키를 못 받았으면 위키에서 오던 챔피언 값(칼바람 보정 등)을 이전 데이터에서 — 패치 노트 덮어쓰기보다 먼저
+    if WIKI_FAILED:
+        wiki_fallback_champs(prev, out_champs)
     for c in out_champs:  # 패치 노트 대조 (모드 보정·재사용 대기시간은 확실하면 패치 노트 값으로)
         c["patchCheck"] = check_champion(c, c["patch"]) if c["patch"] else None
     # 챔피언 스킬·패시브의 '중첩당' 계수는 챔피언 중첩(CSTACKS)으로 (증강의 중첩과 섞이지 않게)
@@ -1537,10 +1571,6 @@ def main():
             continue
         item["passiveStats"] = ir["stats"]
         item["basisView"] = rule_basis(ir, ir["stats"], (item.get("passiveHtml") or "") + item["desc"], rule_warn, item["name"])
-    try:
-        prev = json.loads((WEB / "data.json").read_text(encoding="utf-8"))
-    except Exception:
-        prev = None
     new_augs, changed_augs = augment_history(prev, out_augs, version)
     wiki_fb = wiki_fallback(prev, out_champs, out_items, out_augs, disabled) if WIKI_FAILED else None
     if wiki_fb:

@@ -263,6 +263,31 @@ def spell_cc_seconds(plain):
 ONHIT_PASSIVE = re.compile(r"기본 지속 효과\s*:[^.]*기본 공격")
 
 
+# 스킬의 모드별 재사용 대기시간: SpellDataResource 의 해시 이름 칸 '{f9c2333e}' = {모드: SpellEffectAmount [0랭크, 1랭크, …]}
+# (2026-10-21 확인: 가렌 W 기본 22/19.5/17/14.5/12 · Kiwi 18/16.5/15/13.5/12 = 위키 증강 모드 표와 같다)
+MODE_CD_FIELD = "{f9c2333e}"
+
+
+def mode_cooldown(bin_json, spell_id, nranks, modes=("Kiwi", "ARAM")):
+    """게임 파일의 증강 모드(없으면 칼바람) 재사용 대기시간 [1랭크…] — 없으면 None"""
+    ov = find_spell(bin_json, spell_id).get(MODE_CD_FIELD)
+    if not isinstance(ov, dict):
+        return None
+    for m in modes:
+        vals = (ov.get(m) or {}).get("value")
+        if vals and len(vals) > nranks:
+            return [round(v, 3) for v in vals[1:nranks + 1]]
+    return None
+
+
+def game_as_ratio(bin_json, cid):
+    """게임 파일의 공격 속도 계수 (CharacterRecord attackSpeedRatio). 없으면 None"""
+    rec = bin_json.get(f"Characters/{cid}/CharacterRecords/Root") or next(
+        (v for v in bin_json.values() if isinstance(v, dict) and v.get("__type") == "CharacterRecord"), {})
+    v = (rec.get("attackSpeedRatioModifiable") or {}).get("baseValue")
+    return round(v, 4) if isinstance(v, (int, float)) and v > 0 else None
+
+
 def process_champion(cid, detail, bin_json):
     spells, unresolved_total = [], 0
     for i, sp in enumerate(detail["spells"]):

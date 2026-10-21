@@ -95,11 +95,15 @@ class RstStrings(unittest.TestCase):
 class WikiFallback(unittest.TestCase):
     def test_keeps_previous_wiki_values(self):
         prev = {"builtAt": "어제",
-                "champions": [{"id": "Syndra", "aram": {"dmg_dealt": 1.05}, "asRatio": 0.625, "stats": {"hp": 1},
-                               "spells": [{"slot": "Q", "cooldown": [3], "cooldownBase": [4]}]}],
+                "champions": [{"id": "Syndra", "aram": {"dmg_dealt": 1.05}, "asRatio": 0.6, "stats": {"hp": 1},
+                               "modeStats": {"hp": [1, 2], "asCap": 5.0}}],
                 "items": [{"id": "3078", "limit": "spellblade"}], "augments": [{"id": "A", "eligible": ["Syndra"]}],
                 "disabled": ["꺼진 증강 (위키 기준)"]}
-        champs = [{"id": "Syndra", "aram": None, "stats": {"hp": 0}, "spells": [{"slot": "Q", "cooldown": [4]}]}]
+        champs = [{"id": "Syndra", "aram": None, "asRatio": 0.625, "stats": {"hp": 0}, "modeStats": {"hp": [20, 400]}}]
+        B.wiki_fallback_champs(prev, champs)
+        self.assertEqual(champs[0]["aram"], {"dmg_dealt": 1.05})
+        self.assertEqual(champs[0]["asRatio"], 0.625, "공속 계수는 게임 파일 값 그대로")
+        self.assertEqual(champs[0]["modeStats"], {"hp": [20, 400], "asCap": 5.0}, "체력은 게임 파일, 공속 상한은 이전 위키 값")
         items, augs, disabled = [{"id": "3078"}], [{"id": "A", "name": "가"}, {"id": "B", "name": "꺼진 증강"}], []
         B.WIKI_FAILED[:] = ["wiki_championdata.lua"]
         try:
@@ -107,12 +111,31 @@ class WikiFallback(unittest.TestCase):
         finally:
             B.WIKI_FAILED.clear()
         self.assertEqual(fb["from"], "어제")
-        self.assertEqual(champs[0]["aram"], {"dmg_dealt": 1.05})
-        self.assertEqual(champs[0]["spells"][0]["cooldown"], [3], "모드 재사용 대기시간")
         self.assertEqual(items[0]["limit"], "spellblade")
         self.assertEqual(augs[0]["eligible"], ["Syndra"])
         self.assertEqual([a["id"] for a in augs], ["A"], "위키 기준으로 꺼 둔 증강은 그대로 끈다")
         self.assertEqual(disabled, ["꺼진 증강 (위키 기준)"])
+
+
+class GameFileSources(unittest.TestCase):
+    """위키 대신 게임 파일에서 읽는 값 (2026-10-21 위키 502 대응)"""
+    def test_mode_hp(self):
+        m12 = {"{d9801b7f}": {"mName": "Kiwi_Balance", "mConstants": {
+            "MeleeHealthBonus": {"mValue": 20.0}, "MeleeHealthBonusMax": {"mValue": 600.0},
+            "RangeHealthBonus": {"mValue": 20.0}, "RangeHealthBonusMax": {"mValue": 400.0}}}}
+        self.assertEqual(B.game_mode_hp(m12), {"melee": [20.0, 600.0], "ranged": [20.0, 400.0]})
+        self.assertIsNone(B.game_mode_hp({}))
+
+    def test_mode_cooldown_and_as_ratio(self):
+        import champion_data as C
+        bin_json = {
+            "Characters/Garen/Spells/GarenWAbility/GarenW": {"__type": "SpellObject", "mSpell": {
+                "cooldownTime": [22.0, 22.0, 19.5, 17.0, 14.5, 12.0, 12.0],
+                "{f9c2333e}": {"Kiwi": {"value": [18.0, 18.0, 16.5, 15.0, 13.5, 12.0, 10.5]}}}},
+            "Characters/Garen/CharacterRecords/Root": {"__type": "CharacterRecord", "attackSpeedRatioModifiable": {"baseValue": 0.625}}}
+        self.assertEqual(C.mode_cooldown(bin_json, "GarenW", 5), [18.0, 16.5, 15.0, 13.5, 12.0], "가렌 W 실제 게임 파일 값")
+        self.assertIsNone(C.mode_cooldown(bin_json, "GarenQ", 5))
+        self.assertEqual(C.game_as_ratio(bin_json, "Garen"), 0.625)
 
 
 class RemovedAugments(unittest.TestCase):
