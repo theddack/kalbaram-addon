@@ -845,6 +845,9 @@ class Settings:
 TIMER_AREA = (0.0, 0.25, 0.25, 0.47)  # 기록용: 쿨타임 아이콘 둘레 게임 화면 (게임 창 비율: 왼, 위, 오른, 아래)
 
 
+SLOW_CALC_MS = 500  # 이보다 오래 걸린 화면 쪽 추천 계산은 한 판 기록에 따로 남긴다
+
+
 class Api:
     """화면(JS)에서 window.pywebview.api.* 로 부르는 함수들
 
@@ -915,6 +918,12 @@ class Api:
         if isinstance(ms, (int, float)) and len(self._calc_ms) < 5000 and payload.get("calcSeq") != self._calc_seq:
             self._calc_seq = payload.get("calcSeq")  # 같은 계산 결과를 여러 번 보내도 한 번만 센다
             self._calc_ms.append(float(ms))
+            if ms >= SLOW_CALC_MS and self._rec:
+                # 느린 추천 계산은 언제·무엇 때문이었는지 남긴다 (한 판 요약만으론 증강 고른 직후인지 점수판 읽기와 겹쳤는지 몰랐다, 2026-10-22)
+                rd = self._reader
+                self._rec.event("slowcalc", {"ms": round(ms), "src": payload.get("src"),
+                                             "board": bool(rd and getattr(rd, "_board_busy", False)),
+                                             "protect": bool(rd and getattr(rd, "protect", False))})
         sc = payload.get("statCheck")
         if self._rec and isinstance(sc, dict):
             # 계산한 능력치 vs 게임이 알려 준 실제 능력치 (계산이 틀린 곳 찾기: 데이터·룬·중첩).

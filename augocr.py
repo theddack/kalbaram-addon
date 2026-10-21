@@ -400,6 +400,16 @@ class Tracker:
             if (self._last is not None and offers3 != self._last and None in offers3 and not rerolling
                     and all(n is None or n == old for n, old in zip(offers3, self._last))):
                 return  # 일부 칸만 못 읽음(설명 창·마우스가 가림) → 같은 선택지 그대로 (클릭도 그대로)
+            if (self._last is not None and self._click is not None and not rerolling
+                    and sum(1 for a, b in zip(offers3, self._last) if a and b and a != b) == 3
+                    and not any(a and a in self._last for a in offers3)):
+                # 카드를 누른 뒤 닫히지 않고 바로 세 칸이 다 다른 선택 화면이 떴다 = 누른 카드를 고르고 다음 선택 화면 (2026-10-22 하이머딩거 판:
+                # 유레카를 누르고 3초 뒤 다른 선택 화면이 바로 떠서 유레카를 '고른 증강'으로 못 셌다)
+                self.state = {**self.state, "picked": self._last[self._click], "pickedFrom": self._last,
+                              "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
+                self._last, self._click = None, None
+                self._reroll_wait, self._reroll_old = set(), {}
+                self.state = {**self.state, "rerolled": [False] * 3}
             if offers3 != self._last:  # 새 선택지 (새로고침 포함): 그 전 클릭은 무효
                 # 새로고침한 칸을 아직 못 읽었으면 그 칸은 비운다 (예전엔 바뀌기 전 카드 평가가 새 카드 위에 남았다, 피드백 #7)
                 self._reroll_wait = {i for i in self._reroll_wait if offers3[i] is None}
@@ -1507,7 +1517,8 @@ class Reader(threading.Thread):
             self._bottom_ok.add(shop_bottom_key(gw, gh))
         # 이 창 크기에서 아래 버튼 줄로 알아본 적이 있으면 위쪽 탭 줄(큰 띠)은 막 샀을 때만 읽는다 (화면 잡기·글자 읽기를 줄인다)
         top_due = self._top_n % 2 == 0 and shop_bottom_key(gw, gh) not in self._bottom_ok and not self.protect
-        if not shop and (self._shop_probe or top_due or (now_due and not self.protect)):
+        # 막 샀을 때(_shop_probe·now_due)는 보호 중이어도 위쪽 탭 줄까지 읽는다: 첫 쇼핑이 게임 시작 직후 보호 켬과 겹쳐 못 알아봤다 (2026-10-22)
+        if not shop and (self._shop_probe or top_due or now_due):
             tw_, _, _, _ = self.read_band(cap, ocr, rect, SHOP_BAND)
             sw = sw + tw_
             shop = find_shop(tw_, gw, gh)

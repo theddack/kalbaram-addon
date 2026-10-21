@@ -1254,3 +1254,23 @@ test("새 증강 페이지: 이번 패치 firstSeen·미리 보기만 등급별�
   assert.equal(w.document.getElementById("title").textContent, "26.21 새 증강", "라이엇 패치 이름 (게임 16.21 = 패치 26.21)");
   assert.match(w.document.getElementById("kicker").textContent, /패치 26\.21 \(게임 16\.21\)/);
 });
+
+test("누르자마자 다음 선택 화면: 고른 증강을 넣고 새 선택지 카드는 남긴다 · 아이템을 사면 상점 인식 없이도 상자 (하이머딩거 판)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Heimerdinger", level: 7, gameTime: 280, items: [] });
+  p.w.applyAug({ offers: ["궁극의 각성", "결투의 대가", "유레카"], seq: 1, pickSeq: 0 });
+  await new Promise((r) => setTimeout(r, 300));
+  p.w.applyAug({ offers: ["가속 추구", "신난다!", "소환술사"], seq: 2, picked: "유레카", pickedFrom: ["궁극의 각성", "결투의 대가", "유레카"], pickSeq: 1 });
+  await new Promise((r) => setTimeout(r, 300));
+  const cards = sent.at(-1).cards.filter(Boolean).map((c) => c.name);
+  assert.ok(p.doc.querySelector("#chosen").textContent.includes("유레카"), "유레카를 고른 증강에");
+  assert.equal(JSON.stringify(cards), JSON.stringify(["가속 추구", "신난다!", "소환술사"]), "새 선택지 카드는 그대로");
+  // 상점 창을 못 알아봐도(aug.shop 없음) 살아 있는데 가방이 바뀌면 상자를 띄운다
+  const tome = p.data.parts ? Object.keys(p.data.parts).find((id) => p.data.parts[id].name === "증폭의 고서") : null;
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Heimerdinger", level: 7, gameTime: 300, items: [tome].filter(Boolean) });
+  assert.equal(sent.at(-1).box, "shop");
+  assert.deepEqual(p.errors, []);
+  p.w.close();
+});
