@@ -501,7 +501,8 @@ test("점수 비슷 폭(tieOrder bandK): 0 이면 계산 순서 그대로 · 기
 
 // 2026-10-20 증강 원본 대조: 반복 발동 효과에 원본 재사용 대기시간이 빠져 있었다 (골드 강탈을 기본 공격마다 30초짜리 피해로 셈)
 test("반복 발동 증강 효과의 재사용 대기시간: rules effectCooldown 이 모두 적용되고 발동 상한이 걸린다", () => {
-  const ids = Object.entries(d.rules.augments).filter(([, r]) => r.effectCooldown).map(([id]) => id);
+  // 패치로 삭제된 증강(26.21 치명적 미사일 등)은 규칙만 남아 있다 → 데이터에 있는 증강만
+  const ids = Object.entries(d.rules.augments).filter(([id, r]) => r.effectCooldown && aug(id)).map(([id]) => id);
   assert.ok(ids.length >= 4, ids.join(","));
   for (const id of ids) {
     const rep = aug(id).effects.filter((e) => ["onhit", "attacks", "cast"].includes(e.trigger.type));
