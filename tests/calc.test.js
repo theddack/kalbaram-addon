@@ -614,3 +614,28 @@ test("26.21 변환: 아이템 마나→주문력 · 아이템 공격력→공격
   const e0 = St.evaluate(lux, 18, [], [{ CRIT: 0.5 }], { aram: true }).m, e1 = St.evaluate(lux, 18, [], [{ CRIT: 0.5, ultCritDmg: 1.45 }], { aram: true }).m;
   assert.ok(e1.combo > e0.combo, `콤보 ${e0.combo} → ${e1.combo}`);
 });
+
+test("궁합(같이 − 따로)은 같은 지표 가중치로: 상관없는 증강을 골랐다고 공격 속도 증강이 '충돌'이 되지 않는다 (칼리스타 판)", () => {
+  const c = champ("Kalista");
+  const w = S.profile(c, d.tags);
+  const byName = (n) => d.augments.find((a) => a.name === n);
+  const chosen = ["무한 반복", "전부 다 무너뜨려", "떴다, 징크스"].map(byName);
+  const t = S.augmentTiers(d.augments, d.items, w, chosen, [], d.rules, c, { aram: true });
+  const z = t[byName("광신자").id];
+  assert.ok(!z.reasons.includes("충돌"), `광신자 ${z.tier} ${z.reasons}`);
+  assert.ok(["S", "A"].includes(z.tier), `광신자 ${z.tier}`);
+  const t2 = S.augmentTiers(d.augments, d.items, w, chosen.slice(0, 2), [], d.rules, c, { aram: true });
+  assert.ok(Math.abs(t2[byName("떴다, 징크스").id].interaction) < 0.05, "공격과 상관없는 소환사 주문 증강은 궁합 거의 0");
+});
+
+test("'무한히 중첩'되는 화상(화염 낙인)은 공격마다 쌓인다: 공격 속도 높은 원딜에서 지속 시간마다 1번보다 훨씬 크다", () => {
+  const a = d.augments.find((x) => x.name === "화염 낙인");
+  assert.ok(a.effects.some((e) => e.ticks && e.stacking));
+  const c = champ("Kalista");
+  const st = S.augStatsOf([a], d.rules, c);
+  const on = St.evaluate(c, 18, [], st, { aram: true }).m.augDps;
+  const off = St.evaluate(c, 18, [], [{ _effects: st[0]._effects.map((e) => ({ ...e, stacking: false })) }], { aram: true }).m.augDps;
+  assert.ok(on > off * 2, `쌓임 ${on} vs 갱신만 ${off}`);
+  // 리안드리(중첩 안 됨)는 그대로 지속 시간마다 1번
+  assert.ok(!d.items.find((i) => i.name === "리안드리의 고통").effects.some((e) => e.stacking));
+});

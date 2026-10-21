@@ -823,9 +823,10 @@ test("우르곳 판 카드 문구: 역할에 있는 방향은 변신이 아니�
   const first = await cards(["강타자", "도주 계획", "불을 밝혀"], 1);
   assert.doesNotMatch(first[0].reason, /탱커형으로 변신/, "우르곳은 탱커 역할이 있다");
   p.w.applyAug({ offers: null, seq: 1, picked: "불을 밝혀", pickedFrom: ["강타자", "도주 계획", "불을 밝혀"], pickSeq: 1 });
-  // (원래 판의 '궁극기 봇'은 26.21 패치에서 삭제 → 같은 경우(궁합 +, 등급 애매)인 궁극기 대변혁으로)
+  // (원래 판의 '궁극기 봇'은 26.21 패치에서 삭제 → 궁극기 대변혁으로. 둘은 관계가 없어 궁합 0:
+  //  예전엔 지표 가중치가 달라 생긴 가짜 궁합 + 로 '애매'였다 — 2026-10-21 같은 가중치로 고침)
   const second = await cards(["궁극기 대변혁", "한 발에 두 놈", "열의"], 2);
-  assert.match(second[0].label, /애매/);
+  assert.doesNotMatch(second[0].label, /강한 선택/);
   assert.doesNotMatch(second[0].reason, /잘 맞아요/, second[0].reason);
   assert.deepEqual(p.errors, []);
 });

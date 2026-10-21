@@ -400,7 +400,7 @@
     { what: "'스킬 사용 시' 효과는 한 스킬당 최대 2초에 1번", src: "assume", why: "재사용 대기시간이 2초보다 짧은 스킬은 대부분 무기 바꾸기·충전형(징크스 Q 0.9초, 티모 R 0.25초)이라 그대로 세면 발동이 부풀어요. 카시오페아 E처럼 실제로 자주 쓰는 스킬은 조금 적게 셀 수 있어요." },
     { what: "최소~최대가 있는 스킬 피해는 최대로 셈", src: "assume", why: "충전·거리·중첩에 따라 커지는 스킬(바이 Q, 다리우스 R, 사이온 Q 등)은 최대치를 기준으로 비교해요. 최소와 최대를 둘 다 더하던 오류를 고치면서 정한 기준이에요." },
     { what: "같은 스킬의 대체 버전은 하나만 셈", src: "assume", why: "총합과 한 번당 값이 같이 있으면 총합만, 강화·벽 통과·지형 같은 조건부 버전은 기본 버전으로, 치명타 버전은 치명타 확률만큼만 더해요 (예: 볼리베어 W 강화, 루시안 R 한 발당, 미스 포츈 Q 치명타)." },
-    { what: "지속 피해(화상 등)는 지속 시간마다 1번", src: "data", why: "같은 대상에 다시 걸면 새로 쌓이지 않고 시간만 갱신되는 게임 규칙 그대로예요 (예: 리안드리 화상 3초)." },
+    { what: "지속 피해(화상 등)는 지속 시간마다 1번", src: "data", why: "같은 대상에 다시 걸면 새로 쌓이지 않고 시간만 갱신되는 게임 규칙 그대로예요 (예: 리안드리 화상 3초). 설명에 '무한히 중첩'이 있으면(화염 낙인) 걸 때마다 쌓아요." },
   ];
 
   function metrics(champ, L, stats, opts = {}) {
@@ -493,7 +493,8 @@
       // 기본 공격이 필요한 효과는 콤보 시간 동안 칠 수 있는 기본 공격 수·공격 속도로도 제한
       const autos = Math.max(1, Math.floor(t.AS * COMBO_WINDOW));
       // 지속 피해(화상 등 N초 동안 매초)는 같은 대상에 다시 걸면 시간만 갱신되므로 N초마다 최대 1번
-      const refresh = e.ticks && tr.type !== "time" ? e.ticks : 0;
+      // 단 '무한히 중첩'(stacking: 화염 낙인)은 걸 때마다 하나씩 더 쌓여서 제한하지 않는다 (2026-10-21 칼리스타 판: 공격 속도 2.4 인데 5초에 1번으로 세 1/12 로 낮게 봄)
+      const refresh = e.ticks && tr.type !== "time" && !e.stacking ? e.ticks : 0;
       const comboTimes = (n) => {
         let k = e.cooldown ? Math.min(n, 1 + Math.floor(COMBO_WINDOW / e.cooldown)) : n;
         if (refresh) k = Math.min(k, Math.max(1, Math.ceil(COMBO_WINDOW / refresh)));
