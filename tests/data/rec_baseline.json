@@ -1,6 +1,7 @@
 {
  "dataVersion": "16.21.8298620+branch.releases-16-21.content.release",
  "version": "16.21.1",
+ "builtAt": "2026-10-21 14:43",
  "engine": {
   "app": "0.1.60",
   "assumptions": "a10a2bce8f"
@@ -5244,13 +5245,13 @@
    "top": [
     {
      "name": "리치베인",
-     "score": 3.5081,
+     "score": 3.5079,
      "tag": 4.215,
      "parts": {
       "combo": 0.6154,
       "dps": 0.6659,
       "support": 0.0867,
-      "mobility": 0.0529
+      "mobility": 0.0521
      }
     },
     {
@@ -5489,63 +5490,63 @@
    "top": [
     {
      "name": "얼어붙은 건틀릿",
-     "score": 3.2283,
+     "score": 3.2203,
      "tag": 6.325,
      "parts": {
       "combo": 0.2004,
       "dps": 0.2197,
-      "ehp": 0.2435,
+      "ehp": 0.2389,
       "support": 0.05
      }
     },
     {
      "name": "란두인의 예언",
-     "score": 3.0108,
+     "score": 3.0003,
      "tag": 5.745,
      "parts": {
-      "ehp": 0.4034,
+      "ehp": 0.3974,
       "support": 0.0583
      }
     },
     {
      "name": "태양불꽃 방패",
-     "score": 2.8438,
+     "score": 2.8344,
      "tag": 5.83,
      "parts": {
       "combo": 0.0394,
       "dps": 0.0163,
-      "ehp": 0.2618,
+      "ehp": 0.2564,
       "support": 0.0583
      }
     },
     {
      "name": "공허한 광휘",
-     "score": 2.814,
+     "score": 2.8035,
      "tag": 5.78,
      "parts": {
       "combo": 0.0484,
       "dps": 0.0163,
-      "ehp": 0.25,
+      "ehp": 0.244,
       "support": 0.0667
      }
     },
     {
      "name": "대자연의 힘",
-     "score": 2.7987,
+     "score": 2.7865,
      "tag": 5.025,
      "parts": {
-      "ehp": 0.4431,
+      "ehp": 0.4361,
       "support": 0.0667,
       "mobility": 0.0726
      }
     },
     {
      "name": "가시 갑옷",
-     "score": 2.2512,
+     "score": 2.2469,
      "tag": 4.458,
      "parts": {
       "combo": 0.0118,
-      "ehp": 0.2586,
+      "ehp": 0.2561,
       "support": 0.025
      }
     }
@@ -10978,59 +10979,59 @@
    "top": [
     {
      "name": "크라켄 학살자",
-     "score": 4.5396,
+     "score": 4.6039,
      "tag": 5.624,
      "parts": {
-      "combo": 0.0976,
-      "dps": 0.9526,
+      "combo": 0.0983,
+      "dps": 0.9805,
       "mobility": 0.0342
      },
      "tie": "점수 비슷 → 라이엇 추천 우선"
     },
     {
      "name": "윤 탈 야생화살",
-     "score": 4.289,
+     "score": 4.3266,
      "tag": 5.595,
      "parts": {
-      "combo": 0.1085,
-      "dps": 0.8438
+      "combo": 0.1092,
+      "dps": 0.86
      }
     },
     {
      "name": "무한의 대검",
-     "score": 4.0736,
+     "score": 4.126,
      "tag": 4.75,
      "parts": {
-      "combo": 0.1627,
-      "dps": 0.8689
+      "combo": 0.1638,
+      "dps": 0.8914
      }
     },
     {
      "name": "몰락한 왕의 검",
-     "score": 3.9087,
+     "score": 3.9995,
      "tag": 2.374,
      "parts": {
-      "combo": 0.0868,
-      "dps": 1.2545
+      "combo": 0.0873,
+      "dps": 1.2941
      }
     },
     {
      "name": "삼위일체",
-     "score": 3.7883,
+     "score": 3.7917,
      "tag": 2.159,
      "parts": {
-      "combo": 0.4801,
-      "dps": 1.0228,
-      "ehp": 0.1183
+      "combo": 0.4681,
+      "dps": 1.0307,
+      "ehp": 0.1191
      }
     },
     {
      "name": "징수의 총",
-     "score": 3.5042,
+     "score": 3.5388,
      "tag": 4.657,
      "parts": {
-      "combo": 0.1522,
-      "dps": 0.6406
+      "combo": 0.1528,
+      "dps": 0.6555
      },
      "tie": "점수 비슷 → 라이엇 추천 우선"
     }
@@ -14212,63 +14213,63 @@
    "top": [
     {
      "name": "무한의 대검",
-     "score": 4.1436,
+     "score": 4.1906,
      "tag": 5.0525,
      "parts": {
-      "combo": 0.1861,
-      "dps": 0.8867
+      "combo": 0.1875,
+      "dps": 0.9103
      },
      "link": true,
      "tie": "점수 비슷 → 증강 연계 우선"
     },
     {
      "name": "윤 탈 야생화살",
-     "score": 3.9274,
+     "score": 3.961,
      "tag": 4.9739,
      "parts": {
-      "combo": 0.124,
-      "dps": 0.8612
+      "combo": 0.125,
+      "dps": 0.8783
      },
      "link": true,
      "tie": "점수 비슷 → 증강 연계 우선"
     },
     {
      "name": "크라켄 학살자",
-     "score": 3.9298,
+     "score": 3.9814,
      "tag": 4.8784,
      "parts": {
-      "combo": 0.1116,
-      "dps": 0.8948,
+      "combo": 0.1125,
+      "dps": 0.9213,
       "mobility": 0.0342
      }
     },
     {
      "name": "징수의 총",
-     "score": 3.4912,
+     "score": 3.522,
      "tag": 4.6456,
      "parts": {
-      "combo": 0.169,
-      "dps": 0.6531
+      "combo": 0.1699,
+      "dps": 0.6687
      }
     },
     {
      "name": "요우무의 유령검",
-     "score": 3.4242,
+     "score": 3.4561,
      "tag": 4.6311,
      "parts": {
-      "combo": 0.2218,
-      "dps": 0.5608,
+      "combo": 0.2228,
+      "dps": 0.5769,
       "mobility": 0.0342
      },
      "tie": "점수 비슷 → 라이엇 추천 우선"
     },
     {
      "name": "불멸의 철갑궁",
-     "score": 3.3881,
+     "score": 3.421,
      "tag": 4.7151,
      "parts": {
-      "combo": 0.1364,
-      "dps": 0.6221,
+      "combo": 0.1375,
+      "dps": 0.6386,
       "support": 1.1667
      },
      "tie": "점수 비슷 → 라이엇 추천 우선"
@@ -14295,63 +14296,63 @@
    "top": [
     {
      "name": "몰락한 왕의 검",
-     "score": 4.0993,
+     "score": 4.221,
      "tag": 0.326,
      "parts": {
-      "combo": 0.1071,
-      "dps": 1.3105
+      "combo": 0.1078,
+      "dps": 1.3487
      },
      "link": true
     },
     {
      "name": "무한의 대검",
-     "score": 3.7416,
+     "score": 3.8252,
      "tag": 1.0838,
      "parts": {
-      "combo": 0.2009,
-      "dps": 1.0327
+      "combo": 0.2021,
+      "dps": 1.0581
      },
      "link": true
     },
     {
      "name": "크라켄 학살자",
-     "score": 3.7098,
+     "score": 3.8002,
      "tag": 1.2986,
      "parts": {
-      "combo": 0.1205,
-      "dps": 1.0339,
+      "combo": 0.1213,
+      "dps": 1.062,
       "mobility": 0.0342
      },
      "link": true
     },
     {
      "name": "윤 탈 야생화살",
-     "score": 3.5996,
+     "score": 3.6626,
      "tag": 1.3118,
      "parts": {
-      "combo": 0.1339,
-      "dps": 0.9881
+      "combo": 0.1347,
+      "dps": 1.0068
      },
      "link": true,
      "tie": "점수 비슷 → 증강 연계 우선"
     },
     {
      "name": "정수 약탈자",
-     "score": 3.7069,
+     "score": 3.7507,
      "tag": 0.2149,
      "parts": {
-      "combo": 0.3934,
-      "dps": 1.0376
+      "combo": 0.3868,
+      "dps": 1.0535
      }
     },
     {
-     "name": "삼위일체",
-     "score": 3.6098,
-     "tag": 0.3196,
+     "name": "거대한 히드라",
+     "score": 3.6863,
+     "tag": 0.1221,
      "parts": {
-      "combo": 0.4782,
-      "dps": 0.9404,
-      "ehp": 0.1183
+      "combo": 0.1078,
+      "dps": 1.1857,
+      "ehp": 0.2147
      }
     }
    ],
@@ -14360,7 +14361,7 @@
     "무한의 대검",
     "크라켄 학살자",
     "정수 약탈자",
-    "삼위일체",
+    "거대한 히드라",
     "윤 탈 야생화살"
    ],
    "build": [
@@ -14376,64 +14377,64 @@
    "top": [
     {
      "name": "무한의 대검",
-     "score": 4.1725,
+     "score": 4.2166,
      "tag": 5.4125,
      "parts": {
-      "combo": 0.1905,
-      "dps": 0.9003
+      "combo": 0.192,
+      "dps": 0.9245
      },
      "link": true,
      "tie": "점수 비슷 → 증강 연계 우선"
     },
     {
      "name": "윤 탈 야생화살",
-     "score": 3.8927,
+     "score": 3.924,
      "tag": 5.2402,
      "parts": {
-      "combo": 0.127,
-      "dps": 0.8558
+      "combo": 0.128,
+      "dps": 0.8732
      },
      "link": true
     },
     {
      "name": "크라켄 학살자",
-     "score": 3.8707,
+     "score": 3.9183,
      "tag": 5.1184,
      "parts": {
-      "combo": 0.1143,
-      "dps": 0.8841,
+      "combo": 0.1152,
+      "dps": 0.9108,
       "mobility": 0.0333
      }
     },
     {
      "name": "몰락한 왕의 검",
-     "score": 3.6284,
+     "score": 3.7147,
      "tag": 1.8989,
      "parts": {
-      "combo": 0.1016,
-      "dps": 1.4828
+      "combo": 0.1024,
+      "dps": 1.5318
      },
      "link": true
     },
     {
      "name": "거대한 히드라",
-     "score": 3.4383,
+     "score": 3.5013,
      "tag": 2.555,
      "parts": {
-      "combo": 0.1016,
-      "dps": 1.158,
-      "ehp": 0.2131
+      "combo": 0.1024,
+      "dps": 1.1932,
+      "ehp": 0.2147
      },
      "link": true,
      "tie": "점수 비슷 → 증강 연계 우선"
     },
     {
      "name": "징수의 총",
-     "score": 3.5078,
+     "score": 3.5366,
      "tag": 4.912,
      "parts": {
-      "combo": 0.1722,
-      "dps": 0.6624
+      "combo": 0.1732,
+      "dps": 0.6783
      },
      "tie": "점수 비슷 → 라이엇 추천 우선"
     }
@@ -14461,8 +14462,8 @@
      "ARAM_BluntForce:S",
      "GiftoftheDrowned:S",
      "ARAM_escAPADe:S",
-     "ARAM_Deft:S",
-     "FlowOfSpirit:S"
+     "ARAM_LightemUp:S",
+     "ARAM_Deft:S"
     ],
     "1": [
      "HeavyIsTheCrown:S",

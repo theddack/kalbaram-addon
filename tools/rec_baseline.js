@@ -145,7 +145,7 @@ function snapshot(d) {
   // 엔진 버전: 프로그램 버전 + 계산 전체 가정값(기준 상대·ASSUMPTIONS)의 지문. 가정이 바뀌면 지문이 바뀐다
   const ver = (fs.readFileSync(path.join(__dirname, "..", "desktop.py"), "utf8").match(/APP_VERSION = "([^"]+)"/) || [])[1];
   const assumeHash = require("crypto").createHash("sha1").update(JSON.stringify([global.Stats.DEFAULT_TARGET, global.Stats.ASSUMPTIONS])).digest("hex").slice(0, 10);
-  return { dataVersion: d.dataVersion, version: d.version, engine: { app: ver, assumptions: assumeHash }, scenes };
+  return { dataVersion: d.dataVersion, version: d.version, builtAt: d.builtAt, engine: { app: ver, assumptions: assumeHash }, scenes };
 }
 
 const names = (a) => (a || []).map((x) => (typeof x === "string" ? x : x.name));

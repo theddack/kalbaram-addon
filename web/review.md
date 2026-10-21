@@ -48,9 +48,3 @@
 - **지옥불 영혼** (`ARAM_InfernalSoul`)
 - **보석 건틀릿** (`ARAM_JeweledGauntlet`) — 직접 만든 규칙 있음, 다시 확인
 - **불사르기 업그레이드** (`ARAM_Upgrade_Immolate`) — 직접 만든 규칙 있음, 다시 확인
-
-## 🌐 이번에 못 받은 위키 자료 (그 부분 없이 만듦) (4)
-- wiki_mayhemaugments.lua
-- wiki_itemdata.lua
-- wiki_mayhem_page.txt
-- wiki_championdata.lua
