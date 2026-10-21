@@ -92,6 +92,29 @@ class RstStrings(unittest.TestCase):
         self.assertEqual(s.get("없는 키", ""), "")
 
 
+class WikiFallback(unittest.TestCase):
+    def test_keeps_previous_wiki_values(self):
+        prev = {"builtAt": "어제",
+                "champions": [{"id": "Syndra", "aram": {"dmg_dealt": 1.05}, "asRatio": 0.625, "stats": {"hp": 1},
+                               "spells": [{"slot": "Q", "cooldown": [3], "cooldownBase": [4]}]}],
+                "items": [{"id": "3078", "limit": "spellblade"}], "augments": [{"id": "A", "eligible": ["Syndra"]}],
+                "disabled": ["꺼진 증강 (위키 기준)"]}
+        champs = [{"id": "Syndra", "aram": None, "stats": {"hp": 0}, "spells": [{"slot": "Q", "cooldown": [4]}]}]
+        items, augs, disabled = [{"id": "3078"}], [{"id": "A", "name": "가"}, {"id": "B", "name": "꺼진 증강"}], []
+        B.WIKI_FAILED[:] = ["wiki_championdata.lua"]
+        try:
+            fb = B.wiki_fallback(prev, champs, items, augs, disabled)
+        finally:
+            B.WIKI_FAILED.clear()
+        self.assertEqual(fb["from"], "어제")
+        self.assertEqual(champs[0]["aram"], {"dmg_dealt": 1.05})
+        self.assertEqual(champs[0]["spells"][0]["cooldown"], [3], "모드 재사용 대기시간")
+        self.assertEqual(items[0]["limit"], "spellblade")
+        self.assertEqual(augs[0]["eligible"], ["Syndra"])
+        self.assertEqual([a["id"] for a in augs], ["A"], "위키 기준으로 꺼 둔 증강은 그대로 끈다")
+        self.assertEqual(disabled, ["꺼진 증강 (위키 기준)"])
+
+
 class RemovedAugments(unittest.TestCase):
     def test_removed_carried_within_patch(self):
         prev = {"augments": [{"id": "A", "name": "가"}, {"id": "B", "name": "나", "rarityName": "프리즘"}], "removedAugs": []}
