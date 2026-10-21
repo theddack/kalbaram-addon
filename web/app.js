@@ -1160,9 +1160,25 @@ function renderOfferResult() {
     if (seq !== offerSeq) return;
     addBuilds();
     draw();
+    warmOffers(rows.map((r) => r.a), seq);
   }, 0);
 }
 let offerSeq = 0;
+// 고른 뒤 바로 쓸 계산(다음 증강 등급·빌드·연계)을 선택 화면이 떠 있는 동안 하나씩 미리 해 둔다 (계산 기억에 남는다).
+// 고르고 나서 계산하면 게임 중 0.5코어로 묶여 첫 아이템 추천이 1~2초 늦었다 (2026-10-21 칼리스타 판: 추천 계산 최대 2.3초)
+function warmOffers(augs, seq) {
+  const d = state.data;
+  const mode = state.tierMode === "auto" ? "synergy" : state.tierMode;
+  const next = (i) => {
+    if (seq !== offerSeq || i >= augs.length || state.chosen.length + 1 > AUG_MAX) return;
+    const ch = [...state.chosen, augs[i]];
+    const o = statOpts();
+    S.augmentTiers(d.augments, d.items, state.weights, ch, state.items, d.rules, state.champ, o, mode);
+    S.buildConcepts(d.items, state.weights, ch, state.items, d.rules, state.champ, o, ["balanced"]);
+    setTimeout(() => next(i + 1), 30);  // 하나마다 쉬어서 화면·게임 몫을 막지 않게
+  };
+  setTimeout(() => next(0), 30);
+}
 
 // ---- 게임 화면 표시 (윈도우 프로그램): 카드 밑 평가 + 오른쪽 위 상자
 let overlayCards = [null, null, null];
@@ -2211,7 +2227,8 @@ window.addEventListener("pywebviewready", async () => {
   }, 1000);
   // 모드는 하나 (저사양 PC 도): 계산 기억은 작게, 챔피언 목록은 검색할 때만. 쉽게/자세히 보기는 고를 수 있다
   document.body.classList.add("light");
-  S.setMemoMax(8);
+  // 계산 기억 32개: 8개면 적 5명 빌드·선택지 3개 미리 계산이 서로 밀어내서 고른 뒤 다시 계산했다 (결과는 작은 객체라 몇 MB 안쪽)
+  S.setMemoMax(32);
   $("#live-toggle").checked = st.live;
   $("#live-toggle").addEventListener("change", (e) => api.set_live(e.target.checked));
   // 증강 선택 화면이 떠 있거나 상점이 열려 있으면 1초마다, 그 밖엔 3초마다 (게임 중 CPU).
