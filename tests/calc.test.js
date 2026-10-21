@@ -639,3 +639,16 @@ test("'무한히 중첩'되는 화상(화염 낙인)은 공격마다 쌓인다: 
   // 리안드리(중첩 안 됨)는 그대로 지속 시간마다 1번
   assert.ok(!d.items.find((i) => i.name === "리안드리의 고통").effects.some((e) => e.stacking));
 });
+
+test("칼리스타 뽑아 찢기: 기본 공격마다 창 하나 (스킬 계산은 창 2개로만 센다) → 공격 속도가 E 피해를 키운다", () => {
+  const c = champ("Kalista");
+  const fx = c.fightStats._effects.find((e) => e.src === "E 창 중첩");
+  assert.ok(fx && fx.trigger.type === "onhit");
+  const m = St.evaluate(c, 18, [], [], { aram: true }).m;
+  const row = m.effects.find((e) => e.src === "E 창 중첩");
+  assert.ok(row && row.hit > 0);
+  const as = St.evaluate(c, 18, [item("구인수의 격노검")], [], { aram: true }).m.effects.find((e) => e.src === "E 창 중첩");
+  assert.ok(c.fightBasis.some((b) => b.t === "assume"));
+  assert.ok(!St.computeStats(c, 18, [], [], { aram: true, now: true }).effects.some((e) => e.src === "E 창 중첩"), "지금 능력치엔 없다");
+  assert.ok(as.hit >= row.hit);
+});
