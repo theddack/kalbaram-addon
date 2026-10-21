@@ -964,6 +964,47 @@ def augment_history(prev, out_augs, version):
     return new, changed
 
 
+CHAMP_WIKI_KEYS = ("aram", "aramSource", "asRatio", "stats", "modeStats", "aramOff", "aramOffWhy")
+
+
+def wiki_fallback(prev, out_champs, out_items, out_augs, disabled):
+    """위키를 못 받았을 때(2026-10-21 하루 종일 502) 위키에서 온 값을 이전 data.json 에서 이어 쓴다.
+    없으면 칼바람 보정·공속 계수·모드 재사용 대기시간·아이템 같은 계열·증강 적용 스킬이 통째로 빠져 계산이 달라지고
+    (테스트가 막아 새 패치 데이터가 하루 넘게 못 들어갔다). 이어 쓴 것은 data.json wikiFallback 에 남긴다"""
+    if not prev:
+        return None
+    pc = {c["id"]: c for c in prev.get("champions", [])}
+    for c in out_champs:
+        o = pc.get(c["id"])
+        if not o:
+            continue
+        for k in CHAMP_WIKI_KEYS:
+            if k in o:
+                c[k] = o[k]
+        slots = {sp["slot"]: sp for sp in o.get("spells", [])}
+        for sp in c.get("spells", []):
+            osp = slots.get(sp["slot"])
+            if osp and osp.get("cooldownBase"):  # 증강 모드 전용 재사용 대기시간 (위키)
+                sp["cooldownBase"], sp["cooldown"] = osp["cooldownBase"], osp["cooldown"]
+    pi = {i["id"]: i for i in prev.get("items", [])}
+    for it in out_items:
+        o = pi.get(it["id"])
+        if o and o.get("limit") and not it.get("limit"):
+            it["limit"] = o["limit"]
+    pa = {a["id"]: a for a in prev.get("augments", [])}
+    for a in out_augs:
+        o = pa.get(a["id"])
+        if o and o.get("eligible") and not a.get("eligible"):
+            a["eligible"] = o["eligible"]
+    # 위키 기준으로 꺼 둔 증강(서버에서 끈 것)은 그대로 끈다
+    wiki_off = {d[: -len(" (위키 기준)")] for d in prev.get("disabled", []) if d.endswith(" (위키 기준)")}
+    gone = [a for a in out_augs if a["name"] in wiki_off]
+    for a in gone:
+        out_augs.remove(a)
+        disabled.append(a["name"] + " (위키 기준)")
+    return {"from": prev.get("builtAt"), "failed": list(WIKI_FAILED)}
+
+
 def removed_augments(prev, out_augs, version):
     """이전 data.json 에 있었는데 이번 데이터에 없는 증강 (패치로 삭제·비활성). 같은 패치 동안은 이어 간다 (새 증강 페이지 'new.html')"""
     mm = lambda v: ".".join(str(v or "").split(".")[:2])
@@ -1501,6 +1542,9 @@ def main():
     except Exception:
         prev = None
     new_augs, changed_augs = augment_history(prev, out_augs, version)
+    wiki_fb = wiki_fallback(prev, out_champs, out_items, out_augs, disabled) if WIKI_FAILED else None
+    if wiki_fb:
+        print(f"  위키 {len(WIKI_FAILED)}개 실패 → 위키 값은 이전 데이터({wiki_fb['from']})에서 이어 씀")
     removed_augs = removed_augments(prev, out_augs, version)
     mismatch = [(x, r) for x in out_augs + out_champs for r in (x.get("patchCheck") or [])
                 if r["status"] in ("applied", "stale", "differ")]
@@ -1514,6 +1558,7 @@ def main():
             "builtAt": time.strftime("%Y-%m-%d %H:%M"), "mode": MODE, "iconExt": icon_ext, "iconWebpOnly": webp_only,
             "format": DATA_FORMAT, "tags": TAGS, "rules": rules,
             "disabled": disabled,
+            "wikiFallback": wiki_fb,
             "champions": out_champs, "items": out_items, "parts": parts, "augments": out_augs,
             "removedAugs": removed_augs}
     tmp = WEB / "data.json.tmp"  # 쓰다 꺼져도 반쯤 쓰인 data.json 이 남지 않게
