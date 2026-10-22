@@ -626,7 +626,12 @@
       const k = twistK(twist);
       const mw = k >= 1 ? inv : lerp(metricWeights(iw), inv, k);
       // 받쳐 주는 증강이 있으면 그 증강이 보태는 가치도 키운다 (뒤집은 쪽 아이템이 증강 덕분에 쓸모가 생기는 방향으로)
-      return { ...c, weights: iw, twist: { ...twist, k }, ...buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw, focus: twist.s > 0 ? TWIST_FOCUS : 0, off: null }) };
+      const built = buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw, focus: twist.s > 0 ? TWIST_FOCUS : 0, off: null });
+      // 받쳐 주는 증강이 있어도 실제로 뒤집힌 아이템이 2개 미만이면 '실험 빌드'로 (s = 0): 주문력 계수가 없는 제드에게
+      // '마나 없음, 상관없음'(총 주문력 15%)이 변칙 근거로 잡혔지만 빌드는 그대로 공격력이었다 (2026-10-22 '어떤 증강이든 재밌게' 점검)
+      const flipped = built.pick.filter((p) => !p.fixed && twist.opp.some((t) => ((p.item.tags || {})[t] || 0) >= 0.5)).length;
+      const tw = twist.s > 0 && flipped < 2 ? { ...twist, s: 0, by: [], weak: twist.by } : twist;
+      return { ...c, weights: iw, twist: { ...tw, k }, ...built };
     });
   }
 

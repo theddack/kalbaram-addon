@@ -86,7 +86,9 @@ function check(d, champIds = REPS, augIds = null) {
         const opp = tb.pick.filter((p) => sup.opp.some((t) => {
           return (tagged(p.item)[t] || 0) >= ITEM_MIN;
         })).length;
-        twist.push({ champ: c.id, aug: a.id, name: a.name, s: sup.s, opp, ok: opp >= 2 });
+        // 화면이 '실험 빌드'로 바꿔 표시하면(뒤집힌 아이템 2개 미만 → twist.s 0) 정직하게 알린 것이라 정상
+        const honest = tb.twist.s === 0;
+        twist.push({ champ: c.id, aug: a.id, name: a.name, s: sup.s, opp, shown: honest ? "실험" : "변칙", ok: opp >= 2 || honest });
       }
     }
   }
