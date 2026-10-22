@@ -328,9 +328,15 @@ function enemyAdvice() {
   const want = (names, why) => { for (const n of names) if (!state.adviceWant.some((w) => w.name === n)) state.adviceWant.push({ name: n, why }); };
   const pct = Math.round(e.magic * 100);
   const items = state.data.items.filter((i) => i.kind === "legendary");
-  const mineType = state.champ.damageType === "magic" ? "magic" : "physical";
+  // 내 피해 유형은 고른 증강의 환산·특징 변경까지 반영한다 (아이템 추천과 같은 기준: rankItems 의 convert·withChosenFeatures).
+  // 예전엔 챔피언 기본 유형만 봐서 징크스 + 적응형 능력치(공격력→주문력)에도 치유 감소로 필멸자의 운명(공격력)을 권했다 (2026-10-22 일관성 점검 R1).
+  // 일부 추가 피해를 주는 증강만으로는 바꾸지 않는다 (환산 증강만)
+  const conv = S.augContext(state.chosen, state.data.rules).convert || {};
+  const baseType = state.champ.damageType === "magic" ? "magic" : "physical";
+  const mineType = baseType === "physical" && conv.AD === "AP" ? "magic" : baseType === "magic" && conv.AP === "AD" ? "physical" : baseType;
+  const me = S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
   // 내 챔피언이 살릴 수 있는 아이템만 (주 피해 유형, 치명타는 쓰는 챔피언만): 다리우스에게 필멸자의 운명·모렐로를 권하던 것
-  const critOk = state.champ.tags.includes("Marksman") || !state.champ.melee || ((state.champ.traits || {}).CRIT || 0) > 0;
+  const critOk = me.tags.includes("Marksman") || !me.melee || ((me.traits || {}).CRIT || 0) > 0;
   const hasCrit = (i) => (i.tags.CRIT || 0) >= 0.5 || (i.stats && !Array.isArray(i.stats) && "CRIT" in i.stats);
   // 이미 산 아이템과 같은 계열 고유 효과면 못 산다 (도미닉을 가졌는데 치유 감소로 필멸자의 운명을 권하던 것)
   const ownedLimits = new Set(state.items.map((i) => i.limit).filter(Boolean));
@@ -361,9 +367,13 @@ function enemyAdvice() {
     + (resWant ? ` → ${resLabel} 우선` + (resItems.length ? `: ${resItems.slice(0, 2).join(" 또는 ")}` : "") : ""));
   if (e.healers.length >= 2) {
     // 치유 감소(고통스러운 상처)가 설명에 있는 아이템 중 내 유형에 맞는 것
-    const grievous = (i) => JSON.stringify([i.desc, i.passiveHtml]).includes("고통스러운 상처");
+    // 효과 이름('고통스러운 상처')이 없고 '…의 상처를 남깁니다'만 적힌 아이템도 있다 (화공 펑크 사슬검·가시 갑옷).
+    // 이름만 찾아서 가렌에게 맞는 화공 펑크 사슬검을 놓치고 부품만 권했다 (2026-10-22 일관성 점검 R2)
+    const grievous = (i) => /고통스러운 상처|상처\s*를 남깁니다/.test(JSON.stringify([i.desc, i.passiveHtml]).replace(/<[^>]+>/g, ""));
     need("치유 감소", items.filter(grievous), state.items.some(grievous));
-    let gw = byRank(items.filter((i) => grievous(i) && fits(i)).map((i) => i.name));
+    // 탱커는 방어형 치유 감소(가시 갑옷)도 (저항 조언과 같은 기준)
+    const tankOk = state.champ.tags.includes("Tank");
+    let gw = byRank(items.filter((i) => grievous(i) && (fits(i) || (tankOk && tankItem(i) && !(i.limit && ownedLimits.has(i.limit)) && !state.items.some((o) => o.name === i.name)))).map((i) => i.name));
     // 맞는 완성 아이템이 없으면(치명타를 못 살리는 전사 등) 치유 감소 부품을 (처형인의 대검 · 망각의 구 · 덤불 조끼)
     if (!gw.length) {
       const want = mineType === "magic" ? ["망각의 구"] : ["처형인의 대검"];
