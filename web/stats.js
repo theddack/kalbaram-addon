@@ -76,7 +76,7 @@
       add.MR += goldAug * 0.1 / GOLD_VALUE.MR;
     }
     const mult = { HPmult: 0, ADmult: 0, APmult: 0, ASmult: 0, MSmult: 0, adaptiveMult: 0 };
-    const flags = { dmgDealtMult: 0, skillDmgMult: 0, trueBonus: 0, ultHaste: 0, slotHaste: {}, noUlt: false };
+    const flags = { dmgDealtMult: 0, skillDmgMult: 0, trueBonus: 0, ultHaste: 0, slotHaste: {}, slotDmg: {}, slotHeal: {}, noUlt: false };
     const conv = {};
     // 중첩형 패시브·스킬(베이가·쓰레쉬 등)의 게임 중반 평균 능력치도 항상 들어간다
     // 한타 기준 능력치·스킬 효과(징크스 미니건 3중첩, 베인 은화살 등 rules champions fight)는 추천 점수에만: 게임 중 지금 능력치 비교(opts.now)엔 넣지 않는다
@@ -95,13 +95,17 @@
     for (const s of mods) {
       if (s && s.refundPct) conv.refunds.push({ pct: s.refundPct, ranged: s.refundChanceRanged ?? 1, melee: s.refundChanceMelee ?? 1, all: !!s.refundAll });
       for (const [k, raw] of Object.entries(s || {})) {
-        if (k === "_effects") { effects.push(...raw); continue; }
+        // needsItem: 그 아이템을 가졌을 때만 터지는 증강 효과 (폭풍 쇄도 업그레이드: 폭풍 쇄도의 질풍이 폭발)
+        if (k === "_effects") { effects.push(...raw.filter((e) => !e.needsItem || items.some((it) => it.name === e.needsItem))); continue; }
         if (REFUND_KEYS.includes(k)) continue;
         if (raw && typeof raw === "object" && raw.ratios && Object.keys(raw.ratios).length) { late.push([k, raw]); continue; }
         const v = levelValue(raw, L);
         if (k in add) addTo(k, v);
         else if (k in mult) mult[k] += v;
         else if (k === "slotHaste") for (const [slot, h] of Object.entries(v)) flags.slotHaste[slot] = (flags.slotHaste[slot] || 0) + h;
+        // 스킬 하나만 키우는 피해·회복/보호막 배율 (펜타킬 헤비·파워·스래시·둠: 강화 스킬 피해 10% · 회복·보호막 10%)
+        else if (k === "slotDmgMult") for (const [slot, m] of Object.entries(v)) flags.slotDmg[slot] = (flags.slotDmg[slot] || 0) + m;
+        else if (k === "slotHealMult") for (const [slot, m] of Object.entries(v)) flags.slotHeal[slot] = (flags.slotHeal[slot] || 0) + m;
         else if (k === "noUlt") flags.noUlt = flags.noUlt || v;
         else if (k in flags) flags[k] += v;
         else conv[k] = (conv[k] || 0) + v;
@@ -456,12 +460,12 @@
           continue;
         }
         if (DMG_KINDS.includes(v.kind)) {
-          const amp = dealt * (1 + flags.skillDmgMult) * skillCrit;
+          const amp = dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * skillCrit;
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : 1;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
-        } else if (v.kind === "shield") shield += v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0));
-        else if (v.kind === "heal") heal += v.value * (aram.healing || 1) * (1 + t.HSP);
+        } else if (v.kind === "shield") shield += v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0)) * (1 + (flags.slotHeal[sp.slot] || 0));
+        else if (v.kind === "heal") heal += v.value * (aram.healing || 1) * (1 + t.HSP) * (1 + (flags.slotHeal[sp.slot] || 0));
       }
       out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit });
       out.spellOnhit += onhit;
@@ -484,6 +488,7 @@
       // 한 번에 여러 발 (rules effectCount: 탄환 세례 5발 · 마법 미사일 3발 · 쌍둥이 불꽃 1 + 치명타 확률 × 3)
       let v = effectValue(e, 1, L, t) * (e.ticks || 1) * ((e.count || 1) + (e.countCrit ? Math.min(1, t.CRIT) * e.countCrit : 0));
       if (e.rangedScale != null && !champ.melee) v *= e.rangedScale;
+      if (e.uptime != null) v *= e.uptime;  // 조건부 효과의 가동률 (rules effectUptime)
       // 쪼개기(불경한 히드라)는 원거리 챔피언이면 절반 (근접 공격력 40% · 원거리 20%, 리그 오브 레전드 위키)
       // (2026-10-15 베인+치명적 리듬: 원거리인데 근접 값으로 세서 불경한 히드라가 무한의 대검보다 위였다)
       if (/cleave/i.test(e.name || "") && !champ.melee && e.rangedScale == null) v *= CLEAVE_RANGED;

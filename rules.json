@@ -2086,6 +2086,23 @@
       "stats": {
         "goldValue": 500
       },
+      "effects": [
+        {
+          "calc": "PercentHealthDamage",
+          "dvBase": "PercentHealthBase",
+          "dvRatios": {
+            "AP": "PercentHealthPerAP"
+          },
+          "pctOf": "TGT_MAXHP",
+          "needsItem": "폭풍 쇄도",
+          "kind": "magic",
+          "trigger": {
+            "type": "time",
+            "sec": 30
+          },
+          "from": "폭풍 쇄도 질풍이 항상 폭발 (폭풍 쇄도 재사용 대기시간 30초마다)"
+        }
+      ],
       "basis": {
         "calc": "폭풍 쇄도 질풍이 범위 폭발 + 500골드 (설명). 폭풍 쇄도를 같이 사야 효과가 난다. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
       }
@@ -2139,71 +2156,102 @@
       "stats": {
         "slotHaste": {
           "Q": 20
+        },
+        "slotDmgMult": {
+          "Q": 0.1
+        },
+        "slotHealMult": {
+          "Q": 0.1
         }
       },
       "basis": {
-        "calc": "강화 스킬(Q) 스킬 가속 20 (설명)",
-        "assume": [
-          {
-            "what": "강화 스킬(Q) 피해 10%·회복·보호막 10% 증가는 뺌",
-            "why": "스킬 하나만 키우는 피해 배율은 아직 계산이 없어요 (스킬 가속만 반영해서 조금 낮게 잡힘)"
-          }
-        ]
+        "calc": "강화 스킬(Q) 스킬 가속 20 · 피해 10% · 회복·보호막 10% (설명)"
       }
     },
     "GoH_PentakillAug_W": {
       "stats": {
         "slotHaste": {
           "W": 20
+        },
+        "slotDmgMult": {
+          "W": 0.1
+        },
+        "slotHealMult": {
+          "W": 0.1
         }
       },
       "basis": {
-        "calc": "강화 스킬(W) 스킬 가속 20 (설명)",
-        "assume": [
-          {
-            "what": "강화 스킬(W) 피해 10%·회복·보호막 10% 증가는 뺌",
-            "why": "스킬 하나만 키우는 피해 배율은 아직 계산이 없어요 (스킬 가속만 반영해서 조금 낮게 잡힘)"
-          }
-        ]
+        "calc": "강화 스킬(W) 스킬 가속 20 · 피해 10% · 회복·보호막 10% (설명)"
       }
     },
     "GoH_PentakillAug_E": {
       "stats": {
         "slotHaste": {
           "E": 20
+        },
+        "slotDmgMult": {
+          "E": 0.1
+        },
+        "slotHealMult": {
+          "E": 0.1
         }
       },
       "basis": {
-        "calc": "강화 스킬(E) 스킬 가속 20 (설명)",
-        "assume": [
-          {
-            "what": "강화 스킬(E) 피해 10%·회복·보호막 10% 증가는 뺌",
-            "why": "스킬 하나만 키우는 피해 배율은 아직 계산이 없어요 (스킬 가속만 반영해서 조금 낮게 잡힘)"
-          }
-        ]
+        "calc": "강화 스킬(E) 스킬 가속 20 · 피해 10% · 회복·보호막 10% (설명)"
       }
     },
     "GoH_PentakillAug_R": {
       "stats": {
         "slotHaste": {
           "R": 20
+        },
+        "slotDmgMult": {
+          "R": 0.1
+        },
+        "slotHealMult": {
+          "R": 0.1
         }
       },
       "basis": {
-        "calc": "강화 스킬(R) 스킬 가속 20 (설명)",
-        "assume": [
-          {
-            "what": "강화 스킬(R) 피해 10%·회복·보호막 10% 증가는 뺌",
-            "why": "스킬 하나만 키우는 피해 배율은 아직 계산이 없어요 (스킬 가속만 반영해서 조금 낮게 잡힘)"
-          }
-        ]
+        "calc": "강화 스킬(R) 스킬 가속 20 · 피해 10% · 회복·보호막 10% (설명)"
       }
     },
     "Salvation": {
       "descFill": [{"dv": "HealthPercentTrigger", "x100": true}]
     },
     "HandsOffTheTalent": {
+      "requires": "ranged",
+      "effectUptime": 0.5,
+      "basis": {
+        "calc": "최대 공격 사거리의 75% 밖에서 쏜 기본 공격에만 추가 피해 15% 추가 공격력 + 20% 주문력 (설명)",
+        "assume": [
+          {
+            "what": "원거리 챔피언만, 기본 공격의 절반을 먼 거리에서 쏨 (가동률 50%)",
+            "why": "거리를 벌려 싸우는(카이팅) 정도에 따라 달라요. 근접 챔피언은 사거리 75% 밖에서 치는 일이 거의 없어 뺐어요. 실게임 기록으로 맞출 값이에요",
+            "noData": true
+          }
+        ]
+      },
       "descFill": [{"dv": "MaxDistanceProximity", "pct": true}]
+    },
+    "CrimsonCobalt": {
+      "stats": {
+        "basicHaste": 48
+      },
+      "basis": {
+        "calc": "표식을 기본 공격으로 터뜨리면 그 스킬의 재사용 대기시간 65% 감소 (설명 · 영어 원문 'reduce the cooldown of {{SpellName}} by 65%'). 절반만 터뜨린다고 보면 재사용 대기시간 × (1 − 0.65 × 0.5) = 0.675 → 스킬 가속 48과 같음",
+        "assume": [
+          {
+            "what": "스킬을 맞힌 뒤 4초 안에 기본 공격으로 표식을 터뜨리는 비율 50%",
+            "why": "기본 공격을 섞는 챔피언은 더 자주, 멀리서 스킬만 쓰는 챔피언은 덜 터뜨려요. 실게임 기록으로 맞출 값이에요",
+            "noData": true
+          },
+          {
+            "what": "기본 스킬(Q·W·E)에만 적용",
+            "why": "어느 스킬에 걸리는지({{SpellName}})가 설명에 '스킬'로만 나와서 궁극기는 넣지 않았어요 (조금 낮게 잡힘)"
+          }
+        ]
+      }
     }
   },
   "items": {

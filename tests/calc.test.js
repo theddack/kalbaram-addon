@@ -710,3 +710,20 @@ test("새 증강 정보가 비지 않는다: 아이콘 · 한글 이름 · 설�
   assert.match(salv, /체력이 50% 아래로/);
   assert.ok(!d.augments.some((a) => a.id === "GoH_PentakillAug_Generic"), "이름 없는 자리 표시용 증강은 뺀다");
 });
+
+test("새 증강 계산 보강: 폭풍 쇄도 업그레이드는 폭풍 쇄도가 있을 때만 · 펜타킬 강화 스킬 피해 10% · 핏빛 코발트 가속 · 아티스트 보호는 원거리 절반", () => {
+  const c = champ("Ahri");
+  const st = S.augStatsOf([aug("Upgrade_Stormsurge")], d.rules, c);
+  const has = (items) => St.evaluate(c, 18, items, st, { aram: true }).m.effects.some((e) => e.src === aug("Upgrade_Stormsurge").name);
+  assert.equal(has([]), false, "폭풍 쇄도 없으면 폭발 없음");
+  assert.equal(has([item("폭풍 쇄도")]), true, "폭풍 쇄도 있으면 폭발");
+  // 펜타킬 헤비: Q 피해만 10%
+  const q = (augs) => St.evaluate(c, 18, [], S.augStatsOf(augs, d.rules, c), { aram: true }).m.spells.find((s) => s.slot === "Q").dmg;
+  const w = (augs) => St.evaluate(c, 18, [], S.augStatsOf(augs, d.rules, c), { aram: true }).m.spells.find((s) => s.slot === "W").dmg;
+  assert.ok(Math.abs(q([aug("GoH_PentakillAug_Q")]) / q([]) - 1.1) < 1e-6, "Q 피해 10%");
+  assert.ok(Math.abs(w([aug("GoH_PentakillAug_Q")]) - w([])) < 1e-6, "W 는 그대로");
+  assert.equal(d.rules.augments.CrimsonCobalt.statsResolved.basicHaste, 48);
+  const t = S.augmentTiers(d.augments, d.items, S.profile(champ("Garen"), d.tags), [], [], d.rules, champ("Garen"), { aram: true });
+  assert.equal(t.HandsOffTheTalent.tier, "D", "근접은 조건 없음");
+  assert.equal(aug("HandsOffTheTalent").effects[0].uptime, 0.5);
+});

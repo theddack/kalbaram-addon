@@ -1,7 +1,7 @@
 {
  "dataVersion": "16.21.8298620+branch.releases-16-21.content.release",
  "version": "16.21.1",
- "builtAt": "2026-10-22 13:50",
+ "builtAt": "2026-10-22 14:49",
  "engine": {
   "app": "0.1.64",
   "assumptions": "a10a2bce8f"
@@ -14520,8 +14520,8 @@
     ],
     "1": [
      "HeavyIsTheCrown:S",
-     "ARAM_Vulnerability:S",
      "CrimsonCobalt:S",
+     "ARAM_Vulnerability:S",
      "CriticalRhythm:S",
      "TheBoomAndTheBass:S"
     ],
@@ -14788,10 +14788,10 @@
     ],
     "1": [
      "HeavyIsTheCrown:S",
+     "CrimsonCobalt:S",
      "CriticalRhythm:S",
      "ARAM_Vulnerability:S",
-     "TickleMonster:S",
-     "CrimsonCobalt:S"
+     "TickleMonster:S"
     ],
     "2": [
      "ARAM_DoubleTap:S",
@@ -15069,8 +15069,8 @@
      "Salvation:S",
      "ARAM_BigBrain:S",
      "DarkWind:S",
-     "HeavyIsTheCrown:S",
-     "CrimsonCobalt:S"
+     "CrimsonCobalt:S",
+     "HeavyIsTheCrown:S"
     ],
     "2": [
      "Totentanz:S",
@@ -15457,62 +15457,62 @@
    "top": [
     {
      "name": "공허의 지팡이",
-     "score": 3.236,
+     "score": 3.2986,
      "tag": 3.3222,
      "parts": {
       "combo": 0.382,
-      "dps": 0.1912
+      "dps": 0.2241
      },
      "link": true
     },
     {
      "name": "리안드리의 고통",
-     "score": 3.2243,
+     "score": 3.2414,
      "tag": 4.0913,
      "parts": {
       "combo": 0.2803,
-      "dps": 0.2909,
+      "dps": 0.2521,
       "ehp": 0.0989,
       "support": 0.05
      }
     },
     {
      "name": "루덴의 메아리",
-     "score": 3.1888,
+     "score": 3.2172,
      "tag": 4.4985,
      "parts": {
       "combo": 0.2683,
-      "dps": 0.2055
+      "dps": 0.1967
      }
     },
     {
      "name": "라바돈의 죽음모자",
-     "score": 2.9911,
+     "score": 3.0392,
      "tag": 3.495,
      "parts": {
       "combo": 0.321,
-      "dps": 0.1469
+      "dps": 0.1722
      },
      "link": true
     },
     {
-     "name": "존야의 모래시계",
-     "score": 2.6568,
-     "tag": 3.7208,
+     "name": "삼위일체",
+     "score": 2.8751,
+     "tag": 1.3684,
      "parts": {
-      "combo": 0.2149,
-      "dps": 0.0967,
-      "ehp": 0.1292
-     },
-     "tie": "점수 비슷 → 라이엇 추천 우선"
+      "combo": 0.3414,
+      "dps": 0.7415,
+      "ehp": 0.1098,
+      "support": 0.0555
+     }
     },
     {
      "name": "리치베인",
-     "score": 2.7511,
+     "score": 2.8593,
      "tag": 1.509,
      "parts": {
       "combo": 0.3991,
-      "dps": 0.4154,
+      "dps": 0.4552,
       "mobility": 0.0529
      }
     }
@@ -15522,8 +15522,8 @@
     "리안드리의 고통",
     "루덴의 메아리",
     "라바돈의 죽음모자",
-    "리치베인",
-    "삼위일체"
+    "삼위일체",
+    "리치베인"
    ],
    "build": [
     "마법사의 신발",
@@ -15731,78 +15731,74 @@
    "top": [
     {
      "name": "삼위일체",
-     "score": 3.9715,
+     "score": 4.1351,
      "tag": 4.4232,
      "parts": {
       "combo": 0.3525,
-      "dps": 0.81,
+      "dps": 0.8236,
       "ehp": 0.1127,
       "support": 0.111
      }
     },
     {
      "name": "발걸음 분쇄기",
-     "score": 2.5401,
+     "score": 2.5625,
      "tag": 4.6675,
      "parts": {
       "combo": 0.0743,
-      "dps": 0.2926,
+      "dps": 0.2608,
       "ehp": 0.1522,
       "support": 0.15
      }
     },
     {
      "name": "맬모셔스의 아귀",
-     "score": 2.5124,
+     "score": 2.5459,
      "tag": 4.0388,
      "parts": {
       "combo": 0.1115,
-      "dps": 0.3815,
+      "dps": 0.3443,
       "ehp": 0.1635
      }
     },
     {
-     "name": "쇼진의 창",
-     "score": 2.4892,
-     "tag": 3.8077,
-     "parts": {
-      "combo": 0.1318,
-      "dps": 0.3629,
-      "ehp": 0.1522,
-      "support": 0.15
-     }
-    },
-    {
      "name": "죽음의 무도",
-     "score": 2.4861,
+     "score": 2.5197,
      "tag": 4.0108,
      "parts": {
       "combo": 0.1115,
-      "dps": 0.3815,
+      "dps": 0.3443,
       "ehp": 0.136,
       "support": 0.1
      }
     },
     {
-     "name": "칠흑의 양날 도끼",
-     "score": 2.2581,
-     "tag": 3.814,
+     "name": "쇼진의 창",
+     "score": 2.5167,
+     "tag": 3.8077,
      "parts": {
-      "combo": 0.0836,
-      "dps": 0.3335,
-      "ehp": 0.1353,
-      "support": 0.1333,
-      "mobility": 0.0395
-     },
-     "tie": "점수 비슷 → 라이엇 추천 우선"
+      "combo": 0.1318,
+      "dps": 0.3231,
+      "ehp": 0.1522,
+      "support": 0.15
+     }
+    },
+    {
+     "name": "정수 약탈자",
+     "score": 2.4727,
+     "tag": 1.3573,
+     "parts": {
+      "combo": 0.2837,
+      "dps": 0.7662
+     }
     }
    ],
    "raw": [
     "삼위일체",
     "발걸음 분쇄기",
     "맬모셔스의 아귀",
-    "쇼진의 창",
     "죽음의 무도",
+    "쇼진의 창",
     "정수 약탈자"
    ],
    "build": [
@@ -16017,59 +16013,59 @@
    "top": [
     {
      "name": "삼위일체",
-     "score": 6.1037,
+     "score": 6.0965,
      "tag": 1.1036,
      "parts": {
       "combo": 0.4947,
-      "dps": 0.833,
+      "dps": 0.634,
       "ehp": 0.1134
      }
     },
     {
      "name": "정수 약탈자",
-     "score": 5.5012,
+     "score": 5.4794,
      "tag": 1.3573,
      "parts": {
       "combo": 0.4253,
-      "dps": 0.8035
+      "dps": 0.6018
      }
     },
     {
      "name": "월식",
-     "score": 4.3107,
+     "score": 4.3196,
      "tag": 4.5794,
      "parts": {
       "combo": 0.2118,
-      "dps": 0.4084
+      "dps": 0.3189
      },
      "tie": "점수 비슷 → 라이엇 추천 우선"
     },
     {
      "name": "리치베인",
-     "score": 4.4904,
+     "score": 4.5209,
      "tag": 1.2789,
      "parts": {
       "combo": 0.3624,
-      "dps": 0.471,
+      "dps": 0.381,
       "mobility": 0.0545
      }
     },
     {
      "name": "그림자 검",
-     "score": 4.4614,
+     "score": 4.477,
      "tag": 1.8167,
      "parts": {
       "combo": 0.337,
-      "dps": 0.4713
+      "dps": 0.3715
      }
     },
     {
      "name": "요우무의 유령검",
-     "score": 4.066,
+     "score": 4.1323,
      "tag": 3.6745,
      "parts": {
       "combo": 0.2338,
-      "dps": 0.3291,
+      "dps": 0.2955,
       "mobility": 0.0363
      }
     }
@@ -16462,8 +16458,8 @@
     "1": [
      "Salvation:S",
      "ARAM_BigBrain:S",
-     "DarkWind:S",
      "CrimsonCobalt:S",
+     "DarkWind:S",
      "TheBoomAndTheBass:S"
     ],
     "2": [
@@ -16560,62 +16556,62 @@
    "top": [
     {
      "name": "삼위일체",
-     "score": 4.2622,
+     "score": 4.3978,
      "tag": 4.4571,
      "parts": {
       "combo": 0.5184,
-      "dps": 0.8946,
+      "dps": 0.8032,
       "ehp": 0.1044
      }
     },
     {
      "name": "칠흑의 양날 도끼",
-     "score": 2.7188,
+     "score": 2.6937,
      "tag": 4.7735,
      "parts": {
       "combo": 0.1309,
-      "dps": 0.3477,
+      "dps": 0.2465,
       "ehp": 0.1254,
       "mobility": 0.0395
      }
     },
     {
      "name": "몰락한 왕의 검",
-     "score": 2.5127,
+     "score": 2.5479,
      "tag": 2.5637,
      "parts": {
       "combo": 0.2362,
-      "dps": 0.8284,
+      "dps": 0.6676,
       "ehp": 0.0104
      }
     },
     {
      "name": "윤 탈 야생화살",
-     "score": 2.2731,
+     "score": 2.3171,
      "tag": 1.3447,
      "parts": {
       "combo": 0.3912,
-      "dps": 0.5879
+      "dps": 0.4898
      },
      "link": true
     },
     {
      "name": "맬모셔스의 아귀",
-     "score": 2.2604,
+     "score": 2.2722,
      "tag": 3.1738,
      "parts": {
       "combo": 0.1745,
-      "dps": 0.381,
+      "dps": 0.3034,
       "ehp": 0.1516
      }
     },
     {
      "name": "죽음의 무도",
-     "score": 2.2357,
+     "score": 2.2476,
      "tag": 3.1388,
      "parts": {
       "combo": 0.1745,
-      "dps": 0.381,
+      "dps": 0.3034,
       "ehp": 0.1275,
       "support": 0.1
      }
@@ -16630,12 +16626,12 @@
     "죽음의 무도"
    ],
    "build": [
-    "광전사의 군화",
+    "마법사의 신발",
     "삼위일체",
-    "칠흑의 양날 도끼",
-    "그림자 검",
+    "몰락한 왕의 검",
+    "세릴다의 원한",
     "불경한 히드라",
-    "몰락한 왕의 검"
+    "그림자 검"
    ]
   },
   "aug:Darius:ARAM_DrawYourSword": {
@@ -16831,64 +16827,65 @@
    "top": [
     {
      "name": "삼위일체",
-     "score": 4.1825,
+     "score": 4.208,
      "tag": 1.1654,
      "parts": {
       "combo": 0.3847,
-      "dps": 0.63,
+      "dps": 0.5679,
       "ehp": 0.1088
      }
     },
     {
      "name": "무한의 대검",
-     "score": 3.7611,
+     "score": 3.8143,
      "tag": 3.6,
      "parts": {
       "combo": 0.2202,
-      "dps": 0.4898
+      "dps": 0.4587
      },
      "tie": "점수 비슷 → 라이엇 추천 우선"
     },
     {
      "name": "정수 약탈자",
-     "score": 3.8746,
+     "score": 3.91,
      "tag": 1.3263,
      "parts": {
       "combo": 0.3382,
-      "dps": 0.6223
+      "dps": 0.5663
      }
     },
     {
+     "name": "피바라기",
+     "score": 3.49,
+     "tag": 2.8575,
+     "parts": {
+      "combo": 0.2348,
+      "dps": 0.3695,
+      "ehp": 0.0189,
+      "support": 0.525
+     },
+     "link": true,
+     "tie": "점수 비슷 → 증강 연계 우선"
+    },
+    {
      "name": "불멸의 철갑궁",
-     "score": 3.4614,
+     "score": 3.5003,
      "tag": 4.2396,
      "parts": {
       "combo": 0.1614,
-      "dps": 0.3465,
+      "dps": 0.3252,
       "support": 1.1667
      },
      "tie": "점수 비슷 → 라이엇 추천 우선"
     },
     {
      "name": "크라켄 학살자",
-     "score": 3.4494,
+     "score": 3.4813,
      "tag": 4.0735,
      "parts": {
       "combo": 0.1321,
-      "dps": 0.5432,
+      "dps": 0.4948,
       "mobility": 0.0363
-     },
-     "tie": "점수 비슷 → 라이엇 추천 우선"
-    },
-    {
-     "name": "피바라기",
-     "score": 3.4333,
-     "tag": 2.8575,
-     "parts": {
-      "combo": 0.2348,
-      "dps": 0.3864,
-      "ehp": 0.0189,
-      "support": 0.525
      },
      "tie": "점수 비슷 → 라이엇 추천 우선"
     }
@@ -16899,15 +16896,15 @@
     "무한의 대검",
     "리치베인",
     "불멸의 철갑궁",
-    "크라켄 학살자"
+    "피바라기"
    ],
    "build": [
     "마법사의 신발",
-    "무한의 대검",
     "공허의 지팡이",
     "리치베인",
+    "라바돈의 죽음모자",
     "폭풍 쇄도",
-    "라바돈의 죽음모자"
+    "그림자불꽃"
    ]
   },
   "aug:Yasuo:ARAM_ClownCollege": {
@@ -18102,9 +18099,9 @@
     ],
     "1": [
      "HeavyIsTheCrown:S",
+     "CrimsonCobalt:S",
      "ARAM_Vulnerability:S",
      "CriticalRhythm:S",
-     "CrimsonCobalt:S",
      "TheBoomAndTheBass:S"
     ],
     "2": [
@@ -18196,60 +18193,60 @@
    "top": [
     {
      "name": "삼위일체",
-     "score": 3.6775,
+     "score": 3.7096,
      "tag": 4.0758,
      "parts": {
       "combo": 0.2927,
-      "dps": 0.5542,
+      "dps": 0.5153,
       "ehp": 0.1159
      }
     },
     {
      "name": "정수 약탈자",
-     "score": 3.1316,
+     "score": 3.1737,
      "tag": 2.9222,
      "parts": {
       "combo": 0.2754,
-      "dps": 0.5456
+      "dps": 0.5125
      }
     },
     {
      "name": "무한의 대검",
-     "score": 2.7963,
+     "score": 2.8567,
      "tag": 3.015,
      "parts": {
       "combo": 0.2319,
-      "dps": 0.4251
+      "dps": 0.413
      },
      "link": true,
      "tie": "점수 비슷 → 증강 연계 우선"
     },
     {
      "name": "월식",
-     "score": 2.8799,
+     "score": 2.9212,
      "tag": 4.4735,
      "parts": {
       "combo": 0.1585,
-      "dps": 0.2926
+      "dps": 0.2841
      }
     },
     {
      "name": "세릴다의 원한",
-     "score": 2.5802,
+     "score": 2.6218,
      "tag": 2.5584,
      "parts": {
       "combo": 0.2582,
-      "dps": 0.3354,
+      "dps": 0.3229,
       "control": 0.25
      }
     },
     {
      "name": "도미닉 경의 인사",
-     "score": 2.4762,
+     "score": 2.5181,
      "tag": 2.4672,
      "parts": {
       "combo": 0.2593,
-      "dps": 0.3162
+      "dps": 0.3057
      }
     }
    ],
@@ -18263,7 +18260,7 @@
    ],
    "build": [
     "마법사의 신발",
-    "삼위일체",
+    "정수 약탈자",
     "무한의 대검",
     "도미닉 경의 인사",
     "윤 탈 야생화살",
@@ -18469,65 +18466,66 @@
    "top": [
     {
      "name": "크라켄 학살자",
-     "score": 4.8656,
+     "score": 4.9095,
      "tag": 4.3549,
      "parts": {
       "combo": 0.3368,
-      "dps": 0.6998,
+      "dps": 0.5996,
       "mobility": 0.0353
      },
-     "link": true,
-     "tie": "점수 비슷 → 증강 연계 우선"
+     "link": true
     },
     {
      "name": "삼위일체",
-     "score": 4.1209,
+     "score": 4.3375,
      "tag": 1.2498,
      "parts": {
       "combo": 0.4195,
-      "dps": 0.6951,
+      "dps": 0.6835,
       "ehp": 0.1175
      }
     },
     {
      "name": "리치베인",
-     "score": 4.0532,
+     "score": 4.2513,
      "tag": 1.7741,
      "parts": {
       "combo": 0.4272,
-      "dps": 0.5015,
+      "dps": 0.5144,
       "support": 0.0417,
       "mobility": 0.0529
      }
     },
     {
      "name": "윤 탈 야생화살",
-     "score": 3.8001,
+     "score": 3.849,
      "tag": 1.4024,
      "parts": {
       "combo": 0.3534,
-      "dps": 0.7128
+      "dps": 0.6128
      },
-     "link": true
+     "link": true,
+     "tie": "점수 비슷 → 증강 연계 우선"
     },
     {
      "name": "내셔의 이빨",
-     "score": 3.7943,
+     "score": 3.8355,
      "tag": 1.6188,
      "parts": {
       "combo": 0.3444,
-      "dps": 0.685,
+      "dps": 0.586,
       "support": 0.0333
      },
-     "link": true
+     "link": true,
+     "tie": "점수 비슷 → 증강 연계 우선"
     },
     {
      "name": "정수 약탈자",
-     "score": 3.7165,
+     "score": 3.891,
      "tag": 1.4563,
      "parts": {
       "combo": 0.3603,
-      "dps": 0.623
+      "dps": 0.6026
      }
     }
    ],
@@ -18535,9 +18533,9 @@
     "크라켄 학살자",
     "삼위일체",
     "리치베인",
+    "정수 약탈자",
     "윤 탈 야생화살",
-    "내셔의 이빨",
-    "정수 약탈자"
+    "내셔의 이빨"
    ],
    "build": [
     "마법사의 신발",

@@ -20,7 +20,7 @@ from pathlib import Path
 
 from champion_data import (augment_effects, game_as_ratio, item_spell, mode_cooldown, parse_lua_table, passive_spell,
                            process_champion, spell_cc_seconds, text_effects, wiki_extras, wiki_growth_fix)
-from lol_calc import Calc, expr_json, fmt_expr_ranks
+from lol_calc import Calc, Expr, Node, expr_json, fmt_expr_ranks
 from patch_check import check_augment, check_champion
 
 ROOT = Path(__file__).resolve().parent
@@ -725,7 +725,12 @@ def rule_effects(rules, aug_spells, out_augs, warn):
             continue
         calc = Calc(aug_spells[aid])
         for spec in r["effects"]:
-            e, _ = calc.calc(spec["calc"], 1)
+            if spec.get("dvBase"):  # 계산식 안이 이름 없는 값이라 못 풀 때: 이름 있는 데이터 값으로 '기본 + 능력치 비례'를 만든다
+                b = calc.value(spec["dvBase"], 1)
+                rs = {k: calc.value(dv, 1) for k, dv in (spec.get("dvRatios") or {}).items()}
+                e = None if b is None or None in rs.values() else Expr(b, None, rs)
+            else:
+                e, _ = calc.calc(spec["calc"], 1)
             if e is None:
                 warn.append(f"{aid}: 효과 계산식 '{spec['calc']}' 해석 실패")
                 continue
@@ -733,9 +738,13 @@ def rule_effects(rules, aug_spells, out_augs, warn):
             if isinstance(trig.get("sec"), str):
                 trig["sec"] = calc.value(trig["sec"], 1) or 0
             trig["from"] = spec.get("from", "rules.json")
+            if spec.get("pctOf"):  # 계산식이 비율(최대 체력의 10% + 주문력 비례)이면 대상 능력치와 곱한다 (폭풍 쇄도 업그레이드)
+                e = Node("*", [e, Expr(0, None, {spec["pctOf"]: 1})])
             fx = {"kind": spec["kind"], "name": spec["calc"], **expr_json([e]), "trigger": trig}
             if spec.get("needsAuto"):  # 스킬 사용 후 다음 기본 공격에 터지는 효과 (장갑 충격 등: 주문 검과 같은 발동)
                 fx["needsAuto"] = True
+            if spec.get("needsItem"):  # 그 아이템이 있어야 터지는 효과 (업그레이드 증강)
+                fx["needsItem"] = spec["needsItem"]
             by_id[aid]["effects"].append(fx)
 
 
@@ -1582,6 +1591,13 @@ def main():
     rule_effects(rules, aug_spells, out_augs, rule_warn)
     rule_effect_cooldowns(rules, aug_spells, out_augs, rule_warn)
     rule_effect_counts(rules, aug_spells, out_augs, rule_warn)
+    # rules effectUptime: 조건이 맞을 때만 터지는 효과의 가동률 (아티스트 보호: 최대 사거리 75% 밖에서 쏜 공격만). 근거는 basis assume
+    for aid, r in rules["augments"].items():
+        if r.get("effectUptime") is not None:
+            for a in out_augs:
+                if a["id"] == aid:
+                    for e in a["effects"]:
+                        e["uptime"] = r["effectUptime"]
     auto_rules = {}  # rules.json 에 능력치 규칙이 없는 증강 → 설명에서 자동 추정
     for a in out_augs:
         if (rules["augments"].get(a["id"]) or {}).get("stats"):
