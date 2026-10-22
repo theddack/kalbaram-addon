@@ -1,8 +1,8 @@
 {
  "version": "16.21.8298620+branch.releases-16-21.content.release",
  "dataVersion": "16.21.8298620+branch.releases-16-21.content.release",
- "builtAt": "2026-10-22 10:37",
- "augments": 240,
+ "builtAt": "2026-10-22 13:50",
+ "augments": 239,
  "disabled": [
   "인내심",
   "단호함",
@@ -13415,24 +13415,6 @@
   {
    "id": "ArcaneAxiom",
    "name": "비전 원칙",
-   "rarity": "골드",
-   "category": null,
-   "patch": null,
-   "patchCheck": null,
-   "auto": false,
-   "items": 0,
-   "states": {
-    "일치": 0,
-    "불일치": 0,
-    "미구현": 0,
-    "가정": 0,
-    "원본 확인 불가": 0,
-    "계산 제외": 0
-   }
-  },
-  {
-   "id": "GoH_PentakillAug_Generic",
-   "name": "GoH_PentakillAug_Generic",
    "rarity": "골드",
    "category": null,
    "patch": null,
