@@ -1274,3 +1274,12 @@ test("누르자마자 다음 선택 화면: 고른 증강을 넣고 새 선택�
   assert.deepEqual(p.errors, []);
   p.w.close();
 });
+
+test("어떤 증강이든 재밌게: 증강마다 '쓰는 법' 한 줄이 있다 (사람이 쓴 tips 포함)", async () => {
+  const p = await loadPage({ simple: true });
+  p.pickChamp("Jinx");
+  const empty = p.data.augments.filter((a) => !String(p.w.playTip(a) || "").trim()).map((a) => a.name);
+  assert.equal(empty.length, 0, empty.join(", "));
+  assert.equal(p.w.playTip(p.data.augments.find((a) => a.id === "PromQueen")), p.data.rules.tips.PromQueen);
+  p.w.close();
+});

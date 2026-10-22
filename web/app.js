@@ -925,6 +925,9 @@ const ONCE_TIP = (from) => {
 function playTip(a) {
   const rule = state.data.rules.augments[a.id] || {};
   if (CATEGORY_TIP[a.category]) return CATEGORY_TIP[a.category];
+  // 사람이 쓴 쓰는 법 (rules.json tips): 자동 문장이 비던 증강 26개 (2026-10-22 '어떤 증강이든 재밌게' 점검)
+  const hand = (state.data.rules.tips || {})[a.id];
+  if (hand) return hand;
   const out = [];
   // 아이템 업그레이드 증강: 그 아이템을 사야 효과가 있다
   const up = (rule.items || []).filter((n) => state.data.items.some((i) => i.name === n && i.kind === "legendary"));

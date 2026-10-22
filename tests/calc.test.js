@@ -534,9 +534,12 @@ test("진 4번째 탄은 항상 치명타: 치명타 0%여도 기본 공격 치�
 
 // 2026-10-20 미구현 정리: 한 번에 여러 발·능력치 비례 값·아이템 효과 치명타 (원본 값 이름으로)
 // (탄환 세례 5발은 26.21 패치에서 증강이 삭제돼 뺐다)
-test("효과 횟수(effectCount): 마법 미사일 3발·쌍둥이 불꽃 1 + 치명타 × 3 · 검무는 한타 1번 8회", () => {
+test("효과 횟수(effectCount): 쌍둥이 불꽃 1 + 치명타 × 3 · 검무는 한타 1번 8회 · 마법 미사일은 3발 합계 1%·6초", () => {
   const fx = (id) => aug(id).effects[0];
-  assert.equal(fx("ARAM_MagicMissile").count, 3);
+  // 마법 미사일: 투사체당 0.334% × 3발 = 툴팁 1% (합계). 3발을 다시 곱하면 3배였다 (2026-10-22 원본 대조)
+  assert.equal(fx("ARAM_MagicMissile").count, undefined);
+  assert.equal(fx("ARAM_MagicMissile").ratios.TGT_MAXHP[0], 0.01);
+  assert.equal(fx("ARAM_MagicMissile").cooldown, 6);
   assert.deepEqual([fx("ARAM_BladeWaltz").count, fx("ARAM_BladeWaltz").trigger.type], [8, "once"]);
   assert.deepEqual([fx("Twinfire").count, fx("Twinfire").countCrit], [1, 3]);
   // 치명타 확률이 오르면 쌍둥이 불꽃 한 번 피해도 는다 (1 + 치명타 × 3 발)
@@ -673,4 +676,21 @@ test("26.21 새 증강 규칙: 고반동 스킬 피해 25% · 장갑 충격 다�
   const tierOf = (cid, aid) => { const c = champ(cid); return S.augmentTiers(d.augments, d.items, S.profile(c, d.tags), [], [], d.rules, c, { aram: true })[aid].tier; };
   assert.equal(tierOf("Garen", "Sound_Barrier"), "D", "아군 보호막이 없는 가렌");
   assert.ok(["S", "A"].includes(tierOf("Janna", "Sound_Barrier")), "아군 보호막 잔나");
+});
+
+test("어떤 증강이든 재밌게: 흡혈만 주는 증강(마도사의 주스 상자)도 이득이 0이 아니고, '받쳐 주는 변칙'이면 실제로 반대 유형 아이템이 2개 이상", () => {
+  const juice = aug("WarlockJuicebox");
+  for (const id of ["Lux", "Garen", "Vladimir"]) {
+    const c = champ(id);
+    const g = S.numericAugmentGains([juice], d.items, S.profile(c, d.tags), [], [], d.rules, c, { aram: true }).gains[juice.id];
+    assert.ok(g && g.gain > 0, `${id}: 흡혈 이득 ${g && g.gain}`);
+  }
+  for (const [cid, aid] of [["Zed", "NoManaNoProblem"], ["Zed", "ARAM_ADAPt"], ["Jinx", "ARAM_ADAPt"]]) {
+    const c = champ(cid);
+    const b = S.buildConcepts(d.items, S.profile(c, d.tags), [aug(aid)], [], d.rules, c, {}, ["twist"])[0];
+    if (b.twist.s > 0) assert.ok(b.pick.filter((p) => b.twist.opp.some((t) => ((p.item.tags || {})[t] || 0) >= 0.5)).length >= 2, `${cid}+${aid}`);
+  }
+  // 황홀한 나비는 아군 지원 챔피언만
+  const t = S.augmentTiers(d.augments, d.items, S.profile(champ("Zed"), d.tags), [], [], d.rules, champ("Zed"), { aram: true });
+  assert.equal(t.EnchantingButterflies.tier, "D");
 });

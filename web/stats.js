@@ -540,7 +540,11 @@
     const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0);
     out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS * onCrit;
     // ---- 버티는 힘: 체력 × 저항 + 무적·피해 감소(그동안 받을 피해) + 생명선 회복 + 아이템 피해 감소
-    const extraHp = (cv.selfHeal || 0) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
+    // 흡혈: 콤보 한 번(COMBO_WINDOW 초) 동안 준 피해로 회복한 만큼 더 버틴다. 생명력 흡수는 기본 공격 피해만, 모든 피해 흡혈은 스킬·효과 피해까지.
+    // 예전엔 흡혈 수치를 합계만 내고 점수엔 안 써서 '마도사의 주스 상자'(모든 피해 흡혈 10%)가 누구에게나 이득 0 → D 였다 (2026-10-22 점검)
+    const autoCombo = out.autoDps * COMBO_WINDOW;
+    out.vampHeal = ((t.LS || 0) * autoCombo + (t.OMNIVAMP || 0) * (autoCombo + out.combo)) * (aram.healing || 1);
+    const extraHp = (cv.selfHeal || 0) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2 + out.vampHeal;
     out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
     out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100)) / taken;
     if (cv.ehpMult) { out.ehpPhys *= 1 + cv.ehpMult; out.ehpMag *= 1 + cv.ehpMult; }  // 상대 피해량 감소 (감쇠 광선)
