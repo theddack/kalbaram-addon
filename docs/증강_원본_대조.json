@@ -1,7 +1,7 @@
 {
  "version": "16.21.8298620+branch.releases-16-21.content.release",
  "dataVersion": "16.21.8298620+branch.releases-16-21.content.release",
- "builtAt": "2026-10-22 13:50",
+ "builtAt": "2026-10-22 14:49",
  "augments": 239,
  "disabled": [
   "인내심",
@@ -9126,6 +9126,14 @@
    "value": -0.15,
    "state": "가정",
    "why": "평균 4중첩"
+  },
+  {
+   "id": "CrimsonCobalt",
+   "name": "핏빛 코발트",
+   "key": "basicHaste",
+   "value": 48,
+   "state": "가정",
+   "why": "스킬을 맞힌 뒤 4초 안에 기본 공격으로 표식을 터뜨리는 비율 50% / 기본 스킬(Q·W·E)에만 적용"
   },
   {
    "id": "ArcaneAxiom",
