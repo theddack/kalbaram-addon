@@ -187,10 +187,31 @@ def expand_templates(text, strings, depth=0):
     return re.sub(r"{{\s*([^}]+?)\s*}}", sub, text)
 
 
-def resolve_values(text, spell):
-    """@Name@, @Name*100@ 자리표시자를 DataValues·계산식으로 채운다. 못 채우면 ?"""
+def desc_fill(spec, spell):
+    """rules.json descFill: 이름이 해시라 못 푼 자리표시자에 넣을 값 (게임 데이터 값 이름으로, 패치를 따라간다).
+    [{"dv": 값 이름, "pct": 퍼센트로, "plus": [[값 이름, 단위 글]]}] → 문자열 목록 (못 찾으면 None → '?' 그대로)"""
+    calc = Calc(spell)
+    out = []
+    for f in spec or []:
+        v = calc.value(f["dv"], 1)
+        if v is None:
+            out.append(None)
+            continue
+        # pct: ×100 하고 '%' 붙임, x100: ×100 만 (원문에 '%'가 이미 붙어 있는 자리: 구원 '체력이 @…@% 아래로')
+        t = f"{round(v * 100, 2):g}%" if f.get("pct") else f"{round(v * 100, 2):g}" if f.get("x100") else f"{round(v, 3):g}"
+        for dv, unit in f.get("plus", []):
+            pv = calc.value(dv, 1)
+            if pv is not None:
+                t += f" + {unit} 1당 {round(pv * 100, 3):g}%"
+        out.append(t)
+    return out
+
+
+def resolve_values(text, spell, fill=None):
+    """@Name@, @Name*100@ 자리표시자를 DataValues·계산식으로 채운다. 못 채우면 rules descFill 값, 그것도 없으면 ?"""
     unresolved = []
     calc = Calc(spell)
+    fill = list(fill or [])
 
     def sub(m):
         expr = m.group(1)
@@ -202,6 +223,10 @@ def resolve_values(text, spell):
             e, pct = calc.resolve(name, 1)
             if e is not None:
                 return fmt_expr_ranks([e.scale(k)], pct and k == 1)
+        if fill:
+            v = fill.pop(0)
+            if v is not None:
+                return v
         unresolved.append(expr)
         return "?"
 
@@ -1249,6 +1274,7 @@ def main():
                 if isinstance(v, dict) and v.get("__type") == "AugmentData"}
     rarity_name = {0: "실버", 1: "골드", 2: "프리즘"}
     out_augs, unresolved_total, disabled, disabled_ids, aug_spells = [], 0, [], set(), {}
+    fill_rules = json.loads((ROOT / "rules.json").read_text(encoding="utf-8")).get("augments", {})  # descFill (설명 빈 값)
     wiki_matched = 0
     wiki_desc = {}  # 증강 id → 위키 영어 설명 (자동 추정 대조용)
     # 커뮤니티 드래곤이 아직 지난 패치인데 게임은 새 패치가 나왔으면(새 증강이 게임엔 있는데 데이터엔 없음) PBE 데이터에서
@@ -1282,6 +1308,11 @@ def main():
           wa = wiki_augs.get(norm_name(en_name)) or {}
           if wa:
               wiki_matched += 1
+          # 이름 칸이 빈 자리 표시용 증강(NameTra …_BlankName: 펜타킬 묶음의 공용 칸)은 고를 수 있는 증강이 아니라 뺀다.
+          # 이름이 없어 목록·새 증강 페이지에 영문 id 'GoH_PentakillAug_Generic' 그대로 나왔다 (2026-10-22)
+          if (a.get("NameTra") or "").lower().endswith("_blankname"):
+              print("  [건너뜀] 이름 없는 자리 표시용 증강:", name)
+              continue
           # 비활성: 게임 파일(Enabled=False) + 위키 '현재 비활성' 표시 (패치 없이 서버에서 끈 것까지)
           if a.get("Enabled") is False or wa.get("disabled"):
               label = S_.get((a.get("NameTra") or "").lower(), name)
@@ -1295,13 +1326,14 @@ def main():
           body = re.sub(r"<flavorText>.*?</flavorText>|<[^>]+>|\s+", "", raw, flags=re.S | re.I)
           if len(body) < 15:
               raw = expand_templates(S_.get((a.get("DescriptionTra") or "").lower()) or "", S_) or raw
-          text, unresolved = resolve_values(raw, spell)
+          fill = desc_fill((fill_rules.get(name) or {}).get("descFill"), spell)
+          text, unresolved = resolve_values(raw, spell, fill)
           ko_name = S_.get((a.get("NameTra") or "").lower(), "")
           # 패치 노트 대조: 게임 데이터가 아직 이전 값이고 자리가 확실하면 패치 노트 값으로 다시 계산
           p_check, patched = check_augment(spell, text, patch_lines.get(ko_name))
           if patched:
               spell = patched
-              text, unresolved = resolve_values(raw, spell)
+              text, unresolved = resolve_values(raw, spell, desc_fill((fill_rules.get(name) or {}).get("descFill"), spell))
           aug_spells[name] = spell
           unresolved_total += len(unresolved)
           html, plain, names = to_html(text)

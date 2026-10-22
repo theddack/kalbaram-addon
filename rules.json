@@ -1858,6 +1858,7 @@
       }
     },
     "TickleMonster": {
+      "descFill": [{"dv": "CalcASVal", "pct": true}],
       "tags": {
         "AS": 0.6,
         "ONHIT": 0.4
@@ -1882,6 +1883,7 @@
       }
     },
     "BigShot": {
+      "descFill": [{"dv": "ConversionCritNum", "pct": true}],
       "tags": {
         "CRIT": 0.6,
         "AD": 0.4
@@ -1982,6 +1984,7 @@
       }
     },
     "LonelyWarrior": {
+      "descFill": [{"dv": "ASPerEnemy", "pct": true}],
       "tags": {
         "AS": 0.4,
         "ARMOR": 0.3,
@@ -2072,6 +2075,7 @@
       }
     },
     "Upgrade_Stormsurge": {
+      "descFill": [{"dv": "PercentHealthBase", "pct": true, "plus": [["PercentHealthPerAP", "주문력"]]}],
       "items": [
         "폭풍 쇄도"
       ],
@@ -2194,6 +2198,12 @@
           }
         ]
       }
+    },
+    "Salvation": {
+      "descFill": [{"dv": "HealthPercentTrigger", "x100": true}]
+    },
+    "HandsOffTheTalent": {
+      "descFill": [{"dv": "MaxDistanceProximity", "pct": true}]
     }
   },
   "items": {
@@ -2838,6 +2848,7 @@
       }
     }
   },
+  "_설명칸": "augments.*.descFill: 설명의 자리표시자가 해시 계산식을 가리켜 못 풀 때(?) 넣을 게임 데이터 값 이름. 숫자를 직접 적지 않아 패치를 따라간다",
   "_쓰는법": "tips: 자동 문장(playTip)이 비는 증강에 사람이 쓴 쓰는 법 한 줄 (게임 설명 수치 그대로, 어떻게 쓰면 재밌는지)",
   "tips": {
     "MightyShield": "보호막을 받는 순간 3초 동안 강해져요. 자기 보호막 스킬을 쓰거나 보호막을 주는 아군 곁에서 싸우세요.",

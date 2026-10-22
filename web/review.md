@@ -2,7 +2,7 @@
 
 매일 갱신 때 자동으로 만든 목록이에요. 확인 후 rules.json 을 고치거나 이 이슈를 닫아 주세요.
 
-## ✨ 새 증강 (40)
+## ✨ 새 증강 (39)
 - **음속 장벽** (`Sound_Barrier`) — 숫자 없음: 규칙 필요
 - **구원** (`Salvation`) — 효과 자동 추출됨
 - **트럼펫 폭발** (`BrassBlast`) — 효과 자동 추출됨
@@ -41,7 +41,6 @@
 - **스래시** (`GoH_PentakillAug_E`) — 효과 자동 추출됨
 - **둠** (`GoH_PentakillAug_R`) — 효과 자동 추출됨
 - **비전 원칙** (`ArcaneAxiom`) — 효과 자동 추출됨
-- **GoH_PentakillAug_Generic** (`GoH_PentakillAug_Generic`) — 숫자 없음: 규칙 필요
 - **폭풍 쇄도 업그레이드** (`Upgrade_Stormsurge`) — 효과 자동 추출됨
 
 ## ✏️ 설명이 바뀐 증강 (숫자 말고 문장이 바뀜) (3)

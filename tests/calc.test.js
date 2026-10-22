@@ -694,3 +694,19 @@ test("어떤 증강이든 재밌게: 흡혈만 주는 증강(마도사의 주스
   const t = S.augmentTiers(d.augments, d.items, S.profile(champ("Zed"), d.tags), [], [], d.rules, champ("Zed"), { aram: true });
   assert.equal(t.EnchantingButterflies.tier, "D");
 });
+
+test("새 증강 정보가 비지 않는다: 아이콘 · 한글 이름 · 설명 속 못 푼 수치(?) (2026-10-22)", () => {
+  const fs = require("fs");
+  const path = require("path");
+  const icon = (id) => ["webp", "png"].some((e) => fs.existsSync(path.join(__dirname, "..", "web", "icons", "augment", `${id}.${e}`)));
+  const fresh = d.augments.filter((a) => a.firstSeen);
+  assert.ok(fresh.length >= 30);
+  for (const a of fresh) {
+    assert.ok(icon(a.id), `${a.name}: 아이콘 없음`);
+    assert.ok(!/^[A-Za-z_]+$/.test(a.name), `${a.id}: 이름이 영문 id`);
+    assert.equal(a.unresolved, 0, `${a.name}: 못 푼 수치 ${a.unresolved}`);
+  }
+  const salv = aug("Salvation").desc.replace(/<[^>]+>/g, "");
+  assert.match(salv, /체력이 50% 아래로/);
+  assert.ok(!d.augments.some((a) => a.id === "GoH_PentakillAug_Generic"), "이름 없는 자리 표시용 증강은 뺀다");
+});
