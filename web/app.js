@@ -308,7 +308,8 @@ let counterCache = { key: null, value: [] };
 function counterItems(avail, keep) {
   if (!enemyMoved()) return [];
   const d = state.data;
-  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts()]);
+  // 가중치도 키에 (계산이 state.weights 를 쓴다. 빠져 있어 게임 중 가중치를 바꿔도 '🛡️ 적 대응'이 옛 목록으로 남았다, 2026-10-23 점검)
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts(), state.weights]);
   if (counterCache.key === key) return counterCache.value;
   const base = atDefault(() => S.rankItems(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), state.chosen.length ? "augment" : "balanced")).filter(keep);
   const bi = new Map(base.map((r, i) => [r.item.id, i]));
@@ -1627,14 +1628,17 @@ function buyNow(item, gold, inventory) {
   const count = () => inventory.reduce((m, id) => ((m[id] = (m[id] || 0) + 1), m), {});
   const left = remainingCost(item.id, count());
   if (gold >= left) return { done: true, left };
-  // 부품 후보: 트리 안의 부품 중 아직 없는 것 (가진 부품을 반영한 실제 가격)
+  // 부품 후보: 트리 안의 부품 중 아직 모자란 것 (가진 부품을 반영한 실제 가격).
+  // 같은 부품이 두 번 들어가는 레시피(롱소드 2개 등 10종 넘게)는 하나만 가져도 빠져서 두 번째를 못 권했다 (2026-10-23 점검)
   const cands = [];
   const walk = (id) => { for (const c of partFrom(id)) { cands.push(c); walk(c); } };
   walk(item.id);
+  const need = cands.reduce((m, c) => ((m[c] = (m[c] || 0) + 1), m), {});
+  const have = count();
   let best = null;
   for (const c of new Set(cands)) {
-    if (inventory.includes(c)) continue;
-    const cost = remainingCost(c, count());
+    if ((have[c] || 0) >= need[c]) continue;
+    const cost = remainingCost(c, { ...count(), [c]: 0 });
     if (cost > 0 && cost <= gold && (!best || cost > best.cost)) best = { id: c, name: partOf(c).name, cost };
   }
   return { done: false, left, part: best };
@@ -1685,10 +1689,19 @@ function buyNowCurrent(gold) {
     walk(id);
     return out;
   };
+  // 트리 하나에 같은 부품이 몇 개 들어가는지 (가진 개수가 그보다 적으면 하나 더 살 수 있다)
+  const needOf = {};
+  for (const t of tops) {
+    const n = {};
+    const walkN = (x) => { for (const c of partFrom(x)) { n[c] = (n[c] || 0) + 1; walkN(c); } };
+    walkN(t);
+    for (const [c, k] of Object.entries(n)) needOf[c] = Math.max(needOf[c] || 0, k);
+  }
   const cands = new Map();
   const add = (id) => {
-    if (cands.has(id) || inv.includes(id) && !isItem(id) && !partFrom(id).length) return;
-    const cost = remainingCost(id, owned());
+    const ownN = inv.filter((x) => x === id).length;
+    if (cands.has(id) || ownN && !isItem(id) && ownN >= (needOf[id] || 1)) return;
+    const cost = remainingCost(id, { ...owned(), [id]: 0 });
     if (!(cost > 0) || cost > gold) return;
     const it = d.items.find((i) => i.id === id);
     const p = partOf(id) || {};
@@ -2050,6 +2063,10 @@ function applyLive(L) {
     resetAnvil();
     state.tierMode = "auto";
     clearOffers();
+    // 지난 판 마지막 다음 구매와 비교해 새 판 첫 갱신에 근거 없는 '🔁 바뀜'이 뜨지 않게 (2026-10-23 점검)
+    state.nextSnap = null;
+    state.nextChange = null;
+    state.buyUntil = 0;
   }
   const d = state.data;
   // 게임 내부 이름과 Data Dragon id 의 대소문자가 다른 챔피언이 있다 (FiddleSticks ↔ Fiddlesticks)
@@ -2138,7 +2155,9 @@ function applyLive(L) {
     $("#level").value = level;
     $("#level-val").textContent = level;
     if (!document.body.classList.contains("simple")) renderStats();
-    if (boxChanged || goldChanged) { renderBuyNow(); sendOverlay("box"); }
+    // '⚡ 지금 N레벨' 추천은 레벨에 따라 달라진다 → 레벨이 오르면 다시 (예전엔 골드가 다시 그려질 때까지 옛 레벨 기준으로 남았다, 2026-10-23 점검)
+    renderBuyNow();
+    sendOverlay("box");
     return;
   }
   if (champ && (!state.champ || state.champ.id !== champ.id)) {

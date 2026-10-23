@@ -727,3 +727,15 @@ test("새 증강 계산 보강: 폭풍 쇄도 업그레이드는 폭풍 쇄도�
   assert.equal(t.HandsOffTheTalent.tier, "D", "근접은 조건 없음");
   assert.equal(aug("HandsOffTheTalent").effects[0].uptime, 0.5);
 });
+
+test("늦게 더하는 주문력(리치 두뇌)도 주문력 % 증가를 받는다 · 순수주의자-마법사는 간지럼 괴물이 바꾼 공속도 가속으로 (2026-10-23 점검)", () => {
+  const lux = champ("Lux");
+  const ap = (ids) => St.computeStats(lux, 18, [], S.augStatsOf(ids.map(aug), d.rules, lux)).total.AP;
+  const mult = d.rules.augments.NoManaNoProblem.statsResolved.APmult;
+  assert.ok(mult > 0, "마나 없음, 상관없음: 주문력 % 증가");
+  const lich = ap(["LichBrain", "NoManaNoProblem"]) - ap(["NoManaNoProblem"]);
+  assert.ok(Math.abs(lich - 30 * (1 + mult)) < 0.01, `리치 두뇌 주문력 ${lich} (30 × ${1 + mult} 이어야)`);
+  const jinx = champ("Jinx");
+  const haste = (ids) => St.computeStats(jinx, 18, [item("무한의 대검")], S.augStatsOf(ids.map(aug), d.rules, jinx)).total.HASTE;
+  assert.ok(haste(["ARAM_Purist_Caster", "TickleMonster"]) > haste(["ARAM_Purist_Caster"]), "간지럼 괴물 공속도 가속으로 바뀐다");
+});

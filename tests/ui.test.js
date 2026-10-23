@@ -204,6 +204,10 @@ test("지금 골드로 살 것: 남은 금액·살 부품·완성 가능", async
   assert.ok(b2.done, "남은 금액보다 골드가 많으면 완성 가능");
   const b3 = p.w.buyNow(IE, 100, []);
   assert.equal(b3.part, null, "가장 싼 부품보다 골드가 적으면 없음");
+  // 같은 부품이 두 번 들어가는 레시피: 하나 가졌으면 두 번째를 권한다 (예전엔 '살 부품 없음', 2026-10-23 점검)
+  const WM = p.data.items.find((i) => i.id === "3083");  // 워모그의 갑옷 = 거인의 허리띠(900) ×2 + 수정 팔 보호구(800)
+  const b4 = p.w.buyNow(WM, 1000, ["1011"]);
+  assert.equal(b4.part && b4.part.id, "1011", "두 번째 거인의 허리띠 (예전엔 빠져서 수정 팔 보호구를 권했다)");
   // 게임 연동: 골드만 바뀌면 순위는 그대로, '지금 살 것' 줄만 갱신
   p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 9, items: ["1001"], gold: 500 });
   assert.match(p.text("#buy-now"), /지금 골드 500/);
