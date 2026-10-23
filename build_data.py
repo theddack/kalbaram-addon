@@ -745,7 +745,24 @@ def rule_effects(rules, aug_spells, out_augs, warn):
                 fx["needsAuto"] = True
             if spec.get("needsItem"):  # 그 아이템이 있어야 터지는 효과 (업그레이드 증강)
                 fx["needsItem"] = spec["needsItem"]
+            if spec.get("rangedScale") is not None:  # 원거리 챔피언은 값이 다른 효과 (해악의 숫자 3: 근접 6% · 원거리 3%, 위키)
+                fx["rangedScale"] = spec["rangedScale"]
             by_id[aid]["effects"].append(fx)
+
+
+def rule_drop_effects(rules, out_augs, warn):
+    """rules.json dropEffects: 설명에서 자동으로 뽑았지만 피해가 아닌 효과를 뺀다.
+    (튕기는 꿀벌: 퀘스트 보상 '공격력 +30'(ADPerMilestone)이 스킬 사용 후 물리 피해 30 으로 잡혔다, 2026-10-23 이슈 #42)"""
+    by_id = {a["id"]: a for a in out_augs}
+    for aid, r in rules["augments"].items():
+        names = r.get("dropEffects")
+        if not names or aid not in by_id:
+            continue
+        before = by_id[aid]["effects"]
+        by_id[aid]["effects"] = [e for e in before if e.get("name") not in names]
+        gone = {e.get("name") for e in before} - {e.get("name") for e in by_id[aid]["effects"]}
+        for n in set(names) - gone:
+            warn.append(f"{aid}: dropEffects '{n}' 에 해당하는 자동 효과가 없음")
 
 
 def rule_effect_cooldowns(rules, aug_spells, out_augs, warn):
@@ -1588,6 +1605,7 @@ def main():
             if n not in item_names:
                 print("  [규칙] 없는 아이템:", aid, n)
     rule_warn = resolve_rule_stats(rules, aug_spells)
+    rule_drop_effects(rules, out_augs, rule_warn)
     rule_effects(rules, aug_spells, out_augs, rule_warn)
     rule_effect_cooldowns(rules, aug_spells, out_augs, rule_warn)
     rule_effect_counts(rules, aug_spells, out_augs, rule_warn)

@@ -6,7 +6,7 @@
 - **음속 장벽** (`Sound_Barrier`) — 숫자 없음: 규칙 필요
 - **구원** (`Salvation`) — 효과 자동 추출됨
 - **트럼펫 폭발** (`BrassBlast`) — 효과 자동 추출됨
-- **모시핏 괴물** (`MoshMonster`) — 숫자 없음: 규칙 필요
+- **모시핏 괴물** (`MoshMonster`) — 효과 자동 추출됨
 - **고반동** (`Recoil`) — 효과 자동 추출됨
 - **죽음의 춤** (`Totentanz`) — 효과 자동 추출됨
 - **간지럼 괴물** (`TickleMonster`) — 효과 자동 추출됨
@@ -21,7 +21,7 @@
 - **붐 앤 베이스** (`TheBoomAndTheBass`) — 효과 자동 추출됨
 - **전부 다 무너뜨려** (`TakeemDownDownDown`) — 효과 자동 추출됨
 - **장갑 충격** (`ArmoredImpact`) — 효과 자동 추출됨
-- **과일화** (`Fruitify`) — 숫자 없음: 규칙 필요
+- **과일화** (`Fruitify`) — 효과 자동 추출됨
 - **보석 팔찌** (`JeweledBracelet`) — 효과 자동 추출됨
 - **떴다, 징크스** (`GetJinxed`) — 효과 자동 추출됨
 - **죽지 않아** (`StillHere`) — 효과 자동 추출됨
@@ -29,7 +29,7 @@
 - **왕관의 무게** (`HeavyIsTheCrown`) — 효과 자동 추출됨
 - **푸른 방어막** (`BlueBarrier`) — 효과 자동 추출됨
 - **핏빛 코발트** (`CrimsonCobalt`) — 효과 자동 추출됨
-- **운명의 무기** (`WeaponOfDestiny`) — 숫자 없음: 규칙 필요
+- **운명의 무기** (`WeaponOfDestiny`) — 효과 자동 추출됨
 - **영혼의 흐름** (`FlowOfSpirit`) — 효과 자동 추출됨
 - **단체 포옹** (`GroupHug`) — 숫자 없음: 규칙 필요
 - **황홀한 나비** (`EnchantingButterflies`) — 효과 자동 추출됨
