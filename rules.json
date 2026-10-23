@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
+  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, dropEffects=[설명에서 잘못 뽑힌 자동 효과 이름](능력치를 피해로 읽은 것), effects[].rangedScale=원거리 챔피언 배수,effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -2107,6 +2107,95 @@
         "calc": "폭풍 쇄도 질풍이 범위 폭발 + 500골드 (설명). 폭풍 쇄도를 같이 사야 효과가 난다. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
       }
     },
+    "MoshMonster": {
+      "stats": {
+        "HP": {"calc18": "HPIncreasePerTakedown", "times": 10}
+      },
+      "basis": {
+        "calc": "처치 관여마다 궁극기 추가 체력이 영구로 15~30 늘어남 (게임 데이터 HPIncreasePerTakedown, 18레벨 30) × 10번 = 300. 궁극기 사용 중 처치 관여는 3번으로 셈 (CountersPerUltKill). 26.21 새 증강 (이슈 #42)",
+        "assume": [
+          {"what": "게임 중반까지 처치 관여 10번 (궁극기 중 처치 관여 3배 포함)", "why": "칼바람은 한타가 잦아 처치 관여가 빨리 쌓여요. 실게임 기록으로 맞출 값이에요", "noData": true},
+          {"what": "궁극기를 쓰는 동안 받는 추가 체력 300~750·주변 둔화 50%는 계산에 없음", "why": "궁극기가 켜져 있는 시간이 챔피언마다 달라서 정할 수 없어요 (조금 낮게 잡힘)"}
+        ]
+      }
+    },
+    "Fruitify": {
+      "effects": [
+        {
+          "calc": "HealingPerFruit",
+          "pctOf": "HP",
+          "kind": "heal",
+          "trigger": {"type": "once"},
+          "from": "처치 관여한 적이 떨군 과일 1개를 먹음 (한타 1번)"
+        }
+      ],
+      "basis": {
+        "calc": "처치 관여한 적이 과일 3~6개(FruitsPerTakedown)를 떨구고, 하나 먹을 때마다 최대 체력 6%(HealingPerFruit)·최대 마나 6% 회복 (설명). 26.21 새 증강 (이슈 #42)",
+        "assume": [
+          {"what": "한타마다 과일 1개를 내가 먹음", "why": "과일은 아군도 먹고 10초 뒤 사라져요. 나머지는 아군 몫으로 봤어요 (조금 낮게 잡힘)", "noData": true},
+          {"what": "마나 회복 6%·기력·분노 10은 계산에 없음", "why": "회복 지표에 마나가 없어서요"}
+        ]
+      }
+    },
+    "WeaponOfDestiny": {
+      "tags": {"AD": 0.4, "AP": 0.4, "HP": 0.2},
+      "generic": true,
+      "stats": {
+        "goldValue": {"dv": "GoldValue", "times": 10}
+      },
+      "basis": {
+        "calc": "처치 관여(피해 준 뒤 3초 안)마다 첫 전설 아이템 능력치의 골드 가치가 200 늘어남 (게임 데이터 GoldValue · 위키 Module:MayhemAugmentData) × 10번 = 2000골드어치. 아이템이 가진 능력치에 나눠 붙어서 골드 가치로 셈. 26.21 새 증강 (이슈 #42)",
+        "assume": [
+          {"what": "게임 중반까지 처치 관여 10번", "why": "모시핏 괴물과 같은 기준이에요. 실게임 기록으로 맞출 값이에요", "noData": true},
+          {"what": "늘어난 골드 가치를 주 공격 능력치 50 · 체력 30 · 방어 20 비율로 셈", "why": "어느 아이템이 운명의 무기가 될지 미리 알 수 없어서 즉시 골드 증강과 같은 방식으로 셌어요"}
+        ]
+      }
+    },
+    "BouncingBees": {
+      "dropEffects": ["ADPerMilestone"],
+      "tags": {"AD": 0.6, "AS": 0.4, "ONHIT": 0.4},
+      "stats": {
+        "AD": {"dv": "ADPerMilestone", "times": 1}
+      },
+      "basis": {
+        "calc": "퀘스트 단계마다 추가 공격력 30 (게임 데이터 ADPerMilestone) — 1단계(적 챔피언에게 10번 튕김)까지 = 30. 위키: 10 · 40 · 163번 튕기면 30 · 60 · 90. 26.21 새 증강 (이슈 #42)",
+        "assume": [
+          {"what": "게임 중반에 퀘스트 1단계까지", "why": "2단계는 40번, 3단계는 163번 튕겨야 해서 보통 판에선 1단계가 현실적이에요", "noData": true},
+          {"what": "스킬 사용 후 기본 공격이 다른 적에게 튕기는 피해(공격 피해의 50~100%)는 계산에 없음", "why": "주 대상 한 명 기준 계산이라 다른 대상 피해는 넣지 않아요 (불경한 히드라 쪼개기와 다름)"}
+        ]
+      }
+    },
+    "ThirdTimesTheHarm": {
+      "effects": [
+        {
+          "calc": "Calc_Damage",
+          "pctOf": "TGT_MAXHP",
+          "kind": "true",
+          "rangedScale": 0.5,
+          "trigger": {"type": "attacks", "n": 3},
+          "from": "같은 적에게 기본 공격 3번마다 (4초 안)"
+        }
+      ],
+      "basis": {
+        "calc": "기본 공격 3번마다 대상 최대 체력 6% 고정 피해 (게임 데이터 Calc_Damage) + 중첩당 10. 원거리 챔피언은 3% (위키 Module:MayhemAugmentData). 예전엔 중첩당 10만 세었다. 26.21 새 증강 (이슈 #42)",
+        "assume": [
+          {"what": "원거리는 근접 값의 절반 (3%)", "why": "게임 데이터엔 6% 하나뿐이고 원거리 값은 위키 설명에만 있어요"},
+          {"what": "중첩 피해는 1중첩(10)으로 셈", "why": "중첩이 판 내내 쌓이지만 몇 개일지 정할 수 없어 낮게 잡았어요", "noData": true}
+        ]
+      }
+    },
+    "BEES": {
+      "effectTrigger": {"type": "time", "sec": 10, "from": "스킬 적중마다 벌집 (재사용 대기시간 15~10초, 18레벨 10초)"},
+      "basis": {
+        "calc": "스킬을 맞히면 벌집이 터져 2초 동안 75~200 + 추가 공격력 150% + 주문력 70% 마법 피해 (설명), 재사용 대기시간 15~10초 (게임 데이터 Calc_Cooldown, 18레벨 값 10초). 예전엔 한타에 한 번만 셌다. 26.21 새 증강 (이슈 #42)",
+        "assume": [
+          {"what": "적중 효과 40%는 계산에 없음", "why": "벌이 대상마다 한 번 적중 효과를 40%로 넣는데, 아이템 적중 효과 합을 따로 계산하지 않아요 (조금 낮게 잡힘)"}
+        ]
+      }
+    },
+    "DoubleTime": {
+      "effectCooldown": {"dv": "ManaGainCD", "why": "대상마다 재사용 대기시간 4초 (설명 · 게임 데이터 ManaGainCD). 없으면 스킬마다 터지는 것으로 셌다"}
+    },
     "EnchantingButterflies": {
       "requires": "allysupport",
       "note": "아군을 회복·보호막할 때 나비가 모인다 (설명). 아군 지원 스킬이 없으면 효과 없음"
@@ -2899,7 +2988,8 @@
   "_설명칸": "augments.*.descFill: 설명의 자리표시자가 해시 계산식을 가리켜 못 풀 때(?) 넣을 게임 데이터 값 이름. 숫자를 직접 적지 않아 패치를 따라간다",
   "_쓰는법": "tips: 자동 문장(playTip)이 비는 증강에 사람이 쓴 쓰는 법 한 줄 (게임 설명 수치 그대로, 어떻게 쓰면 재밌는지)",
   "tips": {
-    "MightyShield": "보호막을 받는 순간 3초 동안 강해져요. 자기 보호막 스킬을 쓰거나 보호막을 주는 아군 곁에서 싸우세요.",
+    "Fruitify": "처치에 관여하면 적이 과일 3~6개로 터져요. 하나 먹을 때마다 최대 체력·마나 6% 회복이니 한타 뒤 과일을 주워 먹고 바로 다음 싸움에 들어가세요.",
+    "MightyShield":"보호막을 받는 순간 3초 동안 강해져요. 자기 보호막 스킬을 쓰거나 보호막을 주는 아군 곁에서 싸우세요.",
     "ARAM_Snowday": "눈덩이를 훨씬 자주, 두 배로 세게 던져요. 눈덩이로 먼저 들어가 싸움을 여세요.",
     "ARAM_StackosaurusRex": "영구 중첩을 쌓는 스킬이 있으면 두 배로 쌓여요. 중첩 스킬을 틈날 때마다 쓰세요.",
     "LichBrain": "체력을 올릴수록 주문력도 올라요. 체력·주문력 아이템을 섞어 단단한 마법사로 가 보세요.",

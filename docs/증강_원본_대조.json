@@ -1,7 +1,7 @@
 {
  "version": "16.21.8298620+branch.releases-16-21.content.release",
  "dataVersion": "16.21.8298620+branch.releases-16-21.content.release",
- "builtAt": "2026-10-22 14:49",
+ "builtAt": "2026-10-23 13:01",
  "augments": 239,
  "disabled": [
   "인내심",
@@ -7872,7 +7872,7 @@
    "value": 30,
    "dv": "ADPerMilestone",
    "kind": "수치",
-   "used": "자동 추출"
+   "used": "이름 참조"
   },
   {
    "id": "BouncingBees",
@@ -7912,7 +7912,7 @@
    "value": 4,
    "dv": "ManaGainCD",
    "kind": "수치",
-   "used": null
+   "used": "이름 참조"
   },
   {
    "id": "ThirdTimesTheHarm",
@@ -8416,7 +8416,7 @@
    "value": 200,
    "dv": "GoldValue",
    "kind": "수치",
-   "used": null
+   "used": "배수 가정"
   },
   {
    "id": "WeaponOfDestiny",
