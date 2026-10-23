@@ -183,9 +183,11 @@ class Calc:
             else:
                 # 계수가 레벨에 따라 변하면 18레벨 값을 쓴다 (빌드 비교는 풀템 기준이라)
                 sub = self.part(p.get("mSubpart"), rank, depth + 1)
+                # 계수 단위는 다른 두 경로와 같게 맞춘다 (mStat 23 = 100배, 빠지면 계수가 100배 작게 나왔다)
+                unit = STAT_SCALE.get(p.get("mStat", 0), 1)
                 if sub is not None and (isinstance(sub, Node) or sub.ratios):  # 계수가 다른 능력치에 따라 변함 → 곱셈 식
-                    return Node("*", [Expr(ratios={key: 1}), sub])
-                coef = None if sub is None else sub.base + (sub.lvl[1] if sub.lvl else 0)
+                    return Node("*", [Expr(ratios={key: unit}), sub])
+                coef = None if sub is None else (sub.base + (sub.lvl[1] if sub.lvl else 0)) * unit
             return None if coef is None else Expr(ratios={key: coef})
         if t == "AbilityResourceByCoefficientCalculationPart":  # 마나 계수 (라이즈 등)
             prefix = FORMULA_PREFIX.get(p.get("mStatFormula", 0), "")
@@ -220,14 +222,21 @@ class Calc:
                 if r is None:
                     return None
                 total = total.add(r)
-            if t == "ClampSubPartsCalculationPart" and isinstance(total, Expr) and total.is_number():  # 숫자일 때만 아래·위 한계 적용
+            if t == "ClampSubPartsCalculationPart":
                 lo, hi = p.get("mFloor"), p.get("mCeiling")
-                v = total.base
-                if lo is not None:
-                    v = max(v, lo)
-                if hi is not None:
-                    v = min(v, hi)
-                total = Expr(v)
+
+                def clamp(v):
+                    v = max(v, lo) if lo is not None else v
+                    return min(v, hi) if hi is not None else v
+                if lo is None and hi is None:
+                    return total
+                if isinstance(total, Expr) and not total.ratios:  # 숫자 · 레벨 비례(1·18레벨 양 끝)는 한계를 그대로 적용
+                    if not total.lvl:
+                        return Expr(clamp(total.base))
+                    return Expr(lvl=(clamp(total.base + total.lvl[0]), clamp(total.base + total.lvl[1])))
+                # 능력치 계수가 섞이면 한계를 식으로 못 담아 한계 없이 둔다. 2026-10-23 점검: 원본 전체 9곳(카이사 E 이동 속도·
+                # 시전 시간 등 표시용)뿐이고 피해·증강 계산에는 없다. 해석 실패(None)로 바꾸면 카이사 E 설명이 '?'가 됐다
+                return total
             return total
         if t == "ProductOfSubPartsCalculationPart":
             a = self.part(p.get("mPart1"), rank, depth + 1)

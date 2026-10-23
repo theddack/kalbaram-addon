@@ -10,6 +10,10 @@ on:
     tags: ["v*"]
   workflow_dispatch:
 
+# 빌드 작업은 읽기만 (릴리스 작업만 따로 쓰기 권한)
+permissions:
+  contents: read
+
 env:
   PYTHONIOENCODING: utf-8  # 한글 파일 이름 출력 (윈도우 콘솔 기본 인코딩은 한글을 못 씀)
 
@@ -22,6 +26,8 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -31,7 +37,7 @@ jobs:
         run: python -m pip install -r requirements-build.txt
 
       - name: 모듈 확인
-        run: python -c "import desktop, build_data, champion_data, lol_calc, lcu, overlay, augocr, hudicons, gamelog, webview, tkinter, numpy, PIL; import winrt.windows.media.ocr; print('ok')"
+        run: python -c "import desktop, build_data, champion_data, lol_calc, lcu, overlay, augocr, hudicons, gamelog, webview, tkinter, numpy, PIL, xxhash; import winrt.windows.media.ocr; print('ok')"
 
       - name: 빌드
         run: >
@@ -39,7 +45,7 @@ jobs:
           --add-data "web;web" --add-data "rules.json;."
           --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc
           --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr
-          --collect-all winrt --hidden-import hudicons --hidden-import gamelog
+          --collect-all winrt --hidden-import hudicons --hidden-import gamelog --hidden-import xxhash
           desktop.py
 
       - name: 결과 확인·압축
@@ -63,6 +69,8 @@ jobs:
     runs-on: macos-14
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
         with:
@@ -79,7 +87,7 @@ jobs:
           --osx-bundle-identifier io.github.theddack.aramaugment
           --add-data "web:web" --add-data "rules.json:."
           --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc
-          --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr --hidden-import hudicons --hidden-import gamelog --exclude-module PIL
+          --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr --hidden-import hudicons --hidden-import gamelog --hidden-import xxhash --exclude-module PIL
           desktop.py
 
       - name: 이름·서명
@@ -115,10 +123,14 @@ jobs:
       attestations: write
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: 버전 확인 (태그 = desktop.py APP_VERSION, 새 버전 알림이 맞게 뜨도록)
+        env:
+          TAG: ${{ github.ref_name }}  # 셸 명령에 바로 넣지 않고 환경 변수로
         run: |
           v=$(python3 -c "import re;print(re.search(r'APP_VERSION = \"([^\"]+)\"', open('desktop.py', encoding='utf-8').read()).group(1))")
-          test "v$v" = "${{ github.ref_name }}" || { echo "태그 ${{ github.ref_name }} ≠ APP_VERSION $v"; exit 1; }
+          test "v$v" = "$TAG" || { echo "태그 $TAG ≠ APP_VERSION $v"; exit 1; }
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333  # v8.0.2
         with:
           path: out
@@ -133,7 +145,9 @@ jobs:
             out/KalbaramAddon-Windows.zip
             out/KalbaramAddon-Mac.zip
       - name: 릴리스 설명 (업데이트내역.md 의 그 버전 + 체크섬)
-        run: python3 tools/changelog.py release "${{ github.ref_name }}" out/SHA256SUMS.txt > notes.md
+        env:
+          TAG: ${{ github.ref_name }}
+        run: python3 tools/changelog.py release "$TAG" out/SHA256SUMS.txt > notes.md
       - uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64  # v3.0.3
         with:
           name: 칼바람 증강 Addon ${{ github.ref_name }}

@@ -234,10 +234,19 @@ def check_augment(spell, desc_text, lines):
             # '이전' 값을 가진 DataValue 가 정확히 하나면 그 자리
             hits = [dv for dv in dvs if dv.get("values") and all(close(v * scale, nb[0]) for v in dv["values"])]
             if len(hits) == 1:
-                changed = changed or {**spell, "DataValues": [dict(d) for d in dvs]}
-                for d in changed["DataValues"]:
+                if changed is None:
+                    changed = {**spell, "DataValues": [dict(d) for d in dvs]}
+                    ov = spell.get("DataValuesModeOverride")
+                    if ov:  # 모드별 덮어쓰기도 복사 (원본 spell 을 고치지 않게)
+                        changed["DataValuesModeOverride"] = {m: {**o, "SpellDataValues": [dict(d) for d in o.get("SpellDataValues") or []]}
+                                                             for m, o in ov.items()}
+                # 계산기(lol_calc.Calc)는 모드별 덮어쓰기(Kiwi·ARAM) 값을 먼저 쓴다 → 같은 이름이 있으면 거기도 바꾼다
+                # (기본 값만 바꾸면 'applied'로 표시돼도 계산은 옛 값 그대로였다, 2026-10-23 점검)
+                targets = changed["DataValues"] + [d for o in (changed.get("DataValuesModeOverride") or {}).values()
+                                                   for d in o.get("SpellDataValues") or []]
+                for d in targets:
                     if d["name"] == hits[0]["name"]:
-                        d["values"] = [na[0] / scale] * len(d["values"])
+                        d["values"] = [na[0] / scale] * len(d.get("values") or [0])
                 res.update(status="applied", note=f"{hits[0]['name']}: {nb[0]:g} → {na[0]:g}")
         out.append(res)
     return out, changed
