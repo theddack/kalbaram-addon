@@ -20,6 +20,9 @@ from pathlib import Path
 
 KEEP = 15  # 최근 몇 판 기록을 남길지 (실게임 확인 기간: 지인들과 여러 판 한 뒤 한꺼번에 보내도 남게)
 MAX_IMAGES = 32  # 한 판 그림 수 한도 (20개였을 땐 2026-10-15 케일 판에서 마지막 선택 화면·증강 칸 그림이 잘렸다)
+# events.json 은 이 간격(초)마다만 다시 쓴다. 이벤트마다 전체를 다시 쓰면 판 후반(수백~수천 건)엔 쓸 때마다 무거워지고,
+# 같은 잠금을 기다리는 표시 창이 멈칫했다 (2026-10-23 점검). 시작·끝은 바로 쓴다
+FLUSH_EVERY = 2.0
 
 
 class GameRecorder:
@@ -37,6 +40,7 @@ class GameRecorder:
         self._t0 = 0.0
         self._lock = threading.Lock()
         self._last = {}  # 같은 내용이 되풀이되면 남기지 않으려고 (종류별 마지막 값)
+        self._flushed = 0.0
 
     @property
     def active(self):
@@ -47,6 +51,9 @@ class GameRecorder:
         with self._lock:
             self._finish_locked()
             self._eog = None
+            # 새 판이 시작되면 지난 판 폴더와는 더 맞춰 보지 않는다 (지난 판 경기 결과가 안 온 채 다음 판 결과가 오면
+            # 엉뚱한 폴더에 'eog'·'다름'이 붙었다, 2026-10-23 점검)
+            self.last_dir = None
             if not self.enabled:
                 return
             safe = re.sub(r"[^A-Za-z0-9_-]", "", str(champion or "unknown"))[:30] or "unknown"
@@ -58,7 +65,7 @@ class GameRecorder:
                 return
             self.events, self.images, self._last = [], 0, {}
             self._t0 = time.time()
-            self._add("start", {"champion": champion, **(info or {})})
+            self._add("start", {"champion": champion, **(info or {})}, force=True)
             self._prune()
 
     def event(self, kind, data=None, dedupe=False):
@@ -75,18 +82,18 @@ class GameRecorder:
 
     def image(self, name, bgra, w, h):
         """화면 조각 저장 (BGRA 바이트). Pillow 가 없거나 한도를 넘으면 건너뛴다. 저장한 파일 이름을 돌려준다"""
-        with self._lock:
+        with self._lock:  # 자리(번호)만 잠그고 PNG 저장은 잠금 밖에서 (저장하는 동안 기록·표시 창이 기다리지 않게)
             if not self.dir or self.images >= self.max_images or w <= 0 or h <= 0:
                 return None
-            try:
-                from PIL import Image
-                im = Image.frombuffer("RGBA", (w, h), bgra, "raw", "BGRA", 0, 1).convert("RGB")
-                fname = f"{name}_{self.images + 1:02d}.png"
-                im.save(self.dir / fname, optimize=True)
-            except Exception:
-                return None
             self.images += 1
-            return fname
+            folder, fname = self.dir, f"{name}_{self.images:02d}.png"
+        try:
+            from PIL import Image
+            im = Image.frombuffer("RGBA", (w, h), bgra, "raw", "BGRA", 0, 1).convert("RGB")
+            im.save(folder / fname, optimize=True)
+        except Exception:
+            return None
+        return fname
 
     def finish(self):
         """판을 끝낸다. 경기 결과가 먼저 와 있었으면 맞춰 본 결과(tidy)를 돌려준다"""
@@ -109,11 +116,13 @@ class GameRecorder:
         return tidy(d, eog_names)
 
     # ---- 안쪽
-    def _add(self, kind, data):
+    def _add(self, kind, data, force=False):
         self.events.append({"t": round(time.time() - self._t0, 1), "kind": kind, **data})
-        self._flush()
+        if force or time.time() - self._flushed >= FLUSH_EVERY:
+            self._flush()
 
     def _flush(self):
+        self._flushed = time.time()
         try:
             tmp = self.dir / "events.json.tmp"
             tmp.write_text(json.dumps(self.events, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
@@ -125,7 +134,7 @@ class GameRecorder:
         """끝난 게임은 zip 하나로도 묶는다 (보내기 쉽게)"""
         if not self.dir:
             return
-        self._add("end", {})
+        self._add("end", {}, force=True)
         try:
             with zipfile.ZipFile(str(self.dir) + ".zip", "w", zipfile.ZIP_DEFLATED) as z:
                 for p in sorted(self.dir.iterdir()):

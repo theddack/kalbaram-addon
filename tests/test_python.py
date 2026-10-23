@@ -13,6 +13,7 @@ import tempfile
 import time
 import types
 import unittest
+from unittest import mock
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -73,6 +74,16 @@ class PatchCheck(unittest.TestCase):
         self.assertEqual(res[0]["status"], "applied")
         self.assertEqual(next(d for d in patched["DataValues"] if d["name"] == "Cooldown")["values"], [5.0] * 3)
 
+    def test_augment_mode_override_also_patched(self):
+        # 계산기는 모드별 덮어쓰기 값을 먼저 쓴다 → 거기도 바꿔야 'applied' 가 실제 계산에 들어간다 (2026-10-23 점검)
+        from lol_calc import Calc
+        spell = {"DataValues": [{"name": "Cooldown", "values": [15.0] * 3}],
+                 "DataValuesModeOverride": {"Kiwi": {"SpellDataValues": [{"name": "Cooldown", "values": [15.0] * 3}]}}}
+        res, patched = check_augment(spell, "이 효과는 15초의 재사용 대기시간이 적용됩니다.", ["재사용 대기시간: 15초 ⇒ 5초"])
+        self.assertEqual(res[0]["status"], "applied")
+        self.assertEqual(Calc(patched).value("Cooldown", 1), 5.0)
+        self.assertEqual(spell["DataValuesModeOverride"]["Kiwi"]["SpellDataValues"][0]["values"], [15.0] * 3, "원본은 그대로")
+
     def test_presence_notation(self):
         self.assertEqual(presence({30.0, 90.0, 25.0, 15.0}, "75~225 + 0.6", "90~270 + 0.75 + 0.45", "3초 동안 부착 피해"), "ok")
         self.assertEqual(presence(set(), "", "30/40/50", "", "30~50(레벨 비례)"), "ok")
@@ -90,6 +101,16 @@ class RstStrings(unittest.TestCase):
         self.assertEqual(s.get("Kiwi_Augment_Sound_Barrier_Name"), "음속 장벽", "하위 38비트 (40비트면 {67215d72a6} 로 틀림)")
         self.assertEqual(s.get("old_key"), "예전 키", "예전처럼 이름 키도")
         self.assertEqual(s.get("없는 키", ""), "")
+        self.assertEqual(s.found, {"kiwi_augment_lichbrain_name": "리치 두뇌", "kiwi_augment_sound_barrier_name": "음속 장벽"},
+                         "해시로 찾은 것만 남긴다 (aug_audit.js 가 읽는다)")
+
+    def test_no_xxhash_fails_loudly(self):
+        # 없으면 새 증강 이름·설명이 비는데도 '완료'로 끝났다 (2026-10-23 맥 로컬 빌드)
+        s = B.RstStrings({"old_key": "예전 키"})
+        with mock.patch.dict(sys.modules, {"xxhash": None}):
+            self.assertEqual(s.get("old_key"), "예전 키", "이름 키는 그대로")
+            with self.assertRaises(RuntimeError):
+                s.get("Kiwi_Augment_BEES_Name")
 
 
 class WikiFallback(unittest.TestCase):
@@ -226,6 +247,19 @@ class DataSanity(unittest.TestCase):
         self.assertEqual(data_sanity.problems(old, {**old, "augments": [{}] * 210}), [], "패치로 몇 개 빠지는 건 괜찮다")
         self.assertTrue(data_sanity.problems(old, {**old, "augments": [{}] * 100}), "절반으로 줄면 막는다")
         self.assertTrue(data_sanity.problems(old, {**old, "items": []}))
+
+    def test_emptied_fields_block_refresh(self):
+        # 개수는 그대로인데 칸이 비면(문자열 해시를 못 찾아 이름이 영문 id) 막는다 (2026-10-23 점검)
+        sys.path.insert(0, str(ROOT / "tools"))
+        import data_sanity
+        aug = {"name": "벌이다!!!", "desc": "설명", "icon": True}
+        old = {"champions": [{"id": "A", "name": "a", "damageType": "magic"}] * 10, "augments": [aug] * 100, "items": [{}] * 10}
+        self.assertEqual(data_sanity.problems(old, old), [])
+        broken = {**old, "augments": [aug] * 80 + [{"name": "BEES", "desc": "", "icon": True}] * 20}
+        self.assertEqual(data_sanity.problems(old, broken), ["augments 한글 이름 100% → 80%", "augments 설명 100% → 80%"])
+        self.assertEqual(data_sanity.problems(old, {**old, "augments": [aug] * 97 + [{"name": "BEES", "desc": "x", "icon": True}] * 3}), [],
+                         "새 증강 몇 개는 괜찮다")
+        self.assertTrue(data_sanity.problems(old, {**old, "champions": [{"id": "A", "name": "a"}] * 10}), "피해 유형이 전부 빔")
 
 
 class LockfileCheck(unittest.TestCase):
@@ -384,6 +418,10 @@ class FakeCanvas:
         self.items, self.n = {}, 0
 
     def delete(self, *a):
+        if a and all(isinstance(i, int) for i in a):  # 하나만 지우기 (Tk 와 같게)
+            for i in a:
+                self.items.pop(i, None)
+            return
         self.items.clear()
 
     def create_text(self, x, y, text="", **kw):
@@ -639,6 +677,20 @@ class CalcNames(unittest.TestCase):
         self.assertEqual(c.calc("SpinDamageAmp_Ult", 1)[0].base, 0.5)
         self.assertEqual(c.value("HiddenValue", 1), 7)
 
+    def test_clamp_and_subpart_unit(self):
+        """한계(clamp)는 숫자·레벨 비례에 적용한다. StatBySubPart 도 mStat 23 단위 100배 (2026-10-23 점검)"""
+        from lol_calc import Calc
+        num = lambda n: {"__type": "NumberCalculationPart", "mNumber": n}
+        lvl = {"__type": "ByCharLevelInterpolationCalculationPart", "mStartValue": 0.1, "mEndValue": 0.9}
+        ap = {"__type": "StatByCoefficientCalculationPart", "mStat": 2, "mCoefficient": 0.01}
+        clamp = lambda parts: {"mFormulaParts": [{"__type": "ClampSubPartsCalculationPart", "mFloor": 0.2, "mCeiling": 0.5, "mSubparts": parts}]}
+        sub = {"mFormulaParts": [{"__type": "StatBySubPartCalculationPart", "mStat": 23, "mSubpart": num(0.05)}]}
+        c = Calc({"mSpellCalculations": {"N": clamp([num(0.9)]), "L": clamp([lvl]), "R": clamp([num(0.1), ap]), "S": sub}})
+        self.assertEqual(c.calc("N", 1)[0].base, 0.5)
+        self.assertEqual(c.calc("L", 1)[0].lvl, (0.2, 0.5))
+        self.assertEqual(c.calc("R", 1)[0].ratios, {"AD": 0.01}, "계수가 섞이면 한계 없이 (원본 9곳 모두 표시용)")
+        self.assertAlmostEqual(c.calc("S", 1)[0].ratios["MPENP"], 5.0)
+
     def test_augment_stat_codes(self):
         """11 스킬 가속 · 22/23 마법 관통력 고정·% (1%당 → 0~1 비율이라 100배) · 34 회복·보호막 효과 (위키 증강 설명과 대조)"""
         from lol_calc import Calc, fmt_expr_ranks
@@ -675,6 +727,7 @@ class Measure(unittest.TestCase):
     def test_watcher_saves_once_after_game(self):
         d = pathlib.Path(tempfile.mkdtemp())
         w = desktop.LcuWatcher(d)
+        w.record = True  # 기록 설정을 읽기 전(속성 없음)엔 저장하지 않는다 (2026-10-23)
 
         class Fake:
             calls = 0
@@ -775,6 +828,16 @@ class AugOcr(unittest.TestCase):
         self.assertEqual(self.o.slots(two, W), [None, "강타자", "정신 변환"])
         # 이름 줄 밖(위쪽 글자)은 무시
         self.assertEqual(self.o.find_offers([(t, x, 50, w, h) for t, x, _, w, h in words], W, H, self.m), [])
+
+    def test_two_cards_on_super_wide_screen(self):
+        # 32:9 에선 카드가 가운데(약 0.41·0.5·0.59)에 모여 3등분이면 두 장이 같은 칸이 됐다 (2026-10-23 점검)
+        W = 3840
+        L, M, R = ("가", 1574, 0), ("나", 1920, 0), ("다", 2266, 0)
+        self.assertEqual(self.o.slots([L, R], W), ["가", None, "다"])
+        self.assertEqual(self.o.slots([L, M], W), ["가", "나", None])
+        self.assertEqual(self.o.slots([M, R], W), [None, "나", "다"])
+        self.assertEqual(self.o.slots([R], W), [None, None, "다"])
+        self.assertEqual(self.o.slots([M], W), [None, "나", None])
 
     def test_card_pos_for_overlay(self):
         import overlay
@@ -1291,6 +1354,17 @@ class HudIcons(unittest.TestCase):
         self.assertIsNone(r._fix, "맞게 짐작한 것을 고치지 않는다")
         self.assertIsNone(r._recover, "새 칸에 짐작한 증강 그림이 있으면 확인 끝")
         self.assertEqual(r.hud_ids, ["V", "FB", "OK"], "정해진 칸은 그대로, 새 칸은 선택지에 떴던 이름으로")
+
+    def test_confirmed_slot_kept_when_hidden(self):
+        # 정한 칸이 이번 회차에 안 보이거나(상점·죽음 화면) 자리가 조금 흔들려도 고른 증강에서 빠지지 않는다 (2026-10-23 점검)
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r._id_names = {"V": "취약", "FB": "시작부터 끝까지"}
+        r.offered = {"취약", "시작부터 끝까지"}
+        r._apply_hud([("V",), ("FB",)], {("V",): 0.95, ("FB",): 0.95}, [], [], {("V",): (32.0, 5.0), ("FB",): (32.0, 6.0)})
+        self.assertEqual(r.hud_ids, ["V", "FB"])
+        r._apply_hud([("V",), ("FB",)], {("V",): 0.95}, [], [], {("V",): (32.1, 4.6)})  # FB 안 보임 · V 는 반올림 경계를 넘게 흔들림
+        self.assertEqual(r.hud_ids, ["V", "FB"])
 
     def test_shop_window_image_when_found(self):
         # 상점 창 안 아이템에 표시하려면 실제 상점 모습이 필요하다 → 알아봤을 때 가운데 넓게 한 장 (한 판 최대 SHOP_IMGS, 간격 SHOP_IMG_GAP)
@@ -2338,6 +2412,18 @@ class BoxNoObstruct(unittest.TestCase):
         self.assertEqual(texts[-1][2], "…", "넘는 줄은 … 로")
         rect = [v for v in c.items.values() if len(v) == 4][0]
         self.assertLessEqual(rect[3], 1080 * overlay.BOX_MAX_BOTTOM + 30)
+
+    def test_remembered_height_stays_above_limit(self):
+        # 살아서 상점을 열 때 기억한 큰 상자 높이를, 죽은 채 상점을 열 때(0.30 에서 시작) 그대로 쓰면 배경이 채팅까지 내려왔다 (2026-10-23 점검)
+        import overlay
+        hud = ["다음 구매: 가 > 나 > 다"] + [f"조언 {i} → 무엇" for i in range(11)]
+        c = FakeCanvas()
+        overlay.draw(c, {"hud": hud, "shop": {"left": 0.2}, "boxDetail": "detail"}, 1920, 1080)
+        c2 = FakeCanvas()
+        c2.hud_tall = c.hud_tall
+        overlay.draw(c2, {"hud": hud, "shop": {"left": 0.2}, "dead": True, "boxDetail": "detail"}, 1920, 1080)
+        rect = [v for v in c2.items.values() if len(v) == 4][0]
+        self.assertLessEqual(rect[3], 1080 * overlay.BOX_MAX_BOTTOM + 8, "배경도 아래 끝 한도 안에")
 
     def test_dead_box_below_death_recap(self):
         import overlay

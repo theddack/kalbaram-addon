@@ -184,10 +184,16 @@ def find_icons(tpl, rgb, size_px, max_cands=5, min_score=MIN_SCORE, unique=True)
     return hits
 
 
+BOARD_CANDS = 30
+
+
 class HudReader:
     """증강 칸 읽기. scan(rgb_of_game_window) 을 몇 초마다 부르면 picked(고른 증강 id 목록, 칸 순서)를 갱신한다"""
 
     CONFIRM = 2  # 연속으로 이만큼 보여야 고른 것으로
+    # 정한 크기로 이만큼 읽어도 확인된 증강이 하나도 없으면 크기가 틀린 것으로 보고 다시 찾는다.
+    # 첫 회차에 능력치 아이콘 같은 것이 우연히 맞으면 그 판 내내(다음 판 hint 까지) 엇나간 크기로만 찾았다 (2026-10-23 점검)
+    SIZE_RETRY = 8
 
     def __init__(self, tpl):
         self.tpl = tpl
@@ -196,6 +202,8 @@ class HudReader:
         self.picked = []
         self._seen = {}
         self.last = []
+        self._miss = 0
+        self.hint_bad = False
 
     def scan(self, crop, H, offset=(0, 0)):
         """crop: 게임 창의 REGION 부분 (h, w, 3), H: 게임 창 높이, offset: crop 의 게임 창 기준 왼쪽 위"""
@@ -239,12 +247,22 @@ class HudReader:
         for aid in ids:
             if aid not in self.picked:
                 self.picked.append(aid)
+        if self.size and not self.picked:
+            self._miss += 1
+            if self._miss >= self.SIZE_RETRY:
+                self.size = self.hint = None
+                self.hint_bad = True  # 이 판에선 지난 판 크기(hint)를 다시 쓰지 않는다
+                self._miss = 0
+        else:
+            self._miss = 0
         return self.picked
 
     def reset(self):
         self.size = None
         self.picked = []
         self._seen = {}
+        self._miss = 0
+        self.hint_bad = False
 
 
 # ---------------------------------------------------------------- Tab 점수판: 플레이어가 고른 증강 (시험)
@@ -294,7 +312,8 @@ class BoardReader:
         best_size, best_mean = None, 0.0
         for side, rgb, (x0, y0) in bands:
             for s in sizes:
-                hits = find_icons(self.aug_tpl, rgb, max(GRID, s * h), max_cands=40, unique=False)
+                # 한 띠 = 5명 × 증강 칸 최대 6 = 30 (40 이면 Tab 마다 자르기·비교가 그만큼 늘었다, 2026-10-23 점검)
+                hits = find_icons(self.aug_tpl, rgb, max(GRID, s * h), max_cands=BOARD_CANDS, unique=False)
                 if not hits:
                     continue
                 mean = sum(x[1] for x in hits) / len(hits)

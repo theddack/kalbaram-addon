@@ -24,6 +24,9 @@ SHOP_PROBE_AREA = (0.25, 0.04, 0.85, 0.84)  # 못 알아봤을 때 남기는 그
 # 상점 창 아래쪽 버튼 줄 '판매 · 되돌리기' (영어 Sell · Undo). 2026-10-15 베인 판 증강 칸 그림에 상점이 열린 채 찍혔다:
 # 2520x1575 창에서 버튼 줄 y ≈ 0.81, x ≈ 0.35~0.63. 위쪽 탭보다 글자가 또렷하고 띠가 작아 가볍다 → 먼저 본다
 SHOP_BOTTOM = ((0.25, 0.75), (0.70, 0.90))
+# 상점을 못 알아봤을 때 남기는 그림: 아래 버튼 줄(판매·되돌리기) 띠만. 못 알아본 때는 대개 상점이 닫힌 게임 화면이라
+# 넓게(SHOP_PROBE_AREA) 찍으면 챔피언 머리 위 이름표·넓힌 채팅이 들어갔다 (규칙 6, 2026-10-23 점검). 채팅이 넓어도 안 닿게 왼쪽 30% 는 뺀다
+SHOP_MISS_AREA = (0.30, 0.70, 0.75, 0.90)
 SHOP_FIND_MAX = 4  # 상점에서 자리를 찾아볼 아이템 수 (다음 구매 3 + 바꿀 것 1)
 # 상점 안 아이템 자리 찾기 (시험) 끔: 실제 판 4번 모두 확실한 결과 0개이고 한 번에 7.5초(사미라 판)라 게임을 무겁게 한다.
 # 찾는 방식을 바꾸기 전까진 상점 그림만 남긴다
@@ -211,8 +214,21 @@ def _slot_items(offers, width):
     if len(offers) == 3:
         return list(offers)
     out = [None, None, None]
+    # 카드는 높이 기준으로 가운데에 모여 놓인다 (16:9 약 0.3·0.5·0.7, 32:9 약 0.41·0.5·0.59) → 화면 3등분으로 나누면
+    # 아주 넓은 화면에서 두 장이 같은 칸이 되어 하나가 덮어써졌다 (2026-10-23 점검). 가운데와의 거리·두 장 사이 간격으로 정한다
+    mid = width / 2
+    if len(offers) == 2:
+        a, b = sorted(offers, key=lambda o: o[1])
+        gap, center = b[1] - a[1], (a[1] + b[1]) / 2
+        if abs(center - mid) < gap / 4:  # 가운데를 사이에 두고 양쪽 = 왼쪽·오른쪽
+            out[0], out[2] = a, b
+        elif center < mid:
+            out[0], out[1] = a, b
+        else:
+            out[1], out[2] = a, b
+        return out
     for o in offers:
-        out[min(2, max(0, int(o[1] / width * 3)))] = o
+        out[1 if abs(o[1] - mid) < width * 0.05 else (0 if o[1] < mid else 2)] = o
     return out
 
 
@@ -330,6 +346,12 @@ class Tracker:
         self._last = None
         self._full_at = 0.0  # 이름을 2개 이상 읽은 마지막 시각
         self._pending = None  # 클릭 없이 닫힌 선택지 {"from": 선택지, "at": 시각} (REOPEN_WAIT 안에 다시 뜨면 이어서)
+
+    def new_game(self):
+        """새 판: 지난 판 선택 화면에 걸린 것(클릭 없이 닫힌 선택지·새로고침 대기)을 버린다. seq 는 이어서 (화면이 새 선택지로 알게)
+        (예전엔 판이 끝나는 순간 남은 _pending 이 다음 판에 '못 정함'을 한 번 알릴 수 있었다, 2026-10-23 점검)"""
+        self._miss, self._click, self._last, self._pending = 0, None, None, None
+        self._reroll_wait, self._reroll_old = set(), {}
 
     @property
     def showing(self):
@@ -750,14 +772,23 @@ class Reader(threading.Thread):
             if game_n is not None and game_n != getattr(self, "_game_n", 0):
                 return
             sz = (self.hud.size or 0.04) * rect[3]
-            pos = {g: (round(y / sz), round(x / sz)) for g, _, x, y in self.hud.last}
+            # 칸 자리는 아이콘 크기 단위 실수 좌표 (반올림한 정수 칸이면 위치 흔들기·크기 병합으로 경계에서 칸 번호가 바뀌었다, 2026-10-23 점검)
+            pos = {g: (y / sz, x / sz) for g, _, x, y in self.hud.last}
             self._apply_hud(groups, best, ids, unsure, pos)
 
     def _apply_hud(self, groups, best, ids, unsure, pos=None):
         pos = pos or {}
         names = self.id_names()
+
+        def slot_of(p):
+            """이미 정한 칸 중 반 칸 안에 있는 것 (가장 가까운 것)"""
+            if p is None:
+                return None
+            near = [(max(abs(k[0] - p[0]), abs(k[1] - p[1])), k) for k in self._slot_ids]
+            near = [x for x in near if x[0] < 0.5]
+            return min(near)[1] if near else None
         # 이미 정해진 칸은 그 증강으로 (쌍둥이 그림으로 바뀌지 않게). 나머지는 새 칸
-        fixed = {g: self._slot_ids[pos[g]] for g in groups if pos.get(g) in self._slot_ids}
+        fixed = {g: self._slot_ids[slot_of(pos.get(g))] for g in groups if slot_of(pos.get(g)) is not None}
         fresh = [g for g in groups if g not in fixed]
         rc = self._recover
         if rc and fixed:
@@ -788,18 +819,21 @@ class Reader(threading.Thread):
         if pos:
             # 칸 순서(위 줄 왼쪽부터)대로: 정해진 칸은 그 증강, 새 칸에서 하나로 정해지면 그 칸에 기록
             order = sorted(groups, key=lambda g: pos.get(g, (99, 99)))
-            out, unsure2 = [], []
+            out, unsure2 = [], []  # out: (칸 자리, 증강)
             for g in order:
                 if g in fixed:
-                    out.append(fixed[g])
+                    out.append((slot_of(pos[g]), fixed[g]))
                     continue
                 r, u = resolve_groups([g], names, self.offered, [best.get(g, 0.0)])
-                if r and r[0] not in out and r[0] not in self._slot_ids.values():
-                    out.append(r[0])
+                if r and r[0] not in [i for _, i in out] and r[0] not in self._slot_ids.values():
+                    out.append((pos.get(g, (99, 99)), r[0]))
                     if not self._recover and g in pos:
                         self._slot_ids[pos[g]] = r[0]
                 unsure2 += u
-            ids, unsure = out, unsure2
+            # 이번에 안 보인 칸(상점·죽음 화면이 가림, 점수가 문턱을 잠깐 못 넘음)도 한 번 정한 증강은 남긴다.
+            # 예전엔 빠져서 고른 증강이 줄었고, 다음 선택 화면에서 맞게 고른 증강을 '확인 안 됨'으로 지웠다 (2026-10-23 점검)
+            out += [(k, i) for k, i in self._slot_ids.items() if i not in [x for _, x in out]]
+            ids, unsure = [i for _, i in sorted(out, key=lambda x: x[0])], unsure2
         v = self._verify
         if v:
             found = [names.get(i) for i in ids if names.get(i) in v["from"]]
@@ -872,7 +906,11 @@ class Reader(threading.Thread):
             except Exception as e:
                 self.status = f"읽기 오류: {str(e)[:120]}"
                 self._rec("error", {"error": str(e)[:200]}, dedupe=True)
-            self.wait_clicks(mouse, rect)
+            try:  # 여기서 예외가 나면 '증강 인식' 스레드가 조용히 죽었다 (점수판 준비·클릭 기록이 안에서 불린다, 2026-10-23 점검)
+                self.wait_clicks(mouse, rect)
+            except Exception as e:
+                self._rec("error", {"error": "클릭 기다리기: " + str(e)[:200]}, dedupe=True)
+                time.sleep(INTERVAL)
 
     def _time(self, kind, t0):
         self._perf.setdefault(kind, []).append((time.time() - t0) * 1000)
@@ -924,6 +962,7 @@ class Reader(threading.Thread):
         self._shop_probes = 0
         self._shop_probe = 0.0
         self._slot_ids = {}
+        self.tracker.new_game()
         self._shop_imgs, self._shop_img_at = 0, 0.0
         self._inv = None
         if self.hud:
@@ -1054,7 +1093,7 @@ class Reader(threading.Thread):
         have = {o[0] for o in offers}
         for i in check:
             cx, cy = pos["xs"][i] * gw, pos["nameY"] * gh
-            w, h = int(gw * 0.16), int(gh * 0.05)
+            w, h = int(min(gw * 0.16, gh * 0.285)), int(gh * 0.05)  # 카드 폭은 높이 기준 (아주 넓은 화면에서 옆 카드 이름까지 들어갔다)
             x0, y0 = max(0, int(cx - w / 2)), max(0, int(cy - h / 2))
             t0 = time.time()
             img = cap.grab(gx + x0, gy + y0, w, h, w * 2, h * 2)
@@ -1244,10 +1283,11 @@ class Reader(threading.Thread):
             kind = "넓혀 찾기" if self._recover else "증강 칸"
             t0 = time.time()
             gh = rect[3]
-            if self.hud.size is None and self.size_hint:
+            if self.hud.size is None and self.size_hint and not getattr(self.hud, "hint_bad", False):
                 self.hud.hint = self.size_hint(gh)
             self.scan_hud(self._hud_cap, rect, game_n)
-            if self.hud.size and self.size_save and self.hud.size != self.hud.hint:
+            # 확인된 증강이 있을 때만 크기를 기억한다 (엇나간 크기가 다음 판 hint 로 이어지지 않게)
+            if self.hud.size and getattr(self.hud, "picked", True) and self.size_save and self.hud.size != self.hud.hint:
                 self.size_save(gh, self.hud.size)
                 self.hud.hint = self.hud.size
             if v is not None and "tries" in v:
@@ -1321,7 +1361,10 @@ class Reader(threading.Thread):
             unsure = {c: [[names.get(a, a) for a in g] for g in gs if len(g) > 1] for c, gs in picked.items()}
             with self._lock:
                 if game_n != getattr(self, "_game_n", 0):
-                    return  # 읽는 동안 새 게임
+                    # 읽는 동안 새 게임: 반영을 건너뛸 뿐 아니라 방금 채운 지난 판 결과도 비운다
+                    # (new_game 의 reset 뒤에 이 scan 이 picked·_seen 을 다시 채워, 다음 판 같은 챔피언에 지난 판 증강이 붙었다, 2026-10-23 점검)
+                    self.board.reset()
+                    return
                 changed = ids != self.enemy_augs
                 self.enemy_augs, self.board_unsure = ids, unsure
             gw, gh = rect[2], rect[3]
@@ -1538,7 +1581,7 @@ class Reader(threading.Thread):
         if self._shop_probe and not seen and self.rec and not self.protect:
             # 아이템을 막 샀는데 상점 창을 못 알아봤다 → 읽은 글자와 가운데 넓은 그림을 남긴다 (상점이 어디 어떻게 보이는지)
             self._shop_probes += 1
-            wide, ww, wh = self._grab_area(cap, rect, SHOP_PROBE_AREA, 1280)
+            wide, ww, wh = self._grab_area(cap, rect, SHOP_MISS_AREA, 1280)
             self._rec("shopmiss", {"read": [t for t, _, _ in segments(sw, gap=gw * 0.02)][:40],
                                    "image": self.rec.image("shopmiss", wide, ww, wh)})
         self._shop_probe = 0.0

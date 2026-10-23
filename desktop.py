@@ -289,7 +289,8 @@ def redact_names(raw):
         if isinstance(o, str):
             if key in ("riotIdTagLine", "riotIdTagline"):
                 return ""
-            if o in names:
+            # 소환사 이름이 챔피언 이름과 같으면(예: 'Jinx') championName 칸까지 바뀌어 기록이 망가졌다 → 챔피언·스킨·아이템 칸은 그대로
+            if o in names and not (key and re.search(r"champion|skin|item", key, re.I)):
                 return names[o]
             if key in NAME_KEYS:
                 return "플레이어?"
@@ -433,7 +434,7 @@ class LiveWatcher(threading.Thread):
             self.on_new_game(st)  # 새 게임: 증강 칸 읽기 초기화, 한 판 기록 시작
         if key != self._game_key or now - self._last_snap >= SNAPSHOT_EVERY or aug != getattr(self, "_last_aug", ()):
             self._last_aug = aug
-            if getattr(self, "record", True):
+            if getattr(self, "record", False):
                 self.log_dir.mkdir(parents=True, exist_ok=True)
                 name = time.strftime("game_%Y%m%d_%H%M%S") + f"_{st.get('champion') or 'unknown'}_{int(t)}s.json"
                 (self.log_dir / name).write_text(json.dumps(redact_names(raw), ensure_ascii=False, indent=1), encoding="utf-8")
@@ -579,12 +580,15 @@ class LcuWatcher(threading.Thread):
         if gid not in self._match_games:  # 전적 상세는 판마다 한 번 기다린다 (기록을 켜고 끄는 것과 따로)
             self._match_games.add(gid)
             self._match_wait = (gid, time.time())
-        if not getattr(self, "record", True):
+        if not getattr(self, "record", False):
             return
         self.measure_dir.mkdir(parents=True, exist_ok=True)
         path = self.measure_dir / f"eog_{int(gid)}.json"
         if not path.exists():
-            path.write_text(json.dumps(redact_eog(eog), ensure_ascii=False), encoding="utf-8")
+            try:
+                path.write_text(json.dumps(redact_eog(eog), ensure_ascii=False), encoding="utf-8")
+            except OSError:  # 디스크 문제로 못 써도 연결이 끊긴 것으로 처리하지 않는다 (예전엔 poll 의 except 로 가서 client=None)
+                return
             files = sorted(self.measure_dir.glob("eog_*.json"), key=lambda p: p.stat().st_mtime, reverse=True)
             for old in files[MEASURE_KEEP:]:
                 try:
@@ -611,7 +615,7 @@ class LcuWatcher(threading.Thread):
         if not m.get("players") or not any(p.get("augments") for p in m["players"]):
             return
         self._match_wait = None
-        if self.measure_dir and getattr(self, "record", True):
+        if self.measure_dir and getattr(self, "record", False):
             self.measure_dir.mkdir(parents=True, exist_ok=True)
             (self.measure_dir / f"match_{int(gid)}.json").write_text(json.dumps(m, ensure_ascii=False), encoding="utf-8")
         if self.on_match:
@@ -1533,7 +1537,6 @@ def main():
     watcher = LiveWatcher(user_dir() / "logs")
     watcher.enabled = bool(settings.get("live", True))
     watcher.name = "게임 연동"
-    watcher.start()
     ov = overlay.Overlay()
     ov.name = "게임 화면 표시"
     ov.icon_dir = str(user_dir() / "web" / "icons" / "augment")  # 쿨타임 아이콘
@@ -1541,7 +1544,6 @@ def main():
     ov.start()
     lw = LcuWatcher(user_dir() / "measure")
     lw.name = "롤 클라이언트"
-    lw.start()
     reader = None
     if overlay.IS_WINDOWS:
         win = overlay._Win()
@@ -1718,6 +1720,11 @@ def main():
     diag.cpu_cap = capped
     diag.in_game = lambda: bool(watcher.state.get("inGame"))
     diag.start()
+    # 게임 연동·롤 클라이언트는 콜백(새 판·판 끝·경기 결과)·기록 설정·진단을 모두 연결한 뒤에 시작한다.
+    # 먼저 시작하면 게임 중에 켰을 때 첫 읽기가 판을 '이미 본 판'으로 만들어 그 판 기록·CPU 상한 전환이 빠지고,
+    # 기록 설정을 읽기 전이라 꺼 둔 기록도 저장됐다 (2026-10-23 점검)
+    watcher.start()
+    lw.start()
     diag.write("개선용 기록: " + ("켜짐 (한 판 기록·게임 정보·경기 결과 저장)" if settings.get("record") else "꺼짐 (진단 기록만)"))
     webmem.log = diag.write
     window.events.loaded += lambda: webmem.apply()
