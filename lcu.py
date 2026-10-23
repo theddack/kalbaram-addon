@@ -164,8 +164,10 @@ def save_backup(backup_dir, item_sets):
     """저장하기 전 아이템 세트 목록 (되돌릴 때 쓰기). 최근 10개만 남긴다."""
     os.makedirs(backup_dir, exist_ok=True)
     name = os.path.join(backup_dir, time.strftime("itemsets_%Y%m%d_%H%M%S.json"))
+    # 계정 ID 는 빼고 남긴다 (사용자 폴더를 data.zip 으로 묶어 보낼 때 같이 나가지 않게, 2026-10-23 점검). 되돌릴 때 필요한 건 세트 목록뿐
+    keep = {k: v for k, v in item_sets.items() if k not in ("accountId", "summonerId", "puuid")} if isinstance(item_sets, dict) else item_sets
     with open(name, "w", encoding="utf-8") as f:
-        json.dump(item_sets, f, ensure_ascii=False)
+        json.dump(keep, f, ensure_ascii=False)
     files = sorted((os.path.join(backup_dir, x) for x in os.listdir(backup_dir) if x.startswith("itemsets_")),
                    key=os.path.getmtime, reverse=True)
     for old in files[10:]:

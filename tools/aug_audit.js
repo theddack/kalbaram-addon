@@ -68,7 +68,12 @@ const near = (a, b) => Math.abs(a - b) <= Math.max(1e-4, Math.abs(b) * 1e-3);
 
 function audit() {
   const kiwi = read(path.join(CACHE, "kiwi.bin.json"));
-  const strings = read(path.join(CACHE, "lol.stringtable.json")).entries;
+  // 26.21 부터 새 문자열은 해시 키로만 있다 → build_data 가 해시로 찾아 둔 것(stringtable.found.json)을 합친다.
+  // 없으면 새 증강 툴팁이 빈 문자열이라 자리표시자 0개 → '새 문제 없음'으로 지나갔다 (2026-10-23 점검)
+  let found = null;
+  try { found = read(path.join(CACHE, "stringtable.found.json")); } catch (e) { found = null; }
+  if (!found) throw new Error(".cache/stringtable.found.json 이 없어요 — python build_data.py 를 먼저 돌리세요");
+  const strings = { ...read(path.join(CACHE, "lol.stringtable.json")).entries, ...found };
   const meta = read(path.join(CACHE, "content-metadata.json"));
   const d = read(path.join(ROOT, "web", "data.json"));
   const rulesRaw = read(path.join(ROOT, "rules.json")).augments;
@@ -353,8 +358,9 @@ if (require.main === module) {
   const r = audit();
   if (process.argv.includes("--check")) {
     let base = null;
-    try { base = read(path.join(ROOT, "docs", "증강_원본_대조.json")); } catch (e) { base = null; }
-    if (base) process.stdout.write(newProblems(r, base));
+    // 저장된 대조를 못 읽으면 조용히 '새 문제 없음'으로 끝내지 않는다 (매일 갱신이 실패로 알 수 있게)
+    const base = read(path.join(ROOT, "docs", "증강_원본_대조.json"));
+    process.stdout.write(newProblems(r, base));
     process.exit(0);
   }
   if (process.argv.includes("--write")) {

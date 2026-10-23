@@ -16,7 +16,9 @@ if hasattr(sys.stdout, "reconfigure"):
 
 def section(text, tag):
     m = re.search(rf"^## {re.escape(tag)}\b.*?(?=^## |\Z)", text, re.M | re.S)
-    return m.group(0).strip() if m else f"## {tag}"
+    if not m:  # 업데이트내역을 빠뜨리면 릴리스가 설명 없이 나갔다 → 릴리스를 멈춘다
+        sys.exit(f"업데이트내역.md 에 '## {tag}' 항목이 없어요")
+    return m.group(0).strip()
 
 
 def inline(s):

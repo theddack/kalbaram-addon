@@ -90,7 +90,8 @@
     const REFUND_KEYS = ["refundPct", "refundChanceRanged", "refundChanceMelee", "refundAll"];
     conv.refunds = [];
     // 능력치 비례 값 (rules {"calc": …} 에 계수가 있는 것: 범람 최대 마나·프로틴 음료 추가 방어/마저·마도사의 주스 상자 주문력):
-    // 최종 능력치를 다 구한 뒤 더한다. 다른 능력치를 다시 바꾸지 않는 값(회복·흡혈·피해 증폭)에만 쓴다
+    // 최종 능력치를 다 구한 뒤 더한다. 다른 능력치를 다시 바꾸지 않는 값(회복·흡혈·피해 증폭)에만 쓴다.
+    // 주문력만 예외로 % 증가·주문력 전환(치명타·가속)을 아래에서 같이 적용한다 (리치 두뇌)
     const late = [];
     for (const s of mods) {
       if (s && s.refundPct) conv.refunds.push({ pct: s.refundPct, ranged: s.refundChanceRanged ?? 1, melee: s.refundChanceMelee ?? 1, all: !!s.refundAll });
@@ -158,10 +159,12 @@
     if (conv.bonusHPtoAP) t.AP += t.bonusHP * conv.bonusHPtoAP * (1 + mult.APmult);  // 균열 생성기: 추가 체력의 2% 주문력
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
     let bonusAS = base.asLevelBonus + add.AS + itemASfromAD;
+    // 순수주의자 - 마법사: 레벨 말고 얻은 추가 공격 속도(아이템 + 간지럼 괴물이 공격력에서 바꾼 것)를 스킬 가속으로.
+    // 묵직한 한 방보다 먼저 (예전엔 묵직한 한 방이 옮긴 몫을 다시 덮어써 같은 공속이 두 번 쓰였고, 간지럼 괴물 몫은 사라졌다, 2026-10-23 점검)
+    if (conv.AStoHASTE) { t.HASTE += (add.AS + itemASfromAD) * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }
     // 묵직한 한 방: 공격 속도의 일부를 치명타 피해로 (AStoCRITDMG = 옮기는 비율, AStoCRITDMGper = 공속 1%당 치명타 피해 %)
     let critDmgFromAS = 0;
     if (conv.AStoCRITDMG) { const moved = bonusAS * conv.AStoCRITDMG; bonusAS -= moved; critDmgFromAS = moved * (conv.AStoCRITDMGper || 0); }
-    if (conv.AStoHASTE) { t.HASTE += add.AS * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }  // 순수주의자 - 마법사
     // 보석 건틀릿: 주문력 1당 치명타 확률 (conv.APtoCRIT, 원본 CritConverRatio 0.00045 = 주문력 100당 4.5%)
     t.CRIT = Math.min(1, add.CRIT + (conv.APtoCRIT ? t.AP * conv.APtoCRIT : 0));
     // 그레이브즈처럼 공격 속도 표시값이 다른 챔피언은 레벨별 상한 (champ.asCapLv = [1레벨, 18레벨], rules.json champions.asCap)
@@ -202,7 +205,15 @@
     for (const [k, raw] of late) {
       let v = levelValue(raw, L);
       for (const [stat, arr] of Object.entries(raw.ratios)) v += (Array.isArray(arr) ? arr[0] : arr) * (t[stat] || 0);
-      if (k in t && typeof t[k] === "number") t[k] += v;
+      if (k === "AP") {
+        // 주문력은 다른 주문력처럼 % 증가(APmult)를 받고, 주문력에서 바뀌는 값(치명타·가속)에도 들어간다
+        // (리치 두뇌 '주문력 30 + 추가 체력 4%'가 라바돈 배율·보석 건틀릿 전환에서 빠졌다, 2026-10-23 점검)
+        const ap = v * (1 + mult.APmult);
+        t.AP += ap;
+        t.bonusAP = t.AP;
+        if (conv.APtoHASTE) t.HASTE += ap * conv.APtoHASTE;
+        if (conv.APtoCRIT) t.CRIT = Math.min(1, t.CRIT + ap * conv.APtoCRIT);
+      } else if (k in t && typeof t[k] === "number") t[k] += v;
       else if (k in flags) flags[k] += v;
       else conv[k] = (conv[k] || 0) + v;
     }

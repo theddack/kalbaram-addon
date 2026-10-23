@@ -426,6 +426,8 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
         elif kind == "timers":
             # 상자 글자가 커져 길어지면 쿨타임 아이콘과 겹친다 → 상자(·바꾸기) 밑으로 내린다
             canvas.timer_y = max(y, left_bottom + 8) if left_bottom is not None else y  # 쿨타임만 다시 그릴 때도 같은 자리
+            # 아래 끝 한도를 넘지 않게 (넘으면 상자 아래쪽에 겹쳐 그린다: 우리 상자를 가리는 게 채팅을 가리는 것보다 낫다, 규칙 9)
+            canvas.timer_y = min(canvas.timer_y, int(h * BOX_MAX_BOTTOM) - timer_size(h))
             draw_timers(canvas, c, x, canvas.timer_y, h, icon_dir)
         elif kind == "hud":
             lines_list, anchor, compact = (c + (False,))[:3] if isinstance(c, tuple) else (c, "ne", False)
@@ -438,6 +440,11 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                 if head and i:
                     ty += gap * 2  # 묶음 사이를 조금 띄운다
                 if ty > limit and texts:
+                    if ty + abs(px) * 1.4 > h * BOX_MAX_BOTTOM:
+                        # '…' 줄도 한도 안에 안 들어가면 마지막 줄 자리에 쓴다 (예전엔 '…' 이 늘 한 줄만큼 한도 밑으로 나갔다, 2026-10-23 점검)
+                        last, lb = texts.pop()
+                        canvas.delete(last)
+                        ty = lb[1]
                     t = canvas.create_text(x - 10 if anchor == "ne" else x + 10, ty, text="…", anchor=anchor, font=(font, px), fill="#e6e9ec", width=bw)
                     tb = canvas.bbox(t)
                     if tb:
@@ -446,6 +453,14 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                 t = canvas.create_text(x - 10 if anchor == "ne" else x + 10, ty, text=line, anchor=anchor,
                                        font=(font, px, "bold") if head else (font, px), fill=HUD_HEAD if head else "#e6e9ec", width=bw)
                 tb = canvas.bbox(t)
+                if tb and texts and tb[3] > h * BOX_MAX_BOTTOM:
+                    # 줄바꿈으로 2~3줄이 되어 한도 밑까지 내려가는 줄은 쓰지 않는다 (한도 검사는 쓰기 전 위치만 봤다, 2026-10-23 점검)
+                    canvas.delete(t)
+                    t = canvas.create_text(x - 10 if anchor == "ne" else x + 10, ty, text="…", anchor=anchor, font=(font, px), fill="#e6e9ec", width=bw)
+                    tb = canvas.bbox(t)
+                    if tb:
+                        texts.append((t, tb))
+                    break
                 if tb:
                     texts.append((t, tb))
                     ty = tb[3] + gap
@@ -461,18 +476,24 @@ def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
                     bw, bh = max(pw, hb[2] - hb[0]), max(ph, hb[3] - hb[1])
                     small_box[(w, h)] = (bw, bh)
                     canvas.hud_small = small_box
+                    bh = max(hb[3] - hb[1], min(bh, int(h * BOX_MAX_BOTTOM) - hb[1]))  # 짧은 상자도 아래 끝 한도 안에
                     x0 = hb[0] if anchor == "nw" else hb[2] - bw
                 else:
                     x0 = hb[0] if anchor == "nw" else hb[2] - bw
                     tall = getattr(canvas, "hud_tall", {})
-                    tall[(w, h)] = bh = max(tall.get((w, h), 0), hb[3] - hb[1])
+                    tall[(w, h)] = max(tall.get((w, h), 0), hb[3] - hb[1])
                     canvas.hud_tall = tall
+                    # 기억한 높이는 위쪽(0.08)에서 시작한 상자 높이일 수 있다 → 지금 시작 위치에서 한도까지만 (죽은 채 상점: 0.30 에서 시작해
+                    # 배경이 0.80 까지 내려와 채팅을 가렸다, 2026-10-23 점검)
+                    bh = max(hb[3] - hb[1], min(tall[(w, h)], int(h * BOX_MAX_BOTTOM) - hb[1]))
                 canvas.create_rectangle(x0 - 10, hb[1] - 8, x0 + bw + 10, hb[1] + bh + 8, fill="#111820", outline="#c8aa6e")
                 box_bottom = left_bottom = hb[1] + bh + 8
             for t, _ in texts:
                 canvas.tag_raise(t)
         elif kind == "swap":
-            left_bottom = draw_swap(canvas, c, x, (box_bottom if box_bottom is not None else int(h * BOX_Y)) + 6, h, icon_dir, (font, small))
+            sy = (box_bottom if box_bottom is not None else int(h * BOX_Y)) + 6
+            sy = min(sy, int(h * BOX_MAX_BOTTOM) - round(timer_size(h) * 1.25) - 4)  # 바꾸기 아이콘도 아래 끝 한도 안에
+            left_bottom = draw_swap(canvas, c, x, sy, h, icon_dir, (font, small))
 
 
 def swap_image(sell_path, buy_path, size):

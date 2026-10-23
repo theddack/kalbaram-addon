@@ -14,7 +14,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
-from build_data import expand_templates  # noqa: E402
+from build_data import RstStrings, expand_templates  # noqa: E402
 from lol_calc import STAT, Calc  # noqa: E402
 
 PLACE = re.compile(r"([A-Za-z_][\w.]*?)(?:\.0)?(?:\*(-?[\d.]+))?")
@@ -42,7 +42,8 @@ def walk(o, out):
 
 def check():
     kiwi = json.loads((ROOT / ".cache" / "kiwi.bin.json").read_text(encoding="utf-8"))
-    strings = json.loads((ROOT / ".cache" / "lol.stringtable.json").read_text(encoding="utf-8"))["entries"]
+    # 26.21 부터 새 문자열은 해시 키로만 있다 → RstStrings 로 찾는다 (dict 로 찾으면 새 증강 툴팁이 비어 '못 푼 것 없음'이 됐다)
+    strings = RstStrings(json.loads((ROOT / ".cache" / "lol.stringtable.json").read_text(encoding="utf-8"))["entries"])
     data = json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))
     aug = {v["AugmentNameId"]: v for v in kiwi.values() if isinstance(v, dict) and v.get("__type") == "AugmentData"}
     rows = []

@@ -51,6 +51,7 @@ DATA_FORMAT = 2  # data.json 형식 번호: 화면이 기대하는 칸이 바뀌
 SAFE_ID = re.compile(r"[A-Za-z0-9_]{1,80}")  # 외부 데이터의 id 검사 (HTML 속성·파일 이름에 그대로 쓰인다)
 UA = "kalbaram-addon (+https://github.com/theddack/kalbaram-addon)"  # 누가 받는지 밝힌다
 FETCHED = {}
+STALE = []  # 새로 받기에 실패해 전에 받아 둔 파일을 쓴 캐시 이름 (게임 원본이 섞이면 data.json 을 만들지 않는다)
 WIKI_FAILED = []  # 이번에 못 받은 위키 자료 (확인 이슈에 올림)  # 출처 기록: 캐시 이름 → (주소, 받은 시각)
 
 
@@ -70,6 +71,7 @@ def fetch(url, name):
     except Exception as e:
         if path.exists():  # 받기 실패 → 전에 받아 둔 것으로 (갱신 전체가 멈추지 않게)
             print(f"  [받기 실패 → 이전 파일 사용] {name}: {e}")
+            STALE.append(name)
             return path.read_bytes()
         raise
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -163,18 +165,28 @@ class RstStrings(dict):
     들어 있다 (PBE 16.22 에서 확인: 'Kiwi_Augment_Sound_Barrier_Name' → '{27215d72a6}' = '음속 장벽'). 이름으로 못 찾으면 해시로 찾는다"""
     BITS = 38
 
+    def __init__(self, *a, **kw):
+        super().__init__(*a, **kw)
+        self.found = {}  # 해시로 찾은 문자열 {소문자 키: 값} — 증강 원본 대조(tools/aug_audit.js)가 xxhash 없이 읽게 캐시에 남긴다
+
     def _hash(self, key):
         try:
             import xxhash
-        except ImportError:  # requirements-data.txt 에 있다 (없으면 해시 키는 못 찾음)
-            return None
+        except ImportError as e:
+            # 없으면 26.21 이후 새 증강 이름·설명이 모두 비는데도 '완료'로 끝나 망가진 data.json 이 저장됐다
+            # (2026-10-23 맥 로컬 빌드). requirements-data.txt · requirements-build.txt 에 있다
+            raise RuntimeError("xxhash 패키지가 없어 새 문자열(해시 키)을 못 찾아요 — pip install xxhash") from e
         return "{%010x}" % (xxhash.xxh3_64_intdigest(key.lower().encode("utf-8")) & ((1 << self.BITS) - 1))
 
     def get(self, key, default=None):
         if key in self:
             return dict.__getitem__(self, key)
         h = self._hash(key) if isinstance(key, str) and key else None
-        return dict.get(self, h, default) if h else default
+        if h and h in self:
+            v = dict.__getitem__(self, h)
+            self.found[key.lower()] = v
+            return v
+        return default
 
 
 def expand_templates(text, strings, depth=0):
@@ -1194,6 +1206,11 @@ def main():
     # 위키 증강 이름(영어)과 짝짓기용 영어 문자열
     strings_en = RstStrings(fetch_json(f"{CDRAGON}/game/en_us/data/menu/en_us/lol.stringtable.json",
                                        "lol.stringtable.en.json")["entries"])
+    # 게임 원본(증강 데이터·문자열)은 같은 때 받은 것끼리만 맞는다. 문자열만 옛 파일이면 새 증강이 이름 없이 만들어지는데도
+    # '완료'로 끝났다 (프로그램 '데이터 갱신'은 사용자 PC 캐시가 있어 이 경로를 탄다, 2026-10-23 점검) → 실패로 끝내 이전 data.json 을 지킨다
+    stale_core = [n for n in STALE if n in ("kiwi.bin.json", "augment-lists.json", "lol.stringtable.json", "lol.stringtable.en.json")]
+    if stale_core and REFRESH:
+        raise RuntimeError("게임 원본 일부를 새로 못 받았어요 (" + ", ".join(stale_core) + ") — 잠시 뒤 다시 해 주세요")
     wiki_aug_text = fetch_wiki(f"{WIKI}/Module:MayhemAugmentData/data?action=raw", "wiki_mayhemaugments.lua", empty="")
     wiki_items = fetch_wiki(f"{WIKI}/Module:ItemData/data?action=raw", "wiki_itemdata.lua", parse_lua_table, {})
     wiki_mayhem_page = fetch_wiki(f"{WIKI}/ARAM:_Mayhem?action=raw", "wiki_mayhem_page.txt", empty="")
@@ -1663,6 +1680,8 @@ def main():
             "wikiFallback": wiki_fb,
             "champions": out_champs, "items": out_items, "parts": parts, "augments": out_augs,
             "removedAugs": removed_augs}
+    # 해시로 찾은 문자열을 캐시에 (aug_audit.js 는 xxhash 가 없어 새 증강 툴팁을 못 읽고 '새 문제 없음'으로 넘겼다)
+    (CACHE / "stringtable.found.json").write_text(json.dumps(strings.found, ensure_ascii=False), encoding="utf-8")
     tmp = WEB / "data.json.tmp"  # 쓰다 꺼져도 반쯤 쓰인 data.json 이 남지 않게
     tmp.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
     os.replace(tmp, WEB / "data.json")
