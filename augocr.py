@@ -985,7 +985,11 @@ class Reader(threading.Thread):
         end = time.time() + INTERVAL
         if not (rect and self.tracker.showing):
             # 선택 화면이 아니면 2초마다 (글자 인식이 CPU 를 가장 많이 쓴다). 직전 10초 안에 떴었으면 1초 (새로고침·다음 화면)
-            recent = time.time() - getattr(self.tracker, "_full_at", 0) < 10 or self.picking_time()
+            # 게임 시작 직후(90초 안)에 그 판 선택 화면을 아직 못 봤으면 첫 증강을 기다리는 중 → 1초마다
+            # (예전엔 2초마다라 첫 증강 카드 평가가 늦게 뜬다는 지적, 2026-10-24)
+            t = self._live().get("gameTime")
+            first = not self.offered and t is not None and t < 90
+            recent = time.time() - getattr(self.tracker, "_full_at", 0) < 10 or self.picking_time() or first
             self.wait_shop_keys(mouse, time.time() + (INTERVAL if recent else IDLE_INTERVAL), bool(rect))
             return
         while time.time() < end:
