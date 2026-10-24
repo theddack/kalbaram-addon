@@ -420,6 +420,8 @@ test("적 대응: 적이 산 아이템 때문에 순위가 크게 오른 아이�
   live({ enemyBuilds: enemyBuilds.map((e) => ({ ...e, items: [] })) });
   assert.doesNotMatch(p.text("#next-buy"), /적 대응/, "적이 아무것도 안 샀으면 표시 안 함");
   live({ enemyBuilds });
+  // 상대 능력치만 바뀌면 나눠 계산한 뒤 다시 그린다 (warmThenRender) → 조각 계산이 끝날 때까지
+  await new Promise((r) => setTimeout(r, 1500));
   assert.match(p.text("#next-buy"), /🛡️ 적 대응/);
   const box = sent.at(-1).hud.join("\n");
   assert.match(box, /적 (가시 갑옷|강철심장) 2·(가시 갑옷|강철심장) 2 \(체력·방어력 높음\) → 적 대응: 리안드리의 고통/, "상자에 무엇 때문에 무엇을 사라는지");
@@ -792,6 +794,7 @@ test("적 구성 비율: 완성 아이템 2개 이상 산 적은 산 아이템�
   const before = p.w.enemyInfo().magic;
   assert.match(p.text("#next-buy"), /적 구성 추정: 마법/);
   live([id("리치베인"), id("루덴의 메아리")]);
+  await new Promise((r) => setTimeout(r, 1500));  // 나눠 계산한 뒤 다시 그린다 (warmThenRender)
   assert.ok(p.w.enemyInfo().magic > before + 0.3, `${before} → ${p.w.enemyInfo().magic}`);
   assert.match(p.text("#next-buy"), /적 구성 \(산 아이템 반영\): 마법 100%/);
   assert.deepEqual(p.errors, []);
@@ -1285,5 +1288,27 @@ test("어떤 증강이든 재밌게: 증강마다 '쓰는 법' 한 줄이 있다
   const empty = p.data.augments.filter((a) => !String(p.w.playTip(a) || "").trim()).map((a) => a.name);
   assert.equal(empty.length, 0, empty.join(", "));
   assert.equal(p.w.playTip(p.data.augments.find((a) => a.id === "PromQueen")), p.data.rules.tips.PromQueen);
+  p.w.close();
+});
+
+test("상대 아이템 변화: 예상 상대 능력치가 5% 미만이면 기준 그대로, 크면 나눠 계산한 뒤 반영 (벨코즈 판 느린 계산)", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.pywebview = { api: { set_overlay: () => {} } };
+  const id = (n) => p.data.items.find((i) => i.name === n).id;
+  const foes = ["Tristana", "Cassiopeia", "Garen", "Lux", "Sona"];
+  const live = (items) => p.w.applyLive({ enabled: true, inGame: true, champion: "Velkoz", level: 9, gameTime: 400, items: [], enemies: foes,
+    enemyBuilds: foes.map((c, i) => ({ champion: c, level: 9, items: items[i] || [] })) });
+  live([]);
+  const T = () => JSON.stringify([p.w.Stats.TARGET.ARMOR, p.w.Stats.TARGET.MR, p.w.Stats.TARGET.HP]);
+  const t0 = T();
+  live([[], [id("라바돈의 죽음모자")]]);  // 체력 조금 바뀜 → 그대로
+  assert.equal(T(), t0, "작은 변화는 기준 그대로");
+  const t1 = performance.now();
+  live([[], [id("라바돈의 죽음모자")], [id("가시 갑옷"), id("태양불꽃 방패")]]);  // 방어력 크게
+  assert.ok(performance.now() - t1 < 150, "바로 돌아온다 (계산은 나눠서)");
+  assert.notEqual(T(), t0, "큰 변화는 반영");
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.match(p.text("#next-buy"), /다음에 살 아이템/);
+  assert.deepEqual(p.errors, []);
   p.w.close();
 });

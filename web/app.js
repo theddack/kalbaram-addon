@@ -231,10 +231,18 @@ function enemyResistItems() {
   return n;
 }
 
+// 예상 상대 능력치가 이만큼 미만으로 바뀌면 기준을 그대로 둔다 (방어력·마법 저항·체력 각각, 기준 대비 비율).
+// 상대가 아이템을 살 때마다 체력 3000 → 2950(1.7%) 같은 작은 변화에도 계산 기억이 전부 무효가 되어
+// 게임 중(0.5코어) 추천 계산이 0.9~2.2초씩 걸렸다 (2026-10-24 벨코즈 판: 느린 계산 11번 중 8번이 상대 변화 직후)
+const TARGET_STEP = 0.05;
 function applyEnemyTarget() {
   if (state.target) return false;  // 상대를 직접 골랐으면 그대로
   const before = JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
-  St.setTarget(enemyTarget());
+  const next = enemyTarget();
+  const T = St.TARGET;
+  // 이미 적 기준으로 잡혀 있고, 새 값이 모든 항목에서 TARGET_STEP 안이면 그대로 (변화가 쌓여 넘으면 그때 바꾼다)
+  const small = next && state.targetFromEnemy && ["ARMOR", "MR", "HP"].every((k) => Math.abs(next[k] - T[k]) < Math.abs(T[k]) * TARGET_STEP);
+  if (!small) { St.setTarget(next); state.targetFromEnemy = !!next; }
   showTarget();
   return JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]) !== before;
 }
@@ -1186,6 +1194,25 @@ function renderOfferResult() {
   }, 0);
 }
 let offerSeq = 0;
+let warmSeq = 0;
+function warmThenRender() {
+  const seq = ++warmSeq;
+  const d = state.data;
+  const o = statOpts();
+  const steps = [
+    () => S.buildConcepts(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o, [state.chosen.length ? "augment" : "balanced"]),
+    () => S.buildConcepts(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o, ["balanced"]),
+    () => S.numericAugmentGains(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o),
+    () => state.chosen.length && S.numericAugmentGains(d.augments, d.items, state.weights, [], state.items, d.rules, state.champ, o, state.chosen),
+    () => renderAll(),
+  ];
+  const run = (i) => {
+    if (seq !== warmSeq || i >= steps.length) return;
+    try { steps[i](); } catch (e) { /* 다음 조각·다시 그리기에서 다시 계산된다 */ }
+    setTimeout(() => run(i + 1), 30);
+  };
+  setTimeout(() => run(0), 0);
+}
 // 고른 뒤 바로 쓸 계산(다음 증강 등급·빌드·연계)을 선택 화면이 떠 있는 동안 하나씩 미리 해 둔다 (계산 기억에 남는다).
 // 고르고 나서 계산하면 게임 중 0.5코어로 묶여 첫 아이템 추천이 1~2초 늦었다 (2026-10-21 칼리스타 판: 추천 계산 최대 2.3초)
 function warmOffers(augs, seq) {
@@ -2131,7 +2158,8 @@ function applyLive(L) {
     boardAugs: boardAugs(L, x.champion).filter((a) => !(x.augments || []).map(spellAugment).some((s) => s && s.id === a.id)),
   })).filter((x) => x.champ);
   const ebKey = JSON.stringify(eb.map((x) => [x.champ.id, x.items.map((i) => i.id).sort(), x.augments.map((a) => a.id), x.boardAugs.map((a) => a.id)]));
-  if (ebKey !== enemyBuildKey) { enemyBuildKey = ebKey; state.enemyBuilds = eb; applyEnemyTarget(); }
+  const enemyChanged = ebKey !== enemyBuildKey;
+  if (enemyChanged) { enemyBuildKey = ebKey; state.enemyBuilds = eb; applyEnemyTarget(); }
   else if (eb.length) {
     // 레벨만 바뀜: 예상 상대(18레벨)는 그대로, 지금 상대 표시만 새로
     const lv = eb.map((x) => `${x.level}/${x.kills}`).join(",");
@@ -2139,7 +2167,13 @@ function applyLive(L) {
   }
   trackTimers(L);  // 증강 쿨타임: 체력은 매번 바뀌니 아래 '같은 값이면 그만' 전에
   // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
-  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
+  // 계산에 들어가는 상대 값: 예상 상대 능력치 + 받는 피해의 마법 비율(statOpts enemyMagic, 0.1 단위)
+  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts().enemyMagic ?? null]);
+  if (key === liveLast && enemyChanged && state.champ) {
+    // 적이 아이템을 샀지만 계산 값은 그대로(작은 변화): 조언(치유 감소·저항·관통)과 다음 구매만 다시 그린다
+    renderNextBuy(itemRanking()); renderChosenItems(); sendOverlay("enemy");
+    return;
+  }
   if (key === liveLast) {
     // 부품을 샀으면 다음 구매도 다시 (만드는 중인 아이템을 1순위로 묶는다). 골드만 바뀌면 '지금 살 것'만
     if (invChanged && state.champ) { renderNextBuy(itemRanking()); renderChosenItems(); }
@@ -2148,7 +2182,11 @@ function applyLive(L) {
     return;
   }
   const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));
+  // 상대 능력치만 바뀜(챔피언·레벨·아이템·적 구성 그대로): 무거운 계산을 조각으로 나눠 쉬어 가며 미리 하고 마지막에 다시 그린다.
+  // 그동안은 이전 추천을 그대로 보여 준다 (한 번에 2초를 막으면 게임 화면 그리기까지 4초 넘게 밀렸다, 2026-10-24 벨코즈 판)
+  const onlyTarget = liveLast && JSON.stringify(JSON.parse(liveLast).slice(0, 4)) === JSON.stringify(JSON.parse(key).slice(0, 4));
   liveLast = key;
+  if (onlyTarget && state.champ && champ && state.champ.id === champ.id) { warmThenRender(); return; }
   // 레벨만 바뀌었으면 능력치 표만 다시: 증강·아이템 순위는 18레벨 완성 빌드 기준이라 레벨과 무관하다
   if (sameBuild && state.champ && champ && state.champ.id === champ.id) {
     state.level = level;

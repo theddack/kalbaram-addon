@@ -1255,6 +1255,10 @@ class Reader(threading.Thread):
             self._rec("recover", {"from": self._recover["from"], "result": "못 찾음", "best": self._recover.get("best"),
                                   "groups": self._recover.get("groups"), "need": SURE_SCORE})
             self._recover = None
+        # 증강 선택 화면이 떠 있는 동안엔 시작하지 않는다: 증강 칸이 가려져 읽어도 소용없고, 한 번에 1~5초를 써서
+        # 같은 0.5코어를 나눠 쓰는 카드 평가 그리기가 밀렸다 (2026-10-24 벨코즈 판: 선택지 읽고 1.7초 뒤에 카드)
+        if self.tracker.showing:
+            return
         if self.icon_dir and not getattr(self, "hud_error", None) and now >= getattr(self, "_hud_at", 0) \
                 and not getattr(self, "_hud_busy", False):
             self._hud_busy = True
