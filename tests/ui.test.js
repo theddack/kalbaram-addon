@@ -1312,3 +1312,25 @@ test("상대 아이템 변화: 예상 상대 능력치가 5% 미만이면 기준
   assert.deepEqual(p.errors, []);
   p.w.close();
 });
+
+test("증강을 고르면 상점 인식 없이도 그 증강 기준 다음 구매 상자를 8초 띄운다 (2026-10-24: 첫 증강 뒤 추천이 안 보임)", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  let now = 1_000_000;
+  p.w.Date.now = () => now;
+  const live = (gt) => p.w.applyLive({ enabled: true, inGame: true, champion: "Yunara", level: 3, gold: 1400, gameTime: gt, items: [] });
+  live(20);
+  assert.equal(sent.at(-1).box, null, "고르기 전엔 상자 없음 (게임을 가리지 않게)");
+  p.w.applyAug({ offers: ["전부 다 무너뜨려", "위력 추구", "치명적인 공격"], seq: 1, pickSeq: 0 });
+  p.w.applyAug({ offers: null, seq: 1, picked: "전부 다 무너뜨려", pickedFrom: ["전부 다 무너뜨려", "위력 추구", "치명적인 공격"], pickSeq: 1 });
+  const s = sent.at(-1);
+  assert.equal(s.box, "bought", "고른 직후 상자");
+  assert.match((s.hud || [])[0] || "", /^다음 구매: /, "첫 줄은 증강 기준 다음 구매");
+  now += 5000; live(25);
+  assert.equal(sent.at(-1).box, "bought", "8초 안엔 그대로");
+  now += 4000; live(29);
+  assert.equal(sent.at(-1).box, null, "8초가 지나면 내린다");
+  assert.deepEqual(p.errors, []);
+  p.w.close();
+});

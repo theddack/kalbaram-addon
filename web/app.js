@@ -1973,6 +1973,7 @@ function applyAug(A) {
   const add = hud.filter((a) => !state.chosen.some((c) => c.id === a.id));
   if (add.length && state.chosen.length < AUG_MAX) {
     state.chosen = [...state.chosen, ...add].slice(0, AUG_MAX);
+    showBoxAfterPick();
     clearOffers();
     full = true;
   }
@@ -2016,7 +2017,7 @@ function applyAug(A) {
       // 증강 칸 그림으로 확인했더니 클릭으로 짐작한 것과 달랐다 → 짐작한 것을 빼고 바꾼다
       const wrong = A.by === "hud" && byName(A.replaces);
       if (wrong) state.chosen = state.chosen.filter((x) => x.id !== wrong.id);
-      if (state.chosen.length < AUG_MAX && !state.chosen.some((x) => x.id === a.id)) state.chosen.push(a);
+      if (state.chosen.length < AUG_MAX && !state.chosen.some((x) => x.id === a.id)) { state.chosen.push(a); showBoxAfterPick(); }
       // 고른 것과 다음 선택 화면이 한 번에 왔으면(누르자마자 다른 선택 화면) 새 선택지는 남긴다 (2026-10-22 하이머딩거 판)
       const next = offersOnly && A.offers ? { offers: state.offers, rerolled: state.rerolled } : null;
       clearOffers();
@@ -2050,6 +2051,13 @@ let liveEnded = false;
 let liveShop = false, goldDrawnAt = 0, boxSent = null;
 let enemyBuildKey = "";
 const BUY_SHOW = 6;  // 초. 아이템을 산 직후 상자를 띄우는 시간 (상점 창 인식이 안 돼도)
+const PICK_SHOW = 8;  // 초. 증강을 고른 직후 그 증강 기준 다음 구매 상자를 띄우는 시간 (상점 창 인식이 안 돼도)
+// 증강을 고르면 그 증강 기준 다음 구매(첫 완성 아이템)를 잠깐 띄운다. 상자는 상점이 열린 걸 알아봤을 때·죽었을 때·산 직후에만 떠서,
+// 상점 인식이 안 되는 환경에선 첫 증강을 고르고 우물에서 살 때 추천이 아무것도 안 보였다 (2026-10-24 지적)
+function showBoxAfterPick() {
+  state.buyUntil = Math.max(state.buyUntil || 0, Date.now() + PICK_SHOW * 1000);
+  if (!state.boxWhy) state.boxWhy = "bought";
+}
 const BOX_START = 75;  // 초. 상자 '자세히'일 때 게임 시작 후 이 시간까지 띄운다 (처음 아이템을 사는 때)
 // ⚙ 표시 설정·⚙ 더보기 팝업: 바깥을 누르거나 Esc 로 닫는다 (summary 를 다시 누르는 것 말고는 닫을 방법이 없어
 // 4분 넘게 열린 채 오른쪽 '다음에 살 아이템'을 가렸다, 2026-10-20 피드백 #22)
