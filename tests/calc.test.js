@@ -739,3 +739,23 @@ test("늦게 더하는 주문력(리치 두뇌)도 주문력 % 증가를 받는�
   const haste = (ids) => St.computeStats(jinx, 18, [item("무한의 대검")], S.augStatsOf(ids.map(aug), d.rules, jinx)).total.HASTE;
   assert.ok(haste(["ARAM_Purist_Caster", "TickleMonster"]) > haste(["ARAM_Purist_Caster"]), "간지럼 괴물 공속도 가속으로 바뀐다");
 });
+
+test("증강 등급: 정렬 점수가 같으면 같은 등급 (2026-10-24 진단 C03: 가렌 폴터가이스트 S · 점멸 2 A · 전환: 골드 A)", () => {
+  for (const id of ["Garen", "Galio", "Jinx", "Lux"]) {
+    const c = champ(id), w = S.profile(c, d.tags);
+    const t = S.augmentTiers(d.augments, d.items, w, [], [], d.rules, c, { aram: true });
+    const sc = Object.fromEntries(S.rankAugments(d.augments, w, [], [], c, d.rules).map((r) => [r.aug.id, r.score]));
+    const groups = {};
+    for (const a of d.augments) {
+      const x = t[a.id];
+      if (!x || x.basis !== "효과" || x.reasons.includes("조건 없음")) continue;
+      const k = `${a.rarity}|${sc[a.id] || 0}`;
+      (groups[k] = groups[k] || []).push(`${a.name}=${x.tier}`);
+    }
+    for (const g of Object.values(groups)) assert.equal(new Set(g.map((s) => s.split("=")[1])).size, 1, `${id}: ${g.join(", ")}`);
+  }
+  const g = champ("Garen"), gt = S.augmentTiers(d.augments, d.items, S.profile(g, d.tags), [], [], d.rules, g, { aram: true });
+  const by = (n) => gt[d.augments.find((a) => a.name === n).id].tier;
+  assert.equal(by("폴터가이스트"), by("점멸 2"));
+  assert.equal(by("점멸 2"), by("전환: 골드"));
+});

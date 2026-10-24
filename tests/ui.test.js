@@ -975,6 +975,17 @@ test("6칸이 다 찼어도 적 대응(치유 감소)이 필요하면 바꾸기�
   p.w.renderItemList();
   p.w.sendOverlay();
   assert.notEqual((sent.at(-1).swap || {}).why, "치유 감소");
+  // 산 아이템이 다 잘 맞으면(👍) 확정해서 팔라고 하지 않고 '검토'로 (2026-10-24 진단 C09: 순위가 가장 낮다는 이유로 👍 도 팔았다)
+  const orig = p.w.itemVerdicts;
+  p.w.itemVerdicts = () => orig().map((v) => ({ ...v, mark: "👍" }));
+  // 같은 계열(도미닉 ↔ 필멸자의 운명)은 둘 다 못 가져서 바꾸기가 맞다 → 계열이 겹치지 않는 빌드로
+  live(six.map((x) => (x === id("도미닉 경의 인사") ? id("무한의 대검") : x)), [id("피바라기")]);
+  p.w.renderItemList();
+  p.w.sendOverlay();
+  assert.equal(sent.at(-1).swap, null, "게임 화면에 바꾸기 아이콘을 보내지 않는다");
+  assert.match(sent.at(-1).hud[0], /적 대응\(치유 감소\)은 .+ 바꿀지는 선택/);
+  assert.match(p.text("#next-buy"), /바꾸면 손해일 수 있어요/);
+  p.w.itemVerdicts = orig;
   assert.deepEqual(p.errors, []);
 });
 
@@ -1000,6 +1011,7 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   p.w.applyAug({ offers: null, seq: 2, picked: "치명적 치유", pickSeq: 2 });
   p.w.renderItemList();
   assert.match(p.text("#next-buy"), /🔁 .+ ← 치명적 치유 골라서/);
+  assert.equal(p.text("#next-buy").split("← 치명적 치유 골라서").length, 2, "같은 이유는 한 번만 (여러 아이템은 · 로 묶어서)");
   assert.ok(sent.at(-1).hud.some((l) => l.startsWith("🔁 ")), "게임 화면 상자에도");
   const heal = { champion: "Soraka", level: 9, items: [] }, heal2 = { champion: "Yuumi", level: 9, items: [] };
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],

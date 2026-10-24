@@ -1150,6 +1150,20 @@ class HudIcons(unittest.TestCase):
         ids, unsure = augocr.resolve_groups(groups, self.names, set())
         self.assertEqual(unsure, [["돌진", "앙파상"]], "선택지를 못 봤으면 못 정함")
 
+    def test_tier_icons_grouped(self):
+        # 2026-10-24 코르키 판: 상급 조준경 부착을 골랐는데 증강 칸에서 '조준경 부착'(흑백 0.989)으로 읽어 계산이 바뀌었다.
+        # 칸에서 구별 안 되는 그림은 한 묶음 → 선택지에 둘 다 떴으면(글자를 덜 읽음) 클릭으로 고른 것으로
+        by = {n: i for i, n in self.names.items()}
+        g = next(g for g in self.tpl.groups if by["상급 조준경 부착"] in g)
+        self.assertIn(by["조준경 부착"], g)
+        import augocr
+        offered = {"조준경 부착", "상급 조준경 부착", "되풀이"}
+        ids, unsure = augocr.resolve_groups([g], self.names, offered)
+        self.assertEqual((ids, len(unsure)), ([], 1), "클릭을 모르면 못 정함")
+        ids, unsure = augocr.resolve_groups([g], self.names, offered, picked={"양손잡이", "상급 조준경 부착"})
+        self.assertEqual([self.names[i] for i in ids], ["상급 조준경 부착"])
+        self.assertEqual(unsure, [])
+
     def test_board_layout_rows(self):
         # 점수판 줄: 게임 창 높이 기준 첫 줄 28.7% · 간격 7.05% (2026-10-19 1680x1050 스크린샷 · 2520x1575 기록)
         h = self.h
