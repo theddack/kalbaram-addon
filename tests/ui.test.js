@@ -1277,7 +1277,7 @@ test("누르자마자 다음 선택 화면: 고른 증강을 넣고 새 선택�
   // 상점 창을 못 알아봐도(aug.shop 없음) 살아 있는데 가방이 바뀌면 상자를 띄운다
   const tome = p.data.parts ? Object.keys(p.data.parts).find((id) => p.data.parts[id].name === "증폭의 고서") : null;
   p.w.applyLive({ enabled: true, inGame: true, champion: "Heimerdinger", level: 7, gameTime: 300, items: [tome].filter(Boolean) });
-  assert.equal(sent.at(-1).box, "shop");
+  assert.equal(sent.at(-1).box, "bought", "산 직후는 따로 (그리는 쪽이 상점 인식과 상관없이 띄운다)");
   assert.deepEqual(p.errors, []);
   p.w.close();
 });

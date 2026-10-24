@@ -223,7 +223,10 @@ def with_live(payload, live):
         return payload
     p = dict(payload)
     shop, dead = live.get("shop"), bool(live.get("dead"))
-    p["shop"] = shop or ("dead" if dead else ("start" if p.get("box") == "start" else None))
+    # 화면(JS)이 정한 이유 중 '게임 시작 직후(start)'·'아이템을 산 직후(bought, 6초)'는 그대로 둔다: 상점 글자 인식을 못 해도 상자를 띄운다.
+    # 'bought' 는 화면이 6초 뒤 다시 보내서 지운다 (상점을 닫고 남는 시간은 그만큼뿐)
+    keep = p.get("box") if p.get("box") in ("start", "bought") else None
+    p["shop"] = shop or ("dead" if dead else keep)
     p["dead"] = dead
     return p
 

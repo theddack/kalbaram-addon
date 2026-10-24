@@ -2446,6 +2446,11 @@ class BoxNoObstruct(unittest.TestCase):
         self.assertTrue(overlay.layout(overlay.with_live({"hud": ["다음 구매: 가"]}, {"shop": {"left": 0.3}, "dead": False}), 1920, 1080),
                         "보낼 땐 닫혀 있었어도 지금 열려 있으면 띄운다")
         self.assertEqual(overlay.with_live({"shop": "preview"}, {"shop": None})["shop"], "preview", "미리 보기는 그대로")
+        # 아이템을 산 직후(화면이 box="bought" 로 6초 보냄): 상점 글자 인식을 못 해도 상자를 띄운다 (2026-10-24 베이가 판)
+        bought = {"hud": ["다음 구매: 가"], "box": "bought"}
+        self.assertTrue(overlay.layout(overlay.with_live(bought, {"shop": None, "dead": False}), 1920, 1080), "산 직후 상자")
+        self.assertFalse(overlay.layout(overlay.with_live({"hud": ["다음 구매: 가"], "box": None}, {"shop": None, "dead": False}), 1920, 1080),
+                         "화면이 6초 뒤 지우면 상자 없음")
         # 오른쪽 가운데 자리는 상점이 열려 있으면 상점 창과 겹쳐 왼쪽 위로
         r = overlay.layout({"hud": ["다음 구매: 가"], "shop": {"left": 0.3}, "boxPos": "right-middle"}, 1440, 900)[0]
         self.assertLess(r[1], 1440 / 2)
