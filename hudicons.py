@@ -29,6 +29,9 @@ REGION = (0.12, 0.70, 0.75, 1.0)  # 찾는 범위 (게임 창 비율: 왼쪽, �
 SIZES = tuple(round(0.024 * 1.08 ** i, 4) for i in range(13))
 MIN_SCORE = 0.90  # 이만큼 닮아야 같은 아이콘 (흑백 24x24 가운데. 실제 HUD: 정답 0.966~0.972)
 MARGIN = 0.01  # 1등이 2등보다 이만큼은 나아야 (점수 문턱을 높인 대신 차이는 작게 허용)
+# 흑백 그림이 이만큼 닮으면 같은 그림으로 묶는다. 게임 증강 칸은 등급 색 단색이라 조준경 부착·상급 조준경 부착(0.989),
+# 죽음의 춤·광대 대학(1.0)처럼 원본은 달라도 칸에선 구별이 안 된다 → 따로 두면 엉뚱한 쪽을 골랐다 (2026-10-24 코르키 판)
+SAME_ICON = 0.985
 
 
 def _prep(np, vecs, wts):
@@ -69,7 +72,7 @@ class Templates:
         import numpy as np
         from PIL import Image
         self.np = np
-        groups, g_v, f_v, keys = [], [], [], {}
+        groups, g_v, f_v, keys, units = [], [], [], {}, []
         for aid, name in names.items():
             path = next((os.path.join(icon_dir, f"{aid}{ext}") for ext in (".webp", ".png")
                          if os.path.exists(os.path.join(icon_dir, f"{aid}{ext}"))), None)
@@ -88,6 +91,14 @@ class Templates:
             if key in keys:  # 같은 그림 → 같은 묶음
                 groups[keys[key]].append(aid)
                 continue
+            u = b.ravel() - b.mean()
+            u = u / (np.linalg.norm(u) + 1e-6)
+            near = next((k for k, v in enumerate(units) if float(u @ v) >= SAME_ICON), None)
+            if near is not None:  # 칸에서 구별 안 되는 그림 → 같은 묶음 (이름은 선택 화면·클릭으로 가린다)
+                groups[near].append(aid)
+                keys[key] = near
+                continue
+            units.append(u)
             keys[key] = len(groups)
             groups.append([aid])
             g_v.append(a.ravel())
