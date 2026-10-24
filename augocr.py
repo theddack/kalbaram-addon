@@ -416,6 +416,14 @@ class Tracker:
             if not any(offers3):
                 self._miss = 0  # 옛 카드만 보였다 = 아직 선택 화면 (닫힘으로 세지 않는다)
                 return
+        if (offers3 and self._last is not None and None in offers3
+                and any(n and n in self._last and self._last.index(n) != i for i, n in enumerate(offers3))):
+            # 아는 이름이 다른 칸 자리에서 읽혔다 = 카드 위에 뜬 설명 창(툴팁) 제목. 선택지·카드 위치를 바꾸지 않는다
+            # (2026-10-24 빅토르 판: 왕관의 무게 설명 창 제목을 가운데 칸으로 읽어 위치가 틀어지고, 왕관의 무게 클릭이 빈칸으로 기록 →
+            #  한 판 내내 첫 증강이 계산에서 빠짐)
+            self._full_at = now
+            self._miss = 0
+            return
         if offers3:
             self._full_at = now
             self._miss = 0
@@ -1324,6 +1332,10 @@ class Reader(threading.Thread):
     def _board_ready(self):
         """Tab 점수판을 읽을 때인가: 게임 중이고 적을 알고, 직전 읽기에서 BOARD_GAP 이 지났고, 적 증강을 아직 다 못 찾았을 때"""
         if not self.board_on or not self.icon_dir or self._board_busy or getattr(self, "board_error", None) or self.protect:
+            return False
+        if self.tracker.showing:
+            # 증강 선택 화면 중엔 읽지 않는다: 한 번에 3~13초를 써서 같은 0.5코어의 카드 평가·그리기가 밀렸다
+            # (2026-10-24 빅토르 판: 게임 시작 직후 Tab → 첫 상자 그리기 3.6초, 카드 4.7초 뒤)
             return False
         if time.time() - self._board_at < BOARD_GAP:
             return False

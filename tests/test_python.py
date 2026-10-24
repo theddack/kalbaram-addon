@@ -912,6 +912,21 @@ class AugOcr(unittest.TestCase):
         t.feed(None)
         self.assertEqual(t.state["picked"], "지옥불 난사 발동")
 
+    def test_tooltip_title_does_not_move_cards(self):
+        # 2026-10-24 빅토르 판: 왕관의 무게 설명 창 제목이 가운데에서 읽혀 선택지·카드 위치가 틀어졌고, 왕관의 무게 클릭이 빈칸으로
+        t = self.o.Tracker()
+        full = ["극악무도", "부메랑 투척", "왕관의 무게"]
+        pos = {"xs": [0.2868, 0.5, 0.7125], "nameY": 0.4019}
+        t.feed(full, pos)
+        seq = t.state["seq"]
+        t.feed(["극악무도", "왕관의 무게", None], {"xs": [0.2806, 0.3819, 0.4833], "nameY": 0.3986})
+        self.assertEqual((t.state["seq"], t.state["offers"], t.state["pos"]), (seq, full, pos), "설명 창 읽기는 무시")
+        t.click(self.o.card_at(t.state["pos"], 0.718, 0.61))
+        t.click(self.o.card_at(t.state["pos"], 0.523, 0.315))  # 설명 창 위를 누른 두 번째 클릭은 무시 (처음 누른 카드)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["picked"], "왕관의 무게")
+
     def test_tracker_click_then_new_screen_is_a_pick(self):
         # 2026-10-22 하이머딩거 판: 유레카를 누르고 3초 뒤 닫힘 없이 다른 선택 화면이 바로 떴다 → 유레카를 고른 것으로
         t = self.o.Tracker()
@@ -1205,6 +1220,11 @@ class HudIcons(unittest.TestCase):
         r.board_on = True
         live = {"inGame": True, "enemies": ["Jinx"]}
         r.live_fn = lambda: live
+        r.tracker.feed(["극악무도", "부메랑 투척", "왕관의 무게"])
+        self.assertFalse(r._board_ready(), "증강 선택 화면 중엔 안 읽는다 (2026-10-24 빅토르 판: 첫 카드가 밀림)")
+        r.tracker.feed(None)
+        r.tracker.feed(None)
+        self.assertTrue(r._board_ready())
 
         class Key:
             def __init__(self, held=True):
