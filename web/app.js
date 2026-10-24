@@ -2127,7 +2127,9 @@ function applyLive(L) {
   const invChanged = JSON.stringify(state.inventory) !== JSON.stringify((L.items || []).map(String));
   if (invChanged && !L.dead && (L.gameTime ?? 0) > 5) state.buyUntil = Date.now() + BUY_SHOW * 1000;
   const justBought = Date.now() < (state.buyUntil || 0);
-  state.boxWhy = (L.aug && L.aug.shop) || (justBought && !L.dead) ? "shop" : L.dead ? "dead"
+  // 산 직후는 'bought' 로 따로: 그리는 쪽(overlay.with_live)이 그 순간 상점 인식만 보고 'shop' 을 지워서 산 직후 상자가 안 떴다
+  // (2026-10-24 베이가 판: 아이템을 산 14번 중 9번이 '표시할 내용 없음' — 상점 글자 인식이 거의 안 되는 환경)
+  state.boxWhy = L.aug && L.aug.shop ? "shop" : justBought && !L.dead ? "bought" : L.dead ? "dead"
     : state.boxDetail === "detail" && L.gameTime != null && L.gameTime < BOX_START ? "start" : null;
   const shopOpen = !!state.boxWhy;
   const goldChanged = invChanged || (state.gold !== (L.gold ?? null)
