@@ -31,7 +31,7 @@ MIN_SCORE = 0.90  # 이만큼 닮아야 같은 아이콘 (흑백 24x24 가운데
 MARGIN = 0.01  # 1등이 2등보다 이만큼은 나아야 (점수 문턱을 높인 대신 차이는 작게 허용)
 # 흑백 그림이 이만큼 닮으면 같은 그림으로 묶는다. 게임 증강 칸은 등급 색 단색이라 조준경 부착·상급 조준경 부착(0.989),
 # 죽음의 춤·광대 대학(1.0)처럼 원본은 달라도 칸에선 구별이 안 된다 → 따로 두면 엉뚱한 쪽을 골랐다 (2026-10-24 코르키 판)
-SAME_ICON = 0.985
+SAME_ICON = 0.98  # 2026-10-24 점수판: 바늘에 실 끼우기·능수능란(0.982)도 칸에선 구별이 안 됐다
 
 
 def _prep(np, vecs, wts):
@@ -195,7 +195,6 @@ def find_icons(tpl, rgb, size_px, max_cands=5, min_score=MIN_SCORE, unique=True)
     return hits
 
 
-BOARD_CANDS = 30
 
 
 class HudReader:
@@ -285,8 +284,22 @@ class HudReader:
 BOARD_SIDE = (0.47, 0.72)  # 패널 가로 범위: 게임 창 가운데에서 떨어진 거리 / 게임 창 높이 (해상도·화면비와 상관없게)
 BOARD_YS = (0.27, 0.70)  # 패널 세로 범위 (게임 창 높이 비율)
 BOARD_ROW0, BOARD_STEP = 0.287, 0.0705  # 첫 줄 위끝, 줄 간격 (게임 창 높이 비율)
-BOARD_AUG_SIZES = (0.024, 0.022, 0.026, 0.028)  # 증강 아이콘 한 변 / 게임 창 높이 (스크린샷 0.024 가 가장 잘 맞음)
 BOARD_SURE = 0.95  # 한 번만 봐도 인정하는 점수 (아니면 두 번 보여야)
+# 점수판 증강 칸은 정해진 격자: 한 사람당 위·아래 2줄 × 3칸. 칸 가운데 = 게임 창 가운데에서 떨어진 거리 / 창 높이 (해상도·화면비와 상관없게).
+# 2026-10-24 스몰더 판 1680x1050 스크린샷 · 2520x1575 기록이 같은 비율. 예전엔 패널 전체에서 후보 몇 자리만 찾아 한 사람 5~6칸 중
+# 1~2칸만 읽었고(세 판 맞음 0), 한 번에 3~13초를 썼다 → 칸 자리만 본다 (같은 스크린샷 0.4초)
+BOARD_COLS = {"ally": (-0.6114, -0.5838, -0.5581), "enemy": (0.5552, 0.5810, 0.6105)}
+BOARD_CELL_Y0, BOARD_CELL_SUB = 0.3071, 0.0290  # 첫 사람 위 줄 칸 가운데, 아래 줄까지 (창 높이 비율). 사람 간격은 BOARD_STEP
+BOARD_ICON = 0.024  # 칸 안 증강 그림 한 변 / 창 높이
+BOARD_MIN_SCORE = 0.88  # 칸 자리를 아니까 자유 찾기(MIN_SCORE)보다 조금 느슨하게
+BOARD_COLORFUL = 0.3  # 진한 색 화소가 이 비율을 넘으면 컬러 그림 칸 (핏빛 코발트·전환: 프리즘 등은 점수판에 원래 그림으로 나와
+#                       단색 아이콘 그림과 엉뚱하게 맞았다) → 읽지 않는다. 단색 칸은 0.03 이하
+
+
+def board_cells(cx, h):
+    """[(팀, 줄 0~4, 칸 가운데 x, y)] (게임 창 픽셀). cx = 게임 창 가운데 x"""
+    return [(side, row, cx + rx * h, (BOARD_CELL_Y0 + row * BOARD_STEP + sub * BOARD_CELL_SUB) * h)
+            for side, xs in BOARD_COLS.items() for row in range(5) for sub in range(2) for rx in xs]
 
 
 def board_bands(w, h):
@@ -311,38 +324,60 @@ class BoardReader:
 
     def __init__(self, aug_tpl):
         self.aug_tpl = aug_tpl
-        self.aug_size = None  # 찾은 아이콘 크기 (게임 창 높이 비율)
         self.picked = {}
         self._seen = {}
         self.last = {"augs": []}
 
+    def _vec(self, img, x0, y0, sp):
+        np = self.aug_tpl.np
+        from PIL import Image
+        m = sp * INNER
+        c = img.crop((int(x0 + m), int(y0 + m), int(x0 + sp - m), int(y0 + sp - m))).resize((FINE, FINE), Image.BILINEAR)
+        return (np.asarray(c, dtype=np.float32) @ LUM).ravel() / 255.0
+
     def scan(self, bands, h, enemies, allies=()):
         """bands: [("ally"|"enemy", 그림(h, w, 3), (x0, y0) 게임 창 기준 왼쪽 위)]"""
+        np = self.aug_tpl.np
+        from PIL import Image
         found = []  # (팀, 줄, 묶음, 점수, x, y)
-        sizes = [self.aug_size] if self.aug_size else BOARD_AUG_SIZES
-        best_size, best_mean = None, 0.0
+        size = BOARD_ICON * h
+        step = max(1, round(h / 1050))  # 위치 흔들기 (1050 높이에서 1픽셀)
         for side, rgb, (x0, y0) in bands:
-            for s in sizes:
-                # 한 띠 = 5명 × 증강 칸 최대 6 = 30 (40 이면 Tab 마다 자르기·비교가 그만큼 늘었다, 2026-10-23 점검)
-                hits = find_icons(self.aug_tpl, rgb, max(GRID, s * h), max_cands=BOARD_CANDS, unique=False)
-                if not hits:
+            # 띠 위치로 게임 창 가운데를 되짚는다 (board_bands: 왼쪽 띠 오른쪽 끝 = 가운데 − BOARD_SIDE[0]·h, 오른쪽 띠 왼쪽 끝 = 가운데 + …)
+            cx = x0 + rgb.shape[1] + BOARD_SIDE[0] * h if side == "ally" else x0 - BOARD_SIDE[0] * h
+            img = Image.fromarray(rgb.astype(np.uint8))
+            H, W = rgb.shape[:2]
+            for s2, row, px, py in board_cells(cx, h):
+                if s2 != side:
                     continue
-                mean = sum(x[1] for x in hits) / len(hits)
-                if mean > best_mean:
-                    best_size, best_mean = s, mean
-                for g, sc, x, y in hits:
-                    row = board_row(y + y0 + s * h / 2, h)
-                    if row is not None:
-                        found.append((side, row, g, sc, x + x0, y + y0, s))
-                if self.aug_size:
-                    break
-        if best_size and not self.aug_size:
-            self.aug_size = best_size
-        if not found:
-            self.aug_size = None  # 못 찾았으면 (창 크기를 바꿈) 다음엔 여러 크기로
-        size = self.aug_size or best_size
-        found = [f for f in found if size is None or f[6] == size]
-        self.last = {"augs": [f[:6] for f in found], "size": size}
+                lx, ly = px - x0, py - y0
+                if lx - size < 0 or ly - size < 0 or lx + size > W or ly + size > H:
+                    continue
+                core = rgb[int(ly - size * 0.38):int(ly + size * 0.38), int(lx - size * 0.38):int(lx + size * 0.38)].astype(np.int16)
+                mx, mn = core.max(2), core.min(2)
+                if float(((mx - mn > 90) & (mx > 60)).mean()) > BOARD_COLORFUL:
+                    continue  # 컬러 그림 칸
+                crops, where = [], []
+                for k in (0.92, 1.0, 1.08):
+                    sp = size * k
+                    for dy in range(-3 * step, 3 * step + 1, step):
+                        for dx in range(-3 * step, 3 * step + 1, step):
+                            cx0, cy0 = lx - sp / 2 + dx, ly - sp / 2 + dy
+                            crops.append(self._vec(img, cx0, cy0, sp))
+                            where.append((cx0, cy0))
+                X = np.array(crops)
+                if float(X.std(1).max()) < MIN_STD:
+                    continue  # 빈 칸
+                S = self.aug_tpl.identify(X)
+                time.sleep(PAUSE)
+                j = np.unravel_index(int(S.argmax()), S.shape)
+                sc = float(S[j])
+                rest = S[j[0]].copy()
+                rest[j[1]] = -1
+                if sc >= BOARD_MIN_SCORE and sc - float(rest.max()) >= MARGIN:
+                    wx, wy = where[j[0]]
+                    found.append((side, row, self.aug_tpl.ids[j[1]], sc, wx + x0, wy + y0))
+        self.last = {"augs": found, "size": BOARD_ICON}
         now = {}
         for side, row, g, sc, *_ in found:
             if side != "enemy" or row >= len(enemies):

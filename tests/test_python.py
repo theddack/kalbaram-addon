@@ -1190,8 +1190,10 @@ class HudIcons(unittest.TestCase):
         self.assertTrue(l[0] <= 185 and l[2] >= 305 and r[0] <= 1410 and r[2] >= 1540, (l, r))  # 양옆 패널이 들어간다
 
     def test_board_real_panels(self):
-        # 실제 Tab 점수판 양옆 패널 (2026-10-19 트위치 판 17:26, 이름 없는 부분만). 적 = 오른쪽 패널 줄 순서대로.
-        # 정답(전적): 피들스틱 사악한 정신·보석 건틀릿·마도사의 주스 상자·적응형 능력치, 바루스 쌍둥이 불꽃 …
+        # 실제 Tab 점수판 양옆 패널 (2026-10-24 스몰더 판 14:21, 1680x1050, 이름 없는 부분만). 적 = 오른쪽 패널 줄 순서대로.
+        # 정답(전적): 스몰더 파워·벌이다!!!·지옥의 전도체·취약·핏빛 코발트(컬러 그림) / 진 헤비·바늘에 실 끼우기·한 발에 두 놈·마법 미사일·보석 팔찌
+        # 베이가 헤비·노련한 저격수·보석 건틀릿·전환: 프리즘(컬러)·고반동. 적 1·2번째 줄은 오른쪽 위 퀘스트 창이 가린다.
+        # 예전(패널 전체에서 후보 몇 자리만 찾기)엔 이 그림에서 6칸만 찾았다 → 정해진 칸 격자
         import numpy as np
         from PIL import Image
         h = 1050
@@ -1199,17 +1201,25 @@ class HudIcons(unittest.TestCase):
         for side, (x0, y0, x1, y1) in self.h.board_bands(1680, h):
             bands.append((side, np.asarray(Image.open(ROOT / "tests" / "data" / f"board_{side}.png").convert("RGB")), (x0, y0)))
         br = self.h.BoardReader(self.tpl)
-        br.aug_size = 0.024
-        enemies = ["MonkeyKing", "Jhin", "KogMaw", "Fiddlesticks", "Varus"]
+        enemies = ["Nocturne", "Teemo", "Jhin", "Tryndamere", "Veigar"]
         br.scan(bands, h, enemies)
         got = br.scan(bands, h, enemies)
         named = {c: [sorted(self.names[a] for a in g) for g in v] for c, v in got.items()}
-        self.assertIn(["사악한 정신"], named.get("Fiddlesticks", []))
-        self.assertTrue(any("쌍둥이 불꽃" in g for g in named.get("Varus", [])), named)
-        ally = {g for side, row, g, *_ in br.last["augs"] if side == "ally"}
+        self.assertIn(["노련한 저격수"], named.get("Veigar", []))
+        self.assertIn(["보석 건틀릿"], named.get("Veigar", []))
+        self.assertTrue(any("바늘에 실 끼우기" in g for g in named.get("Jhin", [])), named)
+        emblem = {"스래시", "파워", "헤비"}  # 모두 같은 그림 (첫 증강: 헤비·파워·스래시·둠)
+        for c in ("Nocturne", "Teemo"):
+            self.assertTrue(all(emblem <= set(g) for g in named.get(c, [])), f"퀘스트 창이 가린 줄에 엉뚱한 증강 없음: {named.get(c)}")
+        ally = {}
+        for side, row, g, *_ in br.last["augs"]:
+            if side == "ally":
+                ally.setdefault(row, []).append(sorted(self.names[a] for a in g))
+        self.assertIn(["벌이다!!!"], ally.get(0, []))
+        self.assertIn(["지옥의 전도체"], ally.get(0, []))
+        self.assertFalse(any("빵과 버터" in g for g in ally.get(0, [])), "컬러 그림(핏빛 코발트) 칸은 읽지 않는다")
         enemy_got = {g for v in got.values() for g in v}
-        shadow = next(g for g in ally if "그림자 질주" in [self.names[a] for a in g])
-        self.assertNotIn(shadow, enemy_got, "왼쪽(아군) 패널 아이콘은 적에게 안 붙는다 (예전엔 헤카림 '그림자 질주'를 진에게)")
+        self.assertFalse(any(self.names[a] == "벌이다!!!" for g in enemy_got for a in g), "왼쪽(아군) 패널 아이콘은 적에게 안 붙는다")
 
     def test_tab_triggers_board_read(self):
         # Tab 을 누르고 있으면 점수판을 읽는다. 적을 모르거나 직전에 읽었거나, 잠깐만 눌렀으면 안 읽는다
