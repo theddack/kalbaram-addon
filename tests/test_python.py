@@ -449,6 +449,18 @@ class FakeCanvas:
 
 
 class Overlay(unittest.TestCase):
+    def test_warm_glyphs_covers_card_icons_and_cleans_up(self):
+        # 2026-10-24 멜 판: 첫 카드 그리기 4.2초 = 윈도우 Tk 가 이모지를 처음 그릴 때 대체 글꼴 찾기 → 표시 창을 만들 때 미리 그린다
+        import overlay, re
+        app = (ROOT / "web" / "app.js").read_text(encoding="utf-8")
+        labels = re.search(r"const TIER_LABEL = \{(.*?)\};", app, re.S).group(1) + re.search(r"const LINK_LABEL = \{(.*?)\};", app, re.S).group(1)
+        icons = set(re.findall(r'\[\s*"([^"]+)",', labels))
+        self.assertTrue(icons)
+        self.assertEqual({i for i in icons if i not in overlay.WARM_GLYPHS}, set(), "카드 등급·연계 아이콘은 미리 그린다")
+        c = FakeCanvas()
+        overlay.warm_glyphs(c)
+        self.assertEqual(c.items, {}, "미리 그린 글자는 지운다")
+
     def test_draw_handles_empty_label(self):
         import overlay
         payload = {"cards": [{"icon": "", "label": "", "reason": ""}, None,

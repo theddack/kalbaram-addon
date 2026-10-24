@@ -378,6 +378,21 @@ def hud_lines(lines):
     return out
 
 
+# 게임 화면 표시에 쓰는 이모지 (등급·연계·상자 줄 머리). 윈도우 Tk 는 이모지를 처음 그릴 때 대체 글꼴을 찾느라 오래 걸린다
+# (이 PC 바탕화면 0.3~0.4초, 게임 중 0.5코어 상한에선 첫 카드 그리기 4.2초 — 2026-10-24 멜 판). 그 뒤엔 크기가 달라도 0.02초
+WARM_GLYPHS = "🔥👍🙂🤔🎲⛔❔🔗➕➖⚠️💪🎉🔄🛡️💰🔁🧩🎯✅📌⏱️👀"
+
+
+def warm_glyphs(canvas):
+    """표시 창을 만들 때(게임 전) 이모지를 한 번 그려 두고 지운다 → 게임 중 첫 카드·상자 그리기가 대체 글꼴 찾기를 안 한다"""
+    font = "Malgun Gothic" if IS_WINDOWS else "Apple SD Gothic Neo"
+    ids = [canvas.create_text(0, 0, text=WARM_GLYPHS, font=(font, -px, *style), anchor="nw")
+           for px, style in ((FONT_PX[0], ("bold",)), (FONT_PX[1], ()), (HUD_PX, ("bold",)), (HUD_PX, ()))]
+    for i in ids:
+        canvas.bbox(i)  # 글자 배치를 실제로 계산하게
+    canvas.delete(*ids)
+
+
 def draw(canvas, payload, w, h, scale=1.0, icon_dir=None):
     canvas.delete("all")
     canvas.images = []  # 그림을 붙잡아 둔다 (안 그러면 Tk 그림이 지워진다)
@@ -692,6 +707,13 @@ class Overlay(threading.Thread):
         root.update_idletasks()
         win.click_through(root)
         root.update()
+        t0 = time.time()
+        try:
+            warm_glyphs(canvas)
+            root.update_idletasks()
+        except Exception:
+            pass  # 미리 그리기는 빠르게 하려는 것뿐 (실패해도 표시는 그대로)
+        self._perf_add("이모지 준비", t0)
         shown, last, placed = False, None, None
         last_main, last_tim = None, None
         raised = 0.0
