@@ -760,7 +760,9 @@ function renderChosen() {
 // 연계 티어는 계산이 무거워서 (챔피언·고른 증강·아이템·가중치·보정)이 같으면 재사용
 let tierCache = { key: null, value: null };
 // 첫 증강은 챔피언 기준(종합), 고른 뒤에는 고른 증강과의 연계 기준. 버튼으로 바꿀 수 있다
-const tierMode = () => (state.tierMode === "auto" ? (state.chosen.length ? "synergy" : "total") : state.tierMode);
+// 자동은 늘 종합 등급 (연계는 등급과 따로 🔗·➖ 칩으로). 예전엔 첫 증강을 고르면 연계 보기로 바뀌어 남은 증강의 70.7%가 D(도전)였고,
+// 선택지 3장이 모두 D인 경우가 46.2%라 '도전 · 강한 선택'처럼 엇갈렸다 (2026-10-24 진단 C04). 연계 우선 버튼은 그대로 둔다
+const tierMode = () => (state.tierMode === "auto" ? "total" : state.tierMode);
 function getTiers() {
   const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts()]);
   if (tierCache.key !== key) {
@@ -1219,7 +1221,7 @@ function warmThenRender() {
 // 고르고 나서 계산하면 게임 중 0.5코어로 묶여 첫 아이템 추천이 1~2초 늦었다 (2026-10-21 칼리스타 판: 추천 계산 최대 2.3초)
 function warmOffers(augs, seq) {
   const d = state.data;
-  const mode = state.tierMode === "auto" ? "synergy" : state.tierMode;
+  const mode = tierMode();  // 고른 뒤 화면과 같은 보기 (자동 = 종합)
   const next = (i) => {
     if (seq !== offerSeq || i >= augs.length || state.chosen.length + 1 > AUG_MAX) return;
     const ch = [...state.chosen, augs[i]];
@@ -1299,9 +1301,16 @@ function counterSwap(needed) {
       const buy = legend(name);
       if (!buy || state.items.some((o) => o.name === buy.name)) continue;
       const same = state.items.find((o) => buy.limit && o.limit === buy.limit);
-      const sellable = verdicts.filter((v) => v.item.kind === "legendary" && !needed(v.item));
-      const sell = same ? (needed(same) ? null : same) : (sellable.sort((a, b) => b.rank - a.rank)[0] || {}).item;
-      if (sell) return { sell, buy, gain: 0, why: nd.why };
+      if (same) {
+        if (!needed(same)) return { sell: same, buy, gain: 0, why: nd.why };  // 같은 계열(고유 효과)은 둘 다 못 가진다 → 그것과
+        continue;
+      }
+      // 팔 후보는 산 아이템 평가가 🤔·⚠️ 인 것만 (일반 바꾸기와 같은 기준). 다 잘 맞는(👍·✅) 빌드면 확정하지 않고 '검토'로:
+      // 예전엔 순위가 가장 낮다는 이유로 👍 아이템도 손실 계산 없이 팔라고 했다 (2026-10-24 진단: 기획서 C09)
+      const legendRows = verdicts.filter((v) => v.item.kind === "legendary" && !needed(v.item)).sort((a, b) => b.rank - a.rank);
+      const weak = legendRows.find((v) => SWAP_MARKS.has(v.mark));
+      if (weak) return { sell: weak.item, buy, gain: 0, why: nd.why };
+      if (legendRows[0]) return { sell: legendRows[0].item, buy, gain: 0, why: nd.why, review: true };
     }
   }
   return null;
@@ -1383,6 +1392,7 @@ function sendOverlay(src) {
     // 6칸이 다 차면 더 살 것 대신 '완성'과 바꿀 것만 (계속 다음 구매를 띄우면 '읭?' 2026-10-17 지적)
     const sw0 = swapAdvice();
     hud.push(!sw0 ? "✅ 6칸 완성 · 지금 빌드 그대로 좋아요"
+      : sw0.review ? `✅ 6칸 완성 · 적 대응(${sw0.why})은 ${sw0.buy.name} · 지금 빌드도 잘 맞아 바꿀지는 선택`
       : `✅ 6칸 완성 · ${sw0.why ? `적 대응(${sw0.why})으로 바꾸면 좋아요` : "바꾸면 더 좋아요"}: ${sw0.sell.name} → ${sw0.buy.name}`);
   } else {
     if (next.length) hud.push("다음 구매: " + next.join(" > "));
@@ -1412,7 +1422,7 @@ function sendOverlay(src) {
     advice: adv,
   } : null;
   const sw = swapAdvice();
-  const swap = sw ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0, why: sw.why || null } : null;
+  const swap = sw && !sw.review ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0, why: sw.why || null } : null;
   api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null,
     calcMs: state.calcMs, calcSeq: state.calcSeq, statCheck: statCheck(),
     // 상점 창 안에서 자리를 찾아볼 아이템 (시험: 기록만). 다음 구매 위 3개 + 바꿀 때 살 것
@@ -1876,7 +1886,8 @@ function renderNextBuy(rows) {
 function swapHtml() {
   const sw = swapAdvice();
   if (!sw) return `<p class="small">✅ 6칸 완성이에요. 지금 빌드 그대로 좋아요.</p>`;
-  return `<p class="small">✅ 6칸 완성이에요. ${sw.why ? `적 대응으로 바꾸면 좋아요 <span class="chip adv">🛡️ ${esc(sw.why)}</span>` : "바꾸면 더 좋아요"}:</p>
+  return `<p class="small">✅ 6칸 완성이에요. ${sw.review ? `적 대응 <span class="chip adv">🛡️ ${esc(sw.why)}</span>이 필요하지만 지금 아이템이 다 잘 맞아서 바꾸면 손해일 수 있어요. 바꾼다면`
+    : sw.why ? `적 대응으로 바꾸면 좋아요 <span class="chip adv">🛡️ ${esc(sw.why)}</span>` : "바꾸면 더 좋아요"}:</p>
     <div class="swap-row" title="${esc(sw.sell.name)} 팔고 ${esc(sw.buy.name)}"><b>🔁</b><img src="${icon("item", sw.sell.id)}" alt="" class="sell"><span>→</span><img src="${icon("item", sw.buy.id)}" alt="">
     <div><div><s>${esc(sw.sell.name)}</s> → ${esc(sw.buy.name)} <span class="gold">${fmt(Number(sw.buy.gold) || 0)}G</span></div>
     ${sw.cost == null ? "" : `<div class="small muted" title="판매가: 게임 데이터 값">팔면 ${fmt(sw.refund)}G 돌려받아 실제로 <b>${fmt(sw.cost)}G</b>`

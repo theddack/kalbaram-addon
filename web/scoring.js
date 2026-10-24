@@ -780,9 +780,15 @@
         .sort((x, y) => (synergyMode ? inter(y) - inter(x) : withC[y.id].gain - withC[x.id].gain));
       const rest = pool.filter((a) => !withC[a.id])
         .sort((x, y) => (synergyMode ? synTag(y) - synTag(x) : 0) || (tagScore[y.id]?.score || 0) - (tagScore[x.id]?.score || 0));
-      for (const [list, basis] of [[num, "수치"], [rest, "효과"]]) {
+      // 정렬 기준 값이 같으면 같은 등급: 예전엔 동점이어도 목록 순서 위치로 잘려 효과 기반의 30.7%가 S/A·B/C 로 갈렸다
+      // (2026-10-24 진단 C03: 가렌 효과 점수 0.6 — 폴터가이스트 S · 점멸 2 A · 전환: 골드 A)
+      const numKey = (a) => (synergyMode ? inter(a) : withC[a.id].gain);
+      const restKey = (a) => `${synergyMode ? synTag(a) : 0}|${tagScore[a.id]?.score || 0}`;
+      for (const [list, basis, keyOf] of [[num, "수치", (a) => numKey(a).toFixed(9)], [rest, "효과", restKey]]) {
+        const firstAt = {};
+        list.forEach((a, i) => { const k = keyOf(a); if (!(k in firstAt)) firstAt[k] = i; });
         list.forEach((a, i) => {
-          const pct = (i + 1) / list.length;
+          const pct = (firstAt[keyOf(a)] + 1) / list.length;
           let tier = TIER_CUTS.find(([, cut]) => pct <= cut)[0];
           const sc = tagScore[a.id] || {};
           const g = withC[a.id];
