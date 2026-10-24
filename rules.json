@@ -480,14 +480,16 @@
       "tags": {
         "AS": 0.6,
         "CRIT": 0.4
-      }
+      },
+      "note": "평타 사거리 크게 증가"
     },
     "ARAM_ScopiestWeapons": {
       "requires": "ranged",
       "tags": {
         "AS": 0.8,
         "CRIT": 0.5
-      }
+      },
+      "note": "평타 사거리 아주 크게 증가"
     },
     "ARAM_DrawYourSword": {
       "tags": {

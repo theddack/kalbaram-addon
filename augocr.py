@@ -303,9 +303,10 @@ VERIFY_TRIES = 3  # 클릭으로 잡은 고르기는 증강 칸을 이만큼만 
 VERIFY_FOR = 25  # 초. 고른 뒤 이만큼 증강 칸에서 그 증강을 찾는다 (선택 화면이 사라지는 연출·상점 창에 가려질 때)
 
 
-def resolve_groups(groups, id_names, offered, scores=None):
+def resolve_groups(groups, id_names, offered, scores=None, picked=()):
     """증강 칸에서 읽은 그림 묶음들 → (정한 증강 id 목록, 못 정한 묶음 [이름 목록]).
     - 그림이 같은 증강이 여럿이면(돌진=앙파상) 이번 게임 선택 화면에 떴던 이름으로 가린다
+    - 그래도 여럿이면 클릭으로 고른 것으로 (글자를 덜 읽어 '조준경 부착'·'상급 조준경 부착'이 둘 다 떴던 걸로 남은 경우)
     - 선택 화면을 본 게임이면 거기 떴던 증강만 인정한다 (안 뜬 증강을 골랐을 리 없다. 엉뚱한 판정 막기)
     - 선택 화면을 못 봤으면(게임 중간에 켬) 점수가 SURE_SCORE 이상일 때만"""
     ids, unsure = [], []
@@ -314,6 +315,8 @@ def resolve_groups(groups, id_names, offered, scores=None):
         sc = scores[i] if scores and i < len(scores) else 1.0
         seen = [a for a in g if id_names.get(a) in offered]
         if offered:
+            if len(seen) > 1 and len([a for a in seen if id_names.get(a) in picked]) == 1:
+                seen = [a for a in seen if id_names.get(a) in picked]
             if len(seen) == 1:
                 ids.append(seen[0])
             elif len(seen) > 1:
@@ -751,7 +754,7 @@ class Reader(threading.Thread):
         if game_n is not None and game_n != getattr(self, "_game_n", 0):
             return  # 읽는 동안 새 게임이 시작됐다 → 지난 게임 결과는 기록에도 남기지 않고 버린다
         best = {g: sc for g, sc, _, _ in self.hud.last}
-        ids, unsure = resolve_groups(groups, self.id_names(), self.offered, [best.get(g, 0.0) for g in groups])
+        ids, unsure = resolve_groups(groups, self.id_names(), self.offered, [best.get(g, 0.0) for g in groups], self._picked_names)
         if (ids, unsure) != (self.hud_ids, self.hud_unsure) or not getattr(self, "_hud_logged", False):
             names = self.id_names()
             data = {"picked": [names.get(i, i) for i in ids], "unsure": unsure, "size": self.hud.size,
@@ -815,7 +818,7 @@ class Reader(threading.Thread):
                 self._picked_names.add(names.get(new[0]))
                 if names.get(new[0]) != rc["click"]:
                     self._fix = (names.get(new[0]), rc["from"], rc["click"])
-            ids, unsure = resolve_groups(groups, names, self.offered, [best.get(g, 0.0) for g in groups])
+            ids, unsure = resolve_groups(groups, names, self.offered, [best.get(g, 0.0) for g in groups], self._picked_names)
         if pos:
             # 칸 순서(위 줄 왼쪽부터)대로: 정해진 칸은 그 증강, 새 칸에서 하나로 정해지면 그 칸에 기록
             order = sorted(groups, key=lambda g: pos.get(g, (99, 99)))
@@ -824,7 +827,7 @@ class Reader(threading.Thread):
                 if g in fixed:
                     out.append((slot_of(pos[g]), fixed[g]))
                     continue
-                r, u = resolve_groups([g], names, self.offered, [best.get(g, 0.0)])
+                r, u = resolve_groups([g], names, self.offered, [best.get(g, 0.0)], self._picked_names)
                 if r and r[0] not in [i for _, i in out] and r[0] not in self._slot_ids.values():
                     out.append((pos.get(g, (99, 99)), r[0]))
                     if not self._recover and g in pos:

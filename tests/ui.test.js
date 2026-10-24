@@ -1000,6 +1000,7 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   p.w.applyAug({ offers: null, seq: 2, picked: "치명적 치유", pickSeq: 2 });
   p.w.renderItemList();
   assert.match(p.text("#next-buy"), /🔁 .+ ← 치명적 치유 골라서/);
+  assert.equal(p.text("#next-buy").split("← 치명적 치유 골라서").length, 2, "같은 이유는 한 번만 (여러 아이템은 · 로 묶어서)");
   assert.ok(sent.at(-1).hud.some((l) => l.startsWith("🔁 ")), "게임 화면 상자에도");
   const heal = { champion: "Soraka", level: 9, items: [] }, heal2 = { champion: "Yuumi", level: 9, items: [] };
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],

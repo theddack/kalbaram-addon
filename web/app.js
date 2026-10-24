@@ -1017,7 +1017,9 @@ function augReason(a, t, sc, g) {
     return `${josa(names, "과", "와")} 잘 맞아요. ${pt}`;
   }
   if (state.chosen.length && tierMode() === "synergy" && g && TIER_ORDER[t.tier] >= TIER_ORDER.C) {
-    return `그 자체로는 ${partText(topPart(1), "늘지만")} ${josa(names, "과", "와")} 연계는 약해요.${trText}`;
+    // 늘어나는 수치를 못 찾으면 '그 자체로는'을 빼고 (2026-10-24 코르키 판: "그 자체로는  양손잡이 …"로 빈칸이 보였다)
+    const pt = partText(topPart(1), "늘지만");
+    return `${pt ? `그 자체로는 ${pt} ` : ""}${josa(names, "과", "와")} 연계는 약해요.${trText}`;
   }
   if (g) {
     const p = topPart(1);
@@ -1853,7 +1855,10 @@ function renderNextBuy(rows) {
     const added = pick.filter((r) => !prev.names.includes(r.item.name)).map((r) => [r.item.name, why(r)]).filter(([, w]) => w);
     // 새로 들어온 게 없고 1순위만 바뀌었으면 '먼저'로 (고른 증강·적 변화가 원인일 때만)
     const top = !added.length && now.names[0] !== prev.names[0] ? why(pick[0]) : null;
-    state.nextChange = added.length ? added.map(([n, w]) => `🔁 ${n} ← ${w}`).join(" / ") : top ? `🔁 ${now.names[0]} 먼저 ← ${top}` : null;
+    // 이유가 같으면 한 줄로: "🔁 삼위일체·몰락한 왕의 검 ← 양손잡이 골라서" (2026-10-24 코르키 판: 같은 이유가 세 번 반복)
+    const byWhy = new Map();
+    added.forEach(([n, w]) => byWhy.set(w, [...(byWhy.get(w) || []), n]));
+    state.nextChange = added.length ? [...byWhy].map(([w, ns]) => `🔁 ${ns.join("·")} ← ${w}`).join(" / ") : top ? `🔁 ${now.names[0]} 먼저 ← ${top}` : null;
   } else if (!now.names.length) state.nextChange = null;
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
     + (state.nextChange ? `<div class="small next-change">${esc(state.nextChange)}</div>` : "")
