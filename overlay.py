@@ -62,6 +62,9 @@ IS_WINDOWS = sys.platform == "win32"
 
 
 # ---------------------------------------------------------------- 윈도우 API (ctypes)
+SLOW_DRAW_MS = 300  # 이보다 오래 걸린 표시 그리기는 한 판 기록(drawn)에 걸린 시간을 남긴다
+SLOW_DRAW_LAG_MS = 800  # 내용을 받고 그리기까지 이보다 오래 기다렸으면 남긴다
+
 class _Win:
     def __init__(self):
         import ctypes
@@ -639,6 +642,12 @@ class Overlay(threading.Thread):
             setattr(self, k, v)
 
     def _report_drawn(self, d):
+        # 느린 그리기(SLOW_DRAW_MS)는 걸린 시간과 내용을 받고 기다린 시간을 같이 남긴다 (같은 내용이어도 한 번)
+        slow = getattr(self, "_slow", None)
+        if slow:
+            self._slow = None
+            d = {**d, **slow}
+            self._drawn = None
         if d != self._drawn:
             self._drawn = d
             if self.on_drawn:
@@ -703,6 +712,8 @@ class Overlay(threading.Thread):
                 k, v = self.q.get_nowait()
                 if k == "payload":
                     self.payload = v or {}
+                    if getattr(self, "_pay_at", None) is None:
+                        self._pay_at = time.time()  # 그리기 전까지 받은 첫 내용 시각 (느린 그리기 기록용)
                 elif k == "enabled":
                     self.enabled = v
                 elif k == "preview":
@@ -769,6 +780,12 @@ class Overlay(threading.Thread):
                     last_main, last_tim = (w, h, repr(main)), (len(tim[0][3]) if tim else None)
                     placed = None
                     self._perf_add("그리기", t0)
+                    now = time.time()
+                    ms, lag = (now - t0) * 1000, (now - self._pay_at) * 1000 if getattr(self, "_pay_at", None) else 0
+                    self._pay_at = None
+                    # 첫 증강 카드가 계산 뒤 3초 넘게 늦게 그려졌다 (2026-10-24 베이가 판) → 그리기 자체인지 기다림인지 남긴다
+                    if ms >= SLOW_DRAW_MS or lag >= SLOW_DRAW_LAG_MS:
+                        self._slow = {"ms": round(ms), "lag": round(lag)}
                 bx0, by0, bw, bh = self._box
                 where = (x + bx0, y + by0, bw, bh)
                 if where != placed:  # 게임 창이 움직이면 위치만 옮긴다 (활성화 없이 맨 위로)
