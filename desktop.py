@@ -154,8 +154,30 @@ def prepare_web():
     # 그대로: '데이터 갱신'으로 앱보다 새 패치를 받아 둔 경우만
     if m is None or (b and (m[0] <= b[0] or m[1] < b[1])):
         shutil.copy2(bundled, mine)
-        shutil.copytree(src / "icons", dst / "icons", dirs_exist_ok=True)
+        if (src / "icons.zip").exists():
+            unpack_icons(src / "icons.zip", dst / "icons")
+        else:
+            shutil.copytree(src / "icons", dst / "icons", dirs_exist_ok=True)
     return dst
+
+
+def unpack_icons(archive, dst):
+    """빌드는 아이콘을 zip 한 파일로 넣는다 (tools/slim_bundle.py: 버전 폴더마다 파일 600여 개가 줄어 휴지통·삭제가 가볍다).
+    이미 같은 크기로 있는 것은 건너뛴다 (켤 때마다 600여 개를 다시 쓰지 않게)"""
+    import zipfile
+    root = dst.resolve()
+    with zipfile.ZipFile(archive) as z:
+        for info in z.infolist():
+            if info.is_dir():
+                continue
+            target = (dst / info.filename).resolve()
+            if root not in target.parents:
+                continue  # 폴더 밖을 가리키는 이름은 무시
+            if target.exists() and target.stat().st_size == info.file_size:
+                continue
+            target.parent.mkdir(parents=True, exist_ok=True)
+            with z.open(info) as f_in, open(target, "wb") as f_out:
+                shutil.copyfileobj(f_in, f_out)
 
 
 # ---------------------------------------------------------------- 게임 연동

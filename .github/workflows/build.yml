@@ -54,6 +54,9 @@ jobs:
           $exe = "dist/칼바람증강Addon/칼바람증강Addon.exe"
           if (-not (Test-Path $exe)) { throw "exe 없음" }
           if (-not (Get-ChildItem dist/칼바람증강Addon -Recurse -Filter data.json)) { throw "data.json 이 번들에 없음" }
+          # 안 쓰는 화면 엔진 데이터를 지우고 아이콘은 zip 한 파일로 (버전 폴더 파일 수 약 1,760 → 300)
+          python tools/slim_bundle.py dist/칼바람증강Addon
+          if (-not (Get-ChildItem dist/칼바람증강Addon -Recurse -Filter icons.zip)) { throw "icons.zip 이 번들에 없음" }
           Copy-Item 사용설명서.md dist/칼바람증강Addon/
           python tools/make_zip.py dist/칼바람증강Addon KalbaramAddon-Windows.zip
           "exe: {0:N1} MB / zip: {1:N1} MB" -f ((Get-Item $exe).Length / 1MB), ((Get-Item KalbaramAddon-Windows.zip).Length / 1MB)
