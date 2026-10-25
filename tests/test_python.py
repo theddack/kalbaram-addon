@@ -460,6 +460,17 @@ class Overlay(unittest.TestCase):
         c = FakeCanvas()
         overlay.warm_glyphs(c)
         self.assertEqual(c.items, {}, "미리 그린 글자는 지운다")
+        # 2026-10-25 라이즈 판: 게임 창 높이의 글꼴 크기마다, 화면에 나올 한글까지 미리 잰다
+        made = []
+        c.create_text = lambda x, y, text="", **kw: (made.append((kw["font"], text)), FakeCanvas.create_text(c, x, y, text=text))[1]
+        chars = desktop.overlay_chars(ROOT / "web")
+        self.assertIn("강", chars)
+        self.assertIn("추", chars)
+        overlay.warm_glyphs(c, 1575, chars)
+        sizes = {f[1] for f, _ in made}
+        self.assertIn(-round(overlay.FONT_PX[0] * 1575 / 1080), sizes, "카드 제목 크기")
+        self.assertIn(-round(overlay.FONT_PX[2] * 1575 / 1080), sizes, "가장 작게 줄인 이유 크기")
+        self.assertTrue(all(chars in t for _, t in made))
 
     def test_draw_handles_empty_label(self):
         import overlay

@@ -161,6 +161,17 @@ def prepare_web():
     return dst
 
 
+def overlay_chars(web):
+    """게임 화면 표시에 나올 수 있는 한글 글자 (화면 코드 문구 + 증강·아이템·챔피언 이름). 표시 창이 미리 폭을 재 둔다"""
+    try:
+        txt = (web / "app.js").read_text(encoding="utf-8")
+        d = json.loads((web / "data.json").read_text(encoding="utf-8"))
+        txt += "".join(x.get("name", "") for k in ("augments", "items", "champions") for x in d.get(k, []))
+    except (OSError, ValueError):
+        return ""
+    return "".join(sorted({c for c in txt if "가" <= c <= "힣"}))
+
+
 def unpack_icons(archive, dst):
     """빌드는 아이콘을 zip 한 파일로 넣는다 (tools/slim_bundle.py: 버전 폴더마다 파일 600여 개가 줄어 휴지통·삭제가 가볍다).
     이미 같은 크기로 있는 것은 건너뛴다 (켤 때마다 600여 개를 다시 쓰지 않게)"""
@@ -1562,6 +1573,7 @@ def main():
     ov = overlay.Overlay()
     ov.name = "게임 화면 표시"
     ov.icon_dir = str(user_dir() / "web" / "icons" / "augment")  # 쿨타임 아이콘
+    ov.warm_text = overlay_chars(web)  # 첫 카드 그리기가 글자 폭 재기로 늦지 않게 미리 잴 한글
     ov.enabled = bool(settings.get("overlay", True))
     ov.start()
     lw = LcuWatcher(user_dir() / "measure")
