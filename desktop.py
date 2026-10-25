@@ -1606,9 +1606,14 @@ def main():
     prev_new = getattr(watcher, "on_new_game", None)
     webmem = WebMemory()
 
+    board_seen = {}  # 판이 끝날 때 점수판에서 읽어 둔 적 증강 (다음 판이 시작되면 읽기 도구는 비운다)
+
     def on_new_game(st):
         if prev_new:
             prev_new(st)
+        # 지난 판 것을 비운다: 전적이 판 끝 처리보다 먼저 오면 지난 판 점수판 결과로 대조해 '맞음 0'이 찍혔다
+        # (2026-10-25 벨베스·알리스타 판: 블리츠크랭크 거인의 결의·릴리아 거인 학살자를 맞게 읽었는데 0 · 지난 판 'Alistar 궁극의 히드라'가 틀림으로)
+        board_seen.clear()
         webmem.set(in_game=True)
         if capped:
             cap_cpu(CPU_CAP["game"])
@@ -1624,8 +1629,6 @@ def main():
     def eog_result(res):
         if res:
             diag.write(f"경기 결과와 고른 증강 대조: {'모두 맞음' if res[0] else '다름'} · 그림 {res[1]}장 지움")
-
-    board_seen = {}  # 판이 끝날 때 점수판에서 읽어 둔 적 증강 (다음 판이 시작되면 읽기 도구는 비운다)
 
     def on_game_end():
         if reader:

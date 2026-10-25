@@ -636,9 +636,14 @@ class _Mouse:
         return bool(self.u.GetAsyncKeyState(vk) & 0x8000)
 
     def clicked(self):
-        down = bool(self.u.GetAsyncKeyState(0x01) & 0x8000)  # VK_LBUTTON
+        st = self.u.GetAsyncKeyState(0x01)  # VK_LBUTTON
+        down = bool(st & 0x8000)
+        # 맨 아래 비트 = 지난 확인 뒤에 눌렸던 적 있음: 두 번 확인 사이에 눌렀다 뗀 짧은 클릭도 잡는다.
+        # 게임 중 CPU 상한으로 이 스레드가 잠깐 못 돌면 '지금 눌림'만으로는 카드 클릭을 놓쳤다
+        # (2026-10-25 알리스타 판: 새로고침 2초 뒤 빛의 인도자 결의를 고른 클릭이 기록에 없어 한 판 내내 빠짐)
+        tapped = bool(st & 0x0001) and not down
         hit = None
-        if down and not self.down:
+        if (down or tapped) and not self.down:
             pt = self.wt.POINT()
             self.u.GetCursorPos(self.ct.byref(pt))
             hit = (pt.x, pt.y)
@@ -665,6 +670,7 @@ class _ClickWatch(threading.Thread):
                 time.sleep(CLICK_POLL)
             else:
                 mouse.down = True  # 화면이 뜨기 전부터 누르고 있던 버튼은 새 클릭으로 세지 않는다
+                mouse.u.GetAsyncKeyState(0x01)  # '지난 확인 뒤 눌림' 표시도 비운다 (화면 뜨기 전 클릭이 첫 확인에 잡히지 않게)
                 time.sleep(0.2)
 
 
