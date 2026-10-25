@@ -335,8 +335,10 @@ class BoardReader:
         c = img.crop((int(x0 + m), int(y0 + m), int(x0 + sp - m), int(y0 + sp - m))).resize((FINE, FINE), Image.BILINEAR)
         return (np.asarray(c, dtype=np.float32) @ LUM).ravel() / 255.0
 
-    def scan(self, bands, h, enemies, allies=()):
-        """bands: [("ally"|"enemy", 그림(h, w, 3), (x0, y0) 게임 창 기준 왼쪽 위)]"""
+    def scan(self, bands, h, enemies, allies=(), mine_left=True):
+        """bands: [("ally"|"enemy", 그림(h, w, 3), (x0, y0) 게임 창 기준 왼쪽 위)] — "ally" = 왼쪽 패널, "enemy" = 오른쪽 패널.
+        mine_left: 내 팀이 왼쪽(블루)인가. 점수판은 블루팀이 늘 왼쪽이라 레드팀이면 적이 왼쪽이다 → 기록·결과의 팀 이름을 바꿔 단다"""
+        team = {"ally": "ally", "enemy": "enemy"} if mine_left else {"ally": "enemy", "enemy": "ally"}
         np = self.aug_tpl.np
         from PIL import Image
         found = []  # (팀, 줄, 묶음, 점수, x, y)
@@ -376,7 +378,7 @@ class BoardReader:
                 rest[j[1]] = -1
                 if sc >= BOARD_MIN_SCORE and sc - float(rest.max()) >= MARGIN:
                     wx, wy = where[j[0]]
-                    found.append((side, row, self.aug_tpl.ids[j[1]], sc, wx + x0, wy + y0))
+                    found.append((team[side], row, self.aug_tpl.ids[j[1]], sc, wx + x0, wy + y0))
         self.last = {"augs": found, "size": BOARD_ICON}
         now = {}
         for side, row, g, sc, *_ in found:

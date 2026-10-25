@@ -370,6 +370,7 @@ class Desktop(unittest.TestCase):
             self.assertEqual(st["champion"], "Vayne", f.name)
             self.assertEqual(len(st["enemies"]), 5, f.name)
             self.assertIn("attackDamage", st["stats"], f.name)
+            self.assertIn(st["team"], ("ORDER", "CHAOS"), "내 팀 (점수판 어느 쪽이 적인지)")
         st = desktop.parse_live(json.loads((folder / "live_1202s.json").read_text(encoding="utf-8")))
         self.assertEqual(st["level"], 18)
         self.assertIn("3031", st["items"])  # 무한의 대검
@@ -1292,6 +1293,14 @@ class HudIcons(unittest.TestCase):
         self.assertFalse(any("빵과 버터" in g for g in ally.get(0, [])), "컬러 그림(핏빛 코발트) 칸은 읽지 않는다")
         enemy_got = {g for v in got.values() for g in v}
         self.assertFalse(any(self.names[a] == "벌이다!!!" for g in enemy_got for a in g), "왼쪽(아군) 패널 아이콘은 적에게 안 붙는다")
+        # 레드팀으로 할 때는 블루팀(왼쪽 패널)이 적 (2026-10-25 아크샨 판: 왼쪽에 정확히 읽힌 적 증강을 아군으로 버렸다)
+        red = self.h.BoardReader(self.tpl)
+        foes = ["Smolder", "Malzahar", "Lulu", "Shaco", "Thresh"]
+        red.scan(bands, h, foes, mine_left=False)
+        got = red.scan(bands, h, foes, mine_left=False)
+        named = {c: [sorted(self.names[a] for a in g) for g in v] for c, v in got.items()}
+        self.assertIn(["벌이다!!!"], named.get("Smolder", []))
+        self.assertNotIn("Veigar", named)
 
     def test_tab_triggers_board_read(self):
         # Tab 을 누르고 있으면 점수판을 읽는다. 적을 모르거나 직전에 읽었거나, 잠깐만 눌렀으면 안 읽는다
