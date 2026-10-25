@@ -636,6 +636,29 @@ class DataFiles(unittest.TestCase):
             replace = m is None or (b and (m[0] <= b[0] or m[1] < b[1]))
             self.assertEqual(not replace, keep, mine)
 
+    def test_slim_bundle_and_unpack_icons(self):
+        # 2026-10-25 요청: 버전 폴더 6개를 지우니 '파일 24,000개' → 빌드에서 안 쓰는 Tcl/Tk 데이터를 지우고 아이콘은 zip 한 파일로
+        sys.path.insert(0, str(ROOT / "tools"))
+        import slim_bundle
+        d = pathlib.Path(tempfile.mkdtemp())
+        internal = d / "build" / "_internal"
+        for rel in ("_tcl_data/init.tcl", "_tcl_data/tzdata/Asia/Seoul", "_tcl_data/msgs/ko.msg", "_tcl_data/encoding/cp949.enc",
+                    "_tcl_data/encoding/koi8-r.enc", "_tk_data/tk.tcl", "_tk_data/ttk/ttk.tcl", "_tk_data/msgs/ko.msg",
+                    "web/icons/augment/A.webp", "web/icons/item/1001.webp", "web/app.js"):
+            (internal / rel).parent.mkdir(parents=True, exist_ok=True)
+            (internal / rel).write_bytes(b"x" * 10)
+        before, after = slim_bundle.slim(d / "build")
+        self.assertEqual((before, after), (11, 6))
+        left = {p.relative_to(internal).as_posix() for p in internal.rglob("*") if p.is_file()}
+        self.assertEqual(left, {"_tcl_data/init.tcl", "_tcl_data/encoding/cp949.enc", "_tk_data/tk.tcl", "_tk_data/ttk/ttk.tcl",
+                                "web/icons.zip", "web/app.js"})
+        dst = d / "data" / "icons"
+        desktop.unpack_icons(internal / "web" / "icons.zip", dst)
+        self.assertEqual(sorted(p.relative_to(dst).as_posix() for p in dst.rglob("*") if p.is_file()), ["augment/A.webp", "item/1001.webp"])
+        (dst / "item" / "1001.webp").write_bytes(b"new patch icon")  # '데이터 갱신'으로 받은 아이콘(크기 다름)은 앱 것으로 되돌린다
+        desktop.unpack_icons(internal / "web" / "icons.zip", dst)
+        self.assertEqual((dst / "item" / "1001.webp").read_bytes(), b"x" * 10)
+
     def test_settings_concurrent_writes(self):
         import threading
         st = desktop.Settings.__new__(desktop.Settings)

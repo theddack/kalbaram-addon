@@ -11,5 +11,7 @@ if not exist web\data.json .venv\Scripts\python build_data.py
   --add-data "web;web" --add-data "rules.json;." ^
   --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr --collect-all winrt --hidden-import hudicons --hidden-import gamelog --hidden-import xxhash ^
   desktop.py
+rem 안 쓰는 화면 엔진 데이터를 지우고 아이콘은 zip 한 파일로 (버전 폴더 파일 수를 줄인다)
+.venv\Scripts\python tools\slim_bundle.py dist\칼바람증강Addon
 echo 완료: dist\칼바람증강Addon\칼바람증강Addon.exe
 pause
