@@ -460,6 +460,17 @@ class Overlay(unittest.TestCase):
         c = FakeCanvas()
         overlay.warm_glyphs(c)
         self.assertEqual(c.items, {}, "미리 그린 글자는 지운다")
+        # 2026-10-25 라이즈 판: 게임 창 높이의 글꼴 크기마다, 화면에 나올 한글까지 미리 잰다
+        made = []
+        c.create_text = lambda x, y, text="", **kw: (made.append((kw["font"], text)), FakeCanvas.create_text(c, x, y, text=text))[1]
+        chars = desktop.overlay_chars(ROOT / "web")
+        self.assertIn("강", chars)
+        self.assertIn("추", chars)
+        overlay.warm_glyphs(c, 1575, chars)
+        sizes = {f[1] for f, _ in made}
+        self.assertIn(-round(overlay.FONT_PX[0] * 1575 / 1080), sizes, "카드 제목 크기")
+        self.assertIn(-round(overlay.FONT_PX[2] * 1575 / 1080), sizes, "가장 작게 줄인 이유 크기")
+        self.assertTrue(all(chars in t for _, t in made))
 
     def test_draw_handles_empty_label(self):
         import overlay
@@ -946,6 +957,32 @@ class AugOcr(unittest.TestCase):
         t.feed(None)
         t.feed(None)
         self.assertEqual(t.state["picked"], "지옥불 난사 발동")
+
+    def test_quick_click_between_polls_is_caught(self):
+        # 2026-10-25 알리스타 판: 두 번 확인 사이에 눌렀다 뗀 카드 클릭을 놓쳤다 → '지난 확인 뒤 눌림' 비트도 본다
+        m = self.o._Mouse.__new__(self.o._Mouse)
+
+        class Pt:
+            x, y = 0, 0
+
+        class U:
+            states = []
+
+            def GetAsyncKeyState(self, vk):
+                return self.states.pop(0)
+
+            def GetCursorPos(self, p):
+                p.x, p.y = 100, 200
+
+        m.u, m.down = U(), False
+        m.wt = type("W", (), {"POINT": Pt})
+        m.ct = type("C", (), {"byref": staticmethod(lambda p: p)})
+        U.states = [0x0001, 0, 0x8000, 0x8001, 0]
+        self.assertEqual(m.clicked(), (100, 200), "확인 사이에 눌렀다 뗌")
+        self.assertIsNone(m.clicked())
+        self.assertEqual(m.clicked(), (100, 200), "새로 누름")
+        self.assertIsNone(m.clicked(), "누르고 있는 동안은 한 번만")
+        self.assertIsNone(m.clicked())
 
     def test_tooltip_title_does_not_move_cards(self):
         # 2026-10-24 빅토르 판: 왕관의 무게 설명 창 제목이 가운데에서 읽혀 선택지·카드 위치가 틀어졌고, 왕관의 무게 클릭이 빈칸으로

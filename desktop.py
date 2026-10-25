@@ -161,6 +161,17 @@ def prepare_web():
     return dst
 
 
+def overlay_chars(web):
+    """게임 화면 표시에 나올 수 있는 한글 글자 (화면 코드 문구 + 증강·아이템·챔피언 이름). 표시 창이 미리 폭을 재 둔다"""
+    try:
+        txt = (web / "app.js").read_text(encoding="utf-8")
+        d = json.loads((web / "data.json").read_text(encoding="utf-8"))
+        txt += "".join(x.get("name", "") for k in ("augments", "items", "champions") for x in d.get(k, []))
+    except (OSError, ValueError):
+        return ""
+    return "".join(sorted({c for c in txt if "가" <= c <= "힣"}))
+
+
 def unpack_icons(archive, dst):
     """빌드는 아이콘을 zip 한 파일로 넣는다 (tools/slim_bundle.py: 버전 폴더마다 파일 600여 개가 줄어 휴지통·삭제가 가볍다).
     이미 같은 크기로 있는 것은 건너뛴다 (켤 때마다 600여 개를 다시 쓰지 않게)"""
@@ -1562,6 +1573,7 @@ def main():
     ov = overlay.Overlay()
     ov.name = "게임 화면 표시"
     ov.icon_dir = str(user_dir() / "web" / "icons" / "augment")  # 쿨타임 아이콘
+    ov.warm_text = overlay_chars(web)  # 첫 카드 그리기가 글자 폭 재기로 늦지 않게 미리 잴 한글
     ov.enabled = bool(settings.get("overlay", True))
     ov.start()
     lw = LcuWatcher(user_dir() / "measure")
@@ -1606,9 +1618,14 @@ def main():
     prev_new = getattr(watcher, "on_new_game", None)
     webmem = WebMemory()
 
+    board_seen = {}  # 판이 끝날 때 점수판에서 읽어 둔 적 증강 (다음 판이 시작되면 읽기 도구는 비운다)
+
     def on_new_game(st):
         if prev_new:
             prev_new(st)
+        # 지난 판 것을 비운다: 전적이 판 끝 처리보다 먼저 오면 지난 판 점수판 결과로 대조해 '맞음 0'이 찍혔다
+        # (2026-10-25 벨베스·알리스타 판: 블리츠크랭크 거인의 결의·릴리아 거인 학살자를 맞게 읽었는데 0 · 지난 판 'Alistar 궁극의 히드라'가 틀림으로)
+        board_seen.clear()
         webmem.set(in_game=True)
         if capped:
             cap_cpu(CPU_CAP["game"])
@@ -1624,8 +1641,6 @@ def main():
     def eog_result(res):
         if res:
             diag.write(f"경기 결과와 고른 증강 대조: {'모두 맞음' if res[0] else '다름'} · 그림 {res[1]}장 지움")
-
-    board_seen = {}  # 판이 끝날 때 점수판에서 읽어 둔 적 증강 (다음 판이 시작되면 읽기 도구는 비운다)
 
     def on_game_end():
         if reader:

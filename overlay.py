@@ -383,11 +383,21 @@ def hud_lines(lines):
 WARM_GLYPHS = "🔥👍🙂🤔🎲⛔❔🔗➕➖⚠️💪🎉🔄🛡️💰🔁🧩🎯✅📌⏱️👀"
 
 
-def warm_glyphs(canvas):
-    """표시 창을 만들 때(게임 전) 이모지를 한 번 그려 두고 지운다 → 게임 중 첫 카드·상자 그리기가 대체 글꼴 찾기를 안 한다"""
+def warm_glyphs(canvas, h=1080, text=""):
+    """이모지·글자를 한 번 그려 두고 지운다 → 게임 중 첫 카드·상자 그리기가 대체 글꼴 찾기·글자 폭 재기를 안 한다.
+    글꼴은 크기마다 따로라 그 게임 창 높이(h)에서 쓰는 크기를 만든다: 카드 제목, 이유(넘치면 한 픽셀씩 줄이는 크기 전부), 상자(글자 크기 설정마다).
+    text(화면에 나오는 한글 글자들)도 크기마다 잰다: Tk 는 글자마다 폭을 처음 잴 때 오래 걸린다 (켤 때 한 번 약 2초).
+    2026-10-25 라이즈 판: 첫 카드 1.2초·13분쯤 카드 1.8초. 이 PC 1575 높이: 이모지만 미리 그리면 0.44초 → 한글까지 0.12초 (두 번째부터 0.09초)"""
     font = "Malgun Gothic" if IS_WINDOWS else "Apple SD Gothic Neo"
-    ids = [canvas.create_text(0, 0, text=WARM_GLYPHS, font=(font, -px, *style), anchor="nw")
-           for px, style in ((FONT_PX[0], ("bold",)), (FONT_PX[1], ()), (HUD_PX, ("bold",)), (HUD_PX, ()))]
+    scale = h / 1080
+    big, small, tiny = (max(1, round(px * scale)) for px in FONT_PX)
+    hud = max(1, round(HUD_PX * scale))
+    sizes = [(big, ("bold",)), (small, ()), (hud, ("bold",)), (hud, ())] + [(px, ()) for px in range(tiny, small)]
+    for k in BOX_FONT_SCALE.values():
+        px = max(1, round(HUD_PX * scale * k))
+        sizes += [(px, ("bold",)), (px, ())]
+    ids = [canvas.create_text(0, 0, text=WARM_GLYPHS + " 0123456789" + text,
+                              font=(font, -px, *style), anchor="nw", width=4000) for px, style in dict.fromkeys(sizes)]
     for i in ids:
         canvas.bbox(i)  # 글자 배치를 실제로 계산하게
     canvas.delete(*ids)
@@ -632,6 +642,8 @@ class Overlay(threading.Thread):
         self._perf = {}  # 그리기 처리 시간(ms): 전체 다시 그리기 · 쿨타임만 (한 판 기록에 요약)
         self.live_fn = None  # 지금 상점 열림·죽음 {"shop", "dead"} (desktop 이 연결). 그릴 때마다 묻는다 (with_live)
         self.on_drawn = None  # 실제로 그린 것이 바뀌면 {"kinds", "where"} 로 알린다 (한 판 기록 drawn: 상자가 몇 초 만에 사라졌나)
+        self._warmed = set()  # 글꼴을 미리 만든 게임 창 높이
+        self.warm_text = ""  # 화면에 나오는 한글 글자들 (desktop 이 화면 파일·데이터에서 모아 넣는다)
         self._drawn = None
 
     def _perf_add(self, kind, t0):
@@ -709,8 +721,11 @@ class Overlay(threading.Thread):
         root.update()
         t0 = time.time()
         try:
-            warm_glyphs(canvas)
+            # 게임 전에(CPU 상한 전) 모니터 높이로: 게임 창은 보통 모니터 크기라 게임 중엔 다시 안 한다
+            screen_h = root.winfo_screenheight()
+            warm_glyphs(canvas, screen_h, self.warm_text)
             root.update_idletasks()
+            self._warmed.add(screen_h)
         except Exception:
             pass  # 미리 그리기는 빠르게 하려는 것뿐 (실패해도 표시는 그대로)
         self._perf_add("이모지 준비", t0)
@@ -745,6 +760,15 @@ class Overlay(threading.Thread):
                     self.preview = v
                 # 같은 내용을 다시 받으면 다시 그리지 않는다 (아래 key 로 비교)
             rect, front = win.game_rect()
+            if rect and rect[3] not in self._warmed:
+                # 게임 창 크기를 처음 알게 되면(로딩 화면, 카드보다 먼저) 그 크기에서 쓸 글꼴을 미리 만든다
+                t0 = time.time()
+                try:
+                    warm_glyphs(canvas, rect[3], self.warm_text)
+                except Exception:
+                    pass
+                self._warmed.add(rect[3])
+                self._perf_add("글꼴 준비", t0)
             # 게임 창이 새로 잡히면 화면 모드를 한 번 읽는다 (게임 중 설정을 바꿔도 다음 게임에 반영)
             if rect and not self._mode_checked:
                 self.mode, self.cfg_path = read_window_mode(game_install_dirs())

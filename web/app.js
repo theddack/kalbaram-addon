@@ -1243,7 +1243,8 @@ function pushOverlay(rows, src) {
     const [icon, label] = noEffect(t) ? ["⛔", "효과 없음"] : t ? TIER_LABEL[t.tier] : ["❔", "평가 없음"];
     // 게임 화면 카드는 짧게: ' · 강한 선택' / ' · 재미 픽'
     const tag = x.best ? ` · ${x.bestLabel || "강한 선택"}` : x.reroll ? " · 새로고침?" : x.fun ? " · 재미 픽" : "";
-    const tr = transform(x.r.a);
+    // 발동하지 않는 증강엔 변신을 권하지 않는다 (2026-10-25 벨베스 판: '조준경 부착: 효과 없음 | 🔄 원딜형으로 변신 · 원거리 챔피언만…')
+    const tr = noEffect(t) ? null : transform(x.r.a);
     overlayCards[x.r.i] = {
       name: x.r.a.name, icon, label: label + tag, tier: noEffect(t) ? "X" : t && t.tier, best: !!x.best,
       // 게임 화면은 짧게: '고르면 ○○형으로 가볼 수 있어요'는 변신 표시와 겹쳐서 뺀다
