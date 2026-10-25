@@ -1368,10 +1368,12 @@ class Reader(threading.Thread):
             rgb = np.frombuffer(raw, dtype=np.uint8).reshape(y1 - y0, x1 - x0, 4)[..., [2, 1, 0]].copy()
             bands.append((side, rgb, (x0, y0)))
         self._board_busy, self._board_at = True, time.time()
-        args = (bands, rect, list(live.get("enemies") or []), list(live.get("allies") or []), getattr(self, "_game_n", 0))
+        # 점수판은 내 팀과 상관없이 블루팀(ORDER)이 왼쪽: 레드팀이면 적이 왼쪽 패널 (2026-10-25 아크샨 판: 왼쪽 적 증강을 아군으로 버렸다)
+        args = (bands, rect, list(live.get("enemies") or []), list(live.get("allies") or []), getattr(self, "_game_n", 0),
+                live.get("team") != "CHAOS")
         threading.Thread(target=self._board_job, args=args, daemon=True, name="점수판 읽기").start()
 
-    def _board_job(self, bands, rect, enemies, allies, game_n):
+    def _board_job(self, bands, rect, enemies, allies, game_n, mine_left=True):
         try:
             lower_thread()
             import hudicons
@@ -1381,7 +1383,7 @@ class Reader(threading.Thread):
                 self.board = hudicons.BoardReader(hudicons.Templates(self.icon_dir, names))
                 self._board_key = key
             t0 = time.time()
-            picked = self.board.scan(bands, rect[3], enemies, allies)
+            picked = self.board.scan(bands, rect[3], enemies, allies, mine_left)
             self._time("점수판", t0)
             self._count("점수판")
             self.board_reads += 1

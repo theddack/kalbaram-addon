@@ -644,6 +644,8 @@ class Overlay(threading.Thread):
         self.on_drawn = None  # 실제로 그린 것이 바뀌면 {"kinds", "where"} 로 알린다 (한 판 기록 drawn: 상자가 몇 초 만에 사라졌나)
         self._warmed = set()  # 글꼴을 미리 만든 게임 창 높이
         self.warm_text = ""  # 화면에 나오는 한글 글자들 (desktop 이 화면 파일·데이터에서 모아 넣는다)
+        self.warm_heights = []  # 켤 때 미리 잴 게임 창 높이 (desktop 이 지난번 높이를 넣는다)
+        self.on_game_size = None  # 새 게임 창 높이를 보면 알린다 (desktop 이 설정에 기억)
         self._drawn = None
 
     def _perf_add(self, kind, t0):
@@ -721,11 +723,12 @@ class Overlay(threading.Thread):
         root.update()
         t0 = time.time()
         try:
-            # 게임 전에(CPU 상한 전) 모니터 높이로: 게임 창은 보통 모니터 크기라 게임 중엔 다시 안 한다
-            screen_h = root.winfo_screenheight()
-            warm_glyphs(canvas, screen_h, self.warm_text)
+            # 게임 전에(CPU 상한 전): 지난번 게임 창 높이(없으면 주 모니터 높이)로. 게임 창이 주 모니터와 크기가 다를 수 있다
+            # (2026-10-25 아크샨 판: 모니터 1440 · 게임 창 1575 → 게임 시작 뒤 상한 중에 다시 쟀다)
+            for hh in dict.fromkeys([h for h in self.warm_heights if h] or [root.winfo_screenheight()]):
+                warm_glyphs(canvas, hh, self.warm_text)
+                self._warmed.add(hh)
             root.update_idletasks()
-            self._warmed.add(screen_h)
         except Exception:
             pass  # 미리 그리기는 빠르게 하려는 것뿐 (실패해도 표시는 그대로)
         self._perf_add("이모지 준비", t0)
@@ -769,6 +772,8 @@ class Overlay(threading.Thread):
                     pass
                 self._warmed.add(rect[3])
                 self._perf_add("글꼴 준비", t0)
+                if self.on_game_size:
+                    self.on_game_size(rect[3])  # 다음에 켤 때 이 높이로 미리 재게 기억
             # 게임 창이 새로 잡히면 화면 모드를 한 번 읽는다 (게임 중 설정을 바꿔도 다음 게임에 반영)
             if rect and not self._mode_checked:
                 self.mode, self.cfg_path = read_window_mode(game_install_dirs())

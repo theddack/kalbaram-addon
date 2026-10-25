@@ -278,6 +278,7 @@ def parse_live(raw):
         "augmentFields": find_keys(raw, r"augment"),
         "enemies": enemies,
         "allies": allies,
+        "team": mine.get("team") if mine else None,  # ORDER(블루) · CHAOS(레드): Tab 점수판은 블루팀이 왼쪽
         "enemyBuilds": enemy_builds,
         "spellAugments": spell_augments(mine) if mine else [],
     }
@@ -1574,6 +1575,8 @@ def main():
     ov.name = "게임 화면 표시"
     ov.icon_dir = str(user_dir() / "web" / "icons" / "augment")  # 쿨타임 아이콘
     ov.warm_text = overlay_chars(web)  # 첫 카드 그리기가 글자 폭 재기로 늦지 않게 미리 잴 한글
+    ov.warm_heights = [h for h in [settings.get("gameHeight")] if isinstance(h, int) and 200 <= h <= 10000]
+    ov.on_game_size = lambda h: settings.set(gameHeight=int(h))
     ov.enabled = bool(settings.get("overlay", True))
     ov.start()
     lw = LcuWatcher(user_dir() / "measure")
