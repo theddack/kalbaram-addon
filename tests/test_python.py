@@ -1017,6 +1017,17 @@ class AugOcr(unittest.TestCase):
         self.assertEqual(t.state["picked"], "소환술사")
         self.assertEqual(t.state["pickSeq"], n + 1)
 
+    def test_pick_then_next_screen_with_one_unread_name(self):
+        # 2026-10-28 바드 판: 죽지 않아를 누르고 1초 뒤 다음 선택 화면이 바로 떴는데 가운데 이름을 못 읽어 고른 것을 잃었다
+        t = self.o.Tracker()
+        t.feed(["굶주린 속박", "자비의 일격", "죽지 않아"])
+        t.click(2)
+        t.feed(["최첨단 발명가", None, "광휘의 검 업그레이드"])
+        self.assertEqual((t.state["picked"], t.state["pickSeq"]), ("죽지 않아", 1))
+        self.assertEqual(t.state["offers"], ["최첨단 발명가", None, "광휘의 검 업그레이드"])
+        t.feed(["최첨단 발명가", "축소 엔진", "광휘의 검 업그레이드"])
+        self.assertEqual(t.state["pickSeq"], 1, "같은 화면 이름이 채워진 건 또 고른 게 아니다")
+
     def test_tracker_new_screen_without_click_is_not_a_pick(self):
         # 누르지 않았는데 세 칸이 다 바뀌면(새로고침 3번 등) 고른 것으로 세지 않는다
         t = self.o.Tracker()
