@@ -346,6 +346,7 @@ class Tracker:
         self._reroll_wait = set()  # 새로고침 버튼을 누른 칸: 새 이름을 읽기 전엔 옛 이름(평가)을 남기지 않는다
         self._reroll_old = {}  # 칸 → (새로고침 전 이름, 누른 시각)
         self._click = None  # 이번 선택 화면에서 처음 클릭한 카드 칸
+        self._guess = None  # 위치를 짐작한 클릭의 칸 (확실한 클릭이 없을 때만 씀)
         self._last = None
         self._full_at = 0.0  # 이름을 2개 이상 읽은 마지막 시각
         self._pending = None  # 클릭 없이 닫힌 선택지 {"from": 선택지, "at": 시각} (REOPEN_WAIT 안에 다시 뜨면 이어서)
@@ -353,18 +354,27 @@ class Tracker:
     def new_game(self):
         """새 판: 지난 판 선택 화면에 걸린 것(클릭 없이 닫힌 선택지·새로고침 대기)을 버린다. seq 는 이어서 (화면이 새 선택지로 알게)
         (예전엔 판이 끝나는 순간 남은 _pending 이 다음 판에 '못 정함'을 한 번 알릴 수 있었다, 2026-10-23 점검)"""
-        self._miss, self._click, self._last, self._pending = 0, None, None, None
+        self._miss, self._click, self._guess, self._last, self._pending = 0, None, None, None, None
         self._reroll_wait, self._reroll_old = set(), {}
 
     @property
     def showing(self):
         return self._last is not None
 
-    def click(self, slot):
+    def click(self, slot, sure=True):
         # 카드는 누르는 순간 골라진다 → 처음 누른 카드. 그 뒤 클릭은 사라지는 카드 위를 누른 것
         # (2026-10-17 카이사: 광휘의 검을 누르고 0.6초 뒤 옆 카드를 또 눌러 '빵과 치즈'로 잘못 알림. 예전 기록 3판도 첫 클릭이 맞았다)
-        if self._last is not None and slot is not None and self._click is None:
+        # sure=False: 위치가 짐작인 클릭 (이미 뗀 클릭의 직전 위치). 확실한 카드 클릭이 없을 때만 고른 칸으로 쓴다
+        if self._last is None or slot is None:
+            return
+        if sure and self._click is None:
             self._click = slot
+        elif not sure and self._guess is None:
+            self._guess = slot
+
+    def _chosen(self):
+        """이번 선택 화면에서 고른 칸: 확실한 클릭, 없으면 짐작한 클릭"""
+        return self._click if self._click is not None else self._guess
 
     REROLL_ANIM = 2.5  # 초. 새로고침 연출 중엔 옛 카드가 잠깐 보여 옛 이름이 다시 읽힌다 → 이 안에 읽힌 옛 이름은 무시
 
@@ -435,14 +445,14 @@ class Tracker:
                 return  # 일부 칸만 못 읽음(설명 창·마우스가 가림) → 같은 선택지 그대로 (클릭도 그대로)
             # 새 화면 이름을 다 못 읽었어도(한 칸 빈칸) 아는 이름이 하나도 없고 두 칸 이상 다르면 다음 선택 화면이다
             # (2026-10-28 바드 판: 죽지 않아를 누르자 바로 뜬 다음 화면을 '최첨단 발명가 / ? / 광휘의 검'으로 읽어 고른 것을 잃었다)
-            if (self._last is not None and self._click is not None and not rerolling
+            if (self._last is not None and self._chosen() is not None and not rerolling
                     and sum(1 for a, b in zip(offers3, self._last) if a and b and a != b) >= 2
                     and not any(a and a in self._last for a in offers3)):
                 # 카드를 누른 뒤 닫히지 않고 바로 세 칸이 다 다른 선택 화면이 떴다 = 누른 카드를 고르고 다음 선택 화면 (2026-10-22 하이머딩거 판:
                 # 유레카를 누르고 3초 뒤 다른 선택 화면이 바로 떠서 유레카를 '고른 증강'으로 못 셌다)
-                self.state = {**self.state, "picked": self._last[self._click], "pickedFrom": self._last,
+                self.state = {**self.state, "picked": self._last[self._chosen()], "pickedFrom": self._last,
                               "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
-                self._last, self._click = None, None
+                self._last, self._click, self._guess = None, None, None
                 self._reroll_wait, self._reroll_old = set(), {}
                 self.state = {**self.state, "rerolled": [False] * 3}
             if offers3 != self._last:  # 새 선택지 (새로고침 포함): 그 전 클릭은 무효
@@ -451,21 +461,21 @@ class Tracker:
                 rr = self.state.get("rerolled") or [False] * 3
                 if self._last is not None and not rerolling and sum(1 for a, b in zip(offers3, self._last) if a and b and a != b) == 3:
                     rr = [False] * 3  # 세 칸이 다 바뀐 다른 선택 화면 (다음 증강 레벨)
-                self._last, self._click = offers3, None
+                self._last, self._click, self._guess = offers3, None, None
                 self.state = {**self.state, "offers": offers3, "seq": self.state["seq"] + 1, "rerolled": list(rr)}
             return
         if self._last is None:
             return
         self._miss += 1
         if self._miss >= self.CLOSE_AFTER:
-            if self._click is None:
+            if self._chosen() is None:
                 # 카드를 안 눌렀다: 화면만 내렸을 수 있다 → 카드 표시는 지우고, 고른 것은 REOPEN_WAIT 뒤에 정한다
                 self._pending = {"from": self._last, "at": now}
                 self.state = {**self.state, "offers": None, "pos": None}
             else:
-                self.state = {**self.state, "offers": None, "pos": None, "picked": self._last[self._click], "pickedFrom": self._last,
+                self.state = {**self.state, "offers": None, "pos": None, "picked": self._last[self._chosen()], "pickedFrom": self._last,
                               "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
-            self._last, self._click, self._miss = None, None, 0
+            self._last, self._click, self._guess, self._miss = None, None, None, 0
             self._reroll_wait = set()
             self._reroll_old = {}
             self.state = {**self.state, "rerolled": [False] * 3}
@@ -644,11 +654,17 @@ class _Mouse:
         # 게임 중 CPU 상한으로 이 스레드가 잠깐 못 돌면 '지금 눌림'만으로는 카드 클릭을 놓쳤다
         # (2026-10-25 알리스타 판: 새로고침 2초 뒤 빛의 인도자 결의를 고른 클릭이 기록에 없어 한 판 내내 빠짐)
         tapped = bool(st & 0x0001) and not down
+        pt = self.wt.POINT()
+        self.u.GetCursorPos(self.ct.byref(pt))
+        cur, prev = (pt.x, pt.y), getattr(self, "at", None)
         hit = None
         if (down or tapped) and not self.down:
-            pt = self.wt.POINT()
-            self.u.GetCursorPos(self.ct.byref(pt))
-            hit = (pt.x, pt.y)
+            hit = cur
+            if tapped and prev and prev != cur:
+                # 이미 뗀 클릭은 지금 위치가 누른 자리가 아닐 수 있다 → 직전 확인 때 위치도 붙인다 (x, y, 직전 x, 직전 y).
+                # 2026-10-28 바루스 판: 한 발에 두 놈을 누르고 바로 마우스를 아래로 내려 클릭이 화면 맨 아래(0.999)로 기록, 고른 것을 잃었다
+                hit = cur + prev
+        self.at = cur
         self.down = down
         return hit
 
@@ -673,6 +689,7 @@ class _ClickWatch(threading.Thread):
             else:
                 mouse.down = True  # 화면이 뜨기 전부터 누르고 있던 버튼은 새 클릭으로 세지 않는다
                 mouse.u.GetAsyncKeyState(0x01)  # '지난 확인 뒤 눌림' 표시도 비운다 (화면 뜨기 전 클릭이 첫 확인에 잡히지 않게)
+                mouse.at = None  # 직전 위치는 화면이 떠 있는 동안 것만
                 time.sleep(0.2)
 
 
@@ -1028,14 +1045,21 @@ class Reader(threading.Thread):
     def _click_at(self, rect, hit):
         gx, gy, gw, gh = rect
         rx, ry = (hit[0] - gx) / gw, (hit[1] - gy) / gh
-        slot = card_at(self.tracker.state.get("pos"), rx, ry)
+        pos = self.tracker.state.get("pos")
+        slot = card_at(pos, rx, ry)
         self.tracker.click(slot)
-        rr = None if slot is not None else reroll_at(self.tracker.state.get("pos"), rx, ry)
+        rr = None if slot is not None else reroll_at(pos, rx, ry)
+        guess = None
+        if slot is None and rr is None and len(hit) > 2:
+            # 이미 뗀 클릭이 카드 밖이면 직전 위치로 짐작한다 (짐작은 그 화면에 확실한 카드 클릭이 없을 때만 쓴다)
+            guess = card_at(pos, (hit[2] - gx) / gw, (hit[3] - gy) / gh)
+            self.tracker.click(guess, sure=False)
         if rr is not None:
             self.tracker.reroll(rr)
             self._reread_n = self._frag_n = 0  # 새로고침한 칸 이름을 다시 읽을 수 있게 (조각 글자 횟수도 새로)
             self._changed()
-        self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot, **({"reroll": rr} if rr is not None else {})})
+        self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot, **({"reroll": rr} if rr is not None else {}),
+                            **({"guess": guess} if guess is not None else {})})
 
     def wait_shop_keys(self, mouse, end, active=True):
         """end 까지 쉬되, 상점 여닫기(P·ESC·왼쪽 클릭)를 보면 SHOP_KEY_DELAY 뒤 바로 돌아가 상점 창을 읽게 한다"""

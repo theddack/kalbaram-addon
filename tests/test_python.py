@@ -985,6 +985,69 @@ class AugOcr(unittest.TestCase):
         self.assertIsNone(m.clicked(), "누르고 있는 동안은 한 번만")
         self.assertIsNone(m.clicked())
 
+    def test_released_click_keeps_previous_cursor(self):
+        # 2026-10-28 바루스 판: 카드를 누르고 바로 마우스를 아래로 내려, 뗀 뒤 확인한 위치(화면 맨 아래)만 남았다
+        m = self.o._Mouse.__new__(self.o._Mouse)
+
+        class Pt:
+            x, y = 0, 0
+
+        class U:
+            states, at = [], []
+
+            def GetAsyncKeyState(self, vk):
+                return self.states.pop(0)
+
+            def GetCursorPos(self, p):
+                p.x, p.y = self.at.pop(0)
+
+        m.u, m.down = U(), False
+        m.wt = type("W", (), {"POINT": Pt})
+        m.ct = type("C", (), {"byref": staticmethod(lambda p: p)})
+        U.states, U.at = [0, 0x0001, 0x8000], [(500, 400), (480, 1570), (480, 1570)]
+        self.assertIsNone(m.clicked())
+        self.assertEqual(m.clicked(), (480, 1570, 500, 400), "뗀 클릭: 지금 위치 + 직전 위치")
+        m.down = False
+        self.assertEqual(m.clicked(), (480, 1570), "누르고 있는 클릭은 지금 위치만")
+
+    def test_guessed_click_is_used_only_without_sure_click(self):
+        t = self.o.Tracker()
+        offers = ["탭 댄서", "한 발에 두 놈", "신성한 눈덩이"]
+        t.feed(offers)
+        t.click(1, sure=False)
+        t.feed(None)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual(t.state["picked"], "한 발에 두 놈", "짐작한 칸")
+        t = self.o.Tracker()
+        t.feed(offers)
+        t.click(1, sure=False)
+        t.click(2)
+        for _ in range(3):
+            t.feed(None)
+        self.assertEqual(t.state["picked"], "신성한 눈덩이", "확실한 클릭이 먼저")
+        t = self.o.Tracker()
+        t.feed(offers)
+        t.click(0, sure=False)
+        t.feed(["탭 댄서", "검을 뽑아라", "신성한 눈덩이"])
+        for _ in range(3):
+            t.feed(None)
+        self.assertIsNone(t.state.get("picked"), "새로고침 전 짐작은 버린다")
+
+    def test_released_click_off_card_guesses_previous_card(self):
+        # 바루스 판: 한 발에 두 놈(가운데)을 누르고 마우스를 화면 맨 아래로 → 직전 위치로 가운데 카드
+        a = self.o.Reader.__new__(self.o.Reader)
+        a.tracker = self.o.Tracker()
+        a.tracker.feed(["탭 댄서", "한 발에 두 놈", "신성한 눈덩이"], {"xs": [0.2868, 0.4997, 0.7125], "nameY": 0.4019})
+        got = []
+        a._rec = lambda kind, data, **k: got.append(data)
+        a._changed = lambda: None
+        a._click_at((0, 0, 2520, 1575), (1575, 1573, 1260, 720))
+        self.assertEqual(got[-1]["guess"], 1)
+        for _ in range(3):
+            a.tracker.feed(None)
+        self.assertEqual(a.tracker.state["picked"], "한 발에 두 놈")
+
     def test_tooltip_title_does_not_move_cards(self):
         # 2026-10-24 빅토르 판: 왕관의 무게 설명 창 제목이 가운데에서 읽혀 선택지·카드 위치가 틀어졌고, 왕관의 무게 클릭이 빈칸으로
         t = self.o.Tracker()
