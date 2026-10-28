@@ -433,8 +433,10 @@ class Tracker:
             if (self._last is not None and offers3 != self._last and None in offers3 and not rerolling
                     and all(n is None or n == old for n, old in zip(offers3, self._last))):
                 return  # 일부 칸만 못 읽음(설명 창·마우스가 가림) → 같은 선택지 그대로 (클릭도 그대로)
+            # 새 화면 이름을 다 못 읽었어도(한 칸 빈칸) 아는 이름이 하나도 없고 두 칸 이상 다르면 다음 선택 화면이다
+            # (2026-10-28 바드 판: 죽지 않아를 누르자 바로 뜬 다음 화면을 '최첨단 발명가 / ? / 광휘의 검'으로 읽어 고른 것을 잃었다)
             if (self._last is not None and self._click is not None and not rerolling
-                    and sum(1 for a, b in zip(offers3, self._last) if a and b and a != b) == 3
+                    and sum(1 for a, b in zip(offers3, self._last) if a and b and a != b) >= 2
                     and not any(a and a in self._last for a in offers3)):
                 # 카드를 누른 뒤 닫히지 않고 바로 세 칸이 다 다른 선택 화면이 떴다 = 누른 카드를 고르고 다음 선택 화면 (2026-10-22 하이머딩거 판:
                 # 유레카를 누르고 3초 뒤 다른 선택 화면이 바로 떠서 유레카를 '고른 증강'으로 못 셌다)
