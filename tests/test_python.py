@@ -1154,6 +1154,33 @@ class AugOcr(unittest.TestCase):
         t.feed(["검을 뽑아라", "판도라의 상자", "보석 건틀릿"])
         self.assertEqual((t.state["picked"], t.state["pickSeq"], t.state["pickedFrom"]), (None, 2, ["궁극기 봇", "한 발에 두 놈", "열의"]))
 
+    def test_reopened_screen_with_one_unread_name_continues(self):
+        # 숨겼다 다시 뜬 같은 선택 화면을 처음에 한 칸 못 읽어도 이어서 본다 (우르곳 판 규칙과 같은 뜻).
+        # 예전엔 빈칸 하나를 다른 선택지로 보고 '못 정함'을 먼저 알린 뒤, 실제로 고르면 고른 것이 하나 더 생겼다
+        t = self.o.Tracker()
+        offers = ["강타자", "도주 계획", "불을 밝혀"]
+        t.feed(offers)
+        t.feed(None)
+        t.feed(None)
+        t.feed(["강타자", None, "불을 밝혀"])
+        self.assertEqual(t.state["pickSeq"], 0, "같은 선택지가 한 칸 빈 채 다시 떠도 이어서")
+        t.feed(offers)
+        t.click(2)
+        t.feed(None)
+        t.feed(None)
+        self.assertEqual((t.state["picked"], t.state["pickSeq"]), ("불을 밝혀", 1))
+
+    def test_pick_after_reroll_then_next_screen_with_one_unread_name(self):
+        # 새로고침한 칸의 새 이름을 읽기 전에 다른 카드를 누르고 다음 화면이 바로 뜬 경우 (바드 판 규칙 + 새로고침).
+        # 새로고침 대기 중인 칸이 다음 화면에서 빈칸으로 읽혀 '새로고침 중'으로 보고 고른 것을 잃었다
+        t = self.o.Tracker()
+        t.feed(["굶주린 속박", "자비의 일격", "죽지 않아"])
+        t.reroll(1)
+        t.click(0)
+        t.feed(["최첨단 발명가", None, "광휘의 검 업그레이드"])
+        self.assertEqual((t.state["picked"], t.state["pickSeq"]), ("굶주린 속박", 1))
+        self.assertEqual(t.state["rerolled"], [False, False, False], "다음 화면은 새로고침을 새로")
+
     def test_clicks_during_read_are_kept(self):
         # 2026-10-18 아우렐리온 솔 판: 글자를 읽는 동안 누른 가운데 카드 클릭이 빠지고, 닫히는 중 누른 오른쪽 카드가 고른 것이 됐다
         # → 클릭은 따로 모아 두었다가 누른 차례대로 넣는다 (먼저 누른 카드 = 고른 증강)
@@ -1703,6 +1730,21 @@ class HudIcons(unittest.TestCase):
         r._hud_runs = augocr.HUD_GIVE_UP
         self.assertEqual(r._hud_wait(), float("inf"), "2026-10-18 세나 판: 44번 읽고 0개")
         self.assertEqual(r._hud_wait(soon=True), 2)
+
+    def test_verify_fix_drops_wrong_click_name(self):
+        # 증강 칸 확인이 클릭 짐작을 고치면 틀린 클릭 이름은 고른 것에서 뺀다 (늦은 확인 _settle_unverified 와 같게).
+        # 남아 있으면 고른 수가 하나 많게 세져 다음 증강 레벨을 '이미 고름'으로 보고, 증강 칸 다시 읽기도 드물어졌다
+        import augocr
+        r = augocr.Reader(lambda: None, lambda: [])
+        r._changed = lambda: None
+        r._rec = lambda *a, **k: None
+        r._id_names = {"X": "강타자", "Y": "골드 강탈", "Z": "정신 변환"}
+        r.offered = {"강타자", "골드 강탈", "정신 변환"}
+        r._picked_names = {"강타자"}
+        r._verify = {"from": ["강타자", "골드 강탈", "정신 변환"], "click": "강타자", "until": time.time() + 30, "tries": 3}
+        r._apply_hud([("Y",)], {("Y",): .97}, [], [], {("Y",): (5.0, 32.0)})
+        self.assertEqual(r._fix, ("골드 강탈", ["강타자", "골드 강탈", "정신 변환"], "강타자"))
+        self.assertEqual(r._picked_names, {"골드 강탈"})
 
     def test_no_verify_when_hud_blind(self):
         # 이번 판 증강 칸이 안 보이면 고른 뒤 확인·넓혀 찾기를 안 돌린다 (2026-10-19 아크샨 판 2520x1575:

@@ -890,8 +890,9 @@ function patchChip(lines, checks) {
     <div class="muted small">✅ 게임 데이터 반영 확인 · 📄 패치 노트 값으로 임시 계산 · ⚠️ 이전 값으로 계산 중 · ❔ 대조 못 함 (마우스를 올리면 이유)</div></details>`;
 }
 
-function transformChip(a) {
-  const tr = transform(a);
+function transformChip(a, t) {
+  // 발동하지 않는 증강엔 변신을 권하지 않는다 (게임 화면 카드 pushOverlay 와 같게)
+  const tr = noEffect(t) ? null : transform(a);
   return tr ? `<span class="chip on" title="이 증강을 고르면 ${esc(state.champ.name)}의 플레이 방향이 바뀌어요">🔄 ${josa(STYLE_LABEL[tr], "으로", "로")} 변신</span>` : "";
 }
 
@@ -1134,9 +1135,12 @@ function renderOfferResult() {
   const tiers = getTiers();
   // 추천: 연계 티어가 가장 높은 것, 같으면 빌드 가치(없으면 효과 점수)가 큰 것
   const rank = (r) => [TIER_ORDER[(tiers[r.a.id] || {}).tier] ?? 9, -(gains[r.a.id] ? gains[r.a.id].gain : r.sc.score / 100)];
-  const best = rows.slice().sort((x, y) => { const a = rank(x), b = rank(y); return a[0] - b[0] || a[1] - b[1]; })[0];
+  // 발동하지 않는 증강(⛔ 효과 없음)은 강한 선택 후보에서 뺀다 (재미있는 선택 funPick 과 같게). 셋 다 D 등급이면 이득 0 이
+  // 음수 이득보다 앞서 '효과 없음 · 강한 선택'이 떴다 (징크스: 너만을 위해 / 천상의 신체 / 간지럼 괴물)
+  const able = rows.filter((r) => !noEffect(tiers[r.a.id]));
+  const best = able.slice().sort((x, y) => { const a = rank(x), b = rank(y); return a[0] - b[0] || a[1] - b[1]; })[0];
   // 등급·가치가 같으면 한쪽에만 1순위를 붙이지 않고 '공동 1순위' (보석 건틀릿·한 발에 두 놈 1,083 → 1,112 동점, 피드백 #13)
-  const coBest = best ? rows.filter((r) => { const a = rank(r), b = rank(best); return a[0] === b[0] && Math.abs(a[1] - b[1]) < 1e-4; }) : [];
+  const coBest = best ? able.filter((r) => { const a = rank(r), b = rank(best); return a[0] === b[0] && Math.abs(a[1] - b[1]) < 1e-4; }) : [];
   const isBest = (r) => coBest.includes(r);
   // 강한 선택 = 계산상 전투 성능이 가장 좋은 것, 재미있는 선택 = 가장 강하지는 않지만 플레이 방식이 크게 바뀌는 것 (안정화 기획서 8.5)
   const bestLabel = coBest.length > 1 ? "강한 선택 (공동)" : "강한 선택";
@@ -1157,11 +1161,11 @@ function renderOfferResult() {
         const f = r.aug && r.aug.final;
         return `<tr class="${isBest(r) ? "best" : ""}">
           <td><img src="${icon("augment", r.a.id)}" alt=""> <span class="r${r.a.rarity}">${esc(r.a.name)}</span>
-            ${newChips(r.a)}${isBest(r) ? `<span class="chip best" title="계산상 전투 성능이 가장 좋은 선택">💪 ${bestLabel}</span>` : ""}${counterAug.has(r.a.id) ? `<span class="chip adv" title="${esc(enemyItemSummary())}">🛡️ 적 대응</span>` : ""}${r === worst ? `<span class="chip bad">새로고침 권장</span>` : ""}
+            ${newChips(r.a)}${isBest(r) ? `<span class="chip best" title="계산상 전투 성능이 가장 좋은 선택">💪 ${bestLabel}</span>` : ""}${counterAug.has(r.a.id) ? `<span class="chip adv" title="${esc(enemyItemSummary())}">🛡️ 적 대응</span>` : ""}${r === worst && !isBest(r) ? `<span class="chip bad">새로고침 권장</span>` : ""}
             ${r === fun ? `<span class="chip fun" title="가장 강한 선택은 아니지만 플레이 방식이 크게 바뀌어요. 색다르게 해 보고 싶으면 이것">🎉 재미있는 선택</span>` : ""}
             ${r.twistKey ? `<span class="chip on" title="고르면 '변칙' 탭 빌드가 이 증강 덕분에 진짜로 성립해요 (성향만 뒤집은 실험 빌드 → 증강이 받쳐 주는 변칙)">🎭 변칙 열쇠</span>` : ""}
             ${r.changed >= 3 && !transform(r.a) ? `<span class="chip on">빌드가 바뀌어요</span>` : ""}
-            <div class="why">${transformChip(r.a)}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div>
+            <div class="why">${transformChip(r.a, tiers[r.a.id])}${esc(augReason(r.a, tiers[r.a.id], r.sc, gains[r.a.id]))}</div>
             ${howLine(r)}</td>
           <td>${tierBadge(tiers[r.a.id])}${linkChip(tiers[r.a.id])}</td>
           <td>${gains[r.a.id] ? `<span class="${gains[r.a.id].gain >= 0 ? "up" : "down"}">${gains[r.a.id].gain >= 0 ? "+" : ""}${fmt(gains[r.a.id].gain * 100)}</span>` : `<span class="muted" title="효과 점수 ${r.sc.score.toFixed(2)}">숫자 없음</span>`}</td>
@@ -1469,7 +1473,7 @@ function renderAugs() {
       <div>
         <div class="name r${r.aug.rarity}">${tierBadge(tiers[r.aug.id])}${linkChip(tiers[r.aug.id])} ${esc(r.aug.name)} <span class="muted small">${esc(r.aug.rarityName)}</span>${newChips(r.aug)}
           ${gains[r.aug.id] ? `<span class="chip adv ${gains[r.aug.id].gain >= 0 ? "syn" : "bad"}" title="빌드 가치">강해지는 정도 ${gains[r.aug.id].gain >= 0 ? "+" : ""}${fmt(gains[r.aug.id].gain * 100)}</span>` : ""}</div>
-        <div class="why">${transformChip(r.aug)}${esc(augReason(r.aug, tiers[r.aug.id], r, gains[r.aug.id]))}</div>
+        <div class="why">${transformChip(r.aug, tiers[r.aug.id])}${esc(augReason(r.aug, tiers[r.aug.id], r, gains[r.aug.id]))}</div>
         ${basisBlock([...(((state.data.rules.augments[r.aug.id] || {}).basisView) || []), ...effectBasis(r.aug.effects)])}
         ${patchChip(r.aug.patch, r.aug.patchCheck)}${refLinks(r.aug.refs)}
         <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${categoryChip(r)}${r.parts.map((p) =>
@@ -1670,14 +1674,14 @@ function buyNow(item, gold, inventory) {
   if (gold >= left) return { done: true, left };
   // 부품 후보: 트리 안의 부품 중 아직 모자란 것 (가진 부품을 반영한 실제 가격).
   // 같은 부품이 두 번 들어가는 레시피(롱소드 2개 등 10종 넘게)는 하나만 가져도 빠져서 두 번째를 못 권했다 (2026-10-23 점검)
-  const cands = [];
-  const walk = (id) => { for (const c of partFrom(id)) { cands.push(c); walk(c); } };
-  walk(item.id);
-  const need = cands.reduce((m, c) => ((m[c] = (m[c] || 0) + 1), m), {});
+  // 가진 부품은 그 아래(하위 부품)까지 이미 갖춘 것이라 내려가지 않는다 (buyNowCurrent 의 usesOf 와 같게).
+  // 예전엔 트리 전체를 세어, 점화석을 가졌는데 원형질 안전벨트로 가는 '루비 수정'(점화석 안)을 권했다
   const have = count();
+  const cands = [];
+  const walk = (id) => { for (const c of partFrom(id)) { if (have[c] > 0) { have[c]--; continue; } cands.push(c); walk(c); } };
+  walk(item.id);
   let best = null;
   for (const c of new Set(cands)) {
-    if ((have[c] || 0) >= need[c]) continue;
     const cost = remainingCost(c, { ...count(), [c]: 0 });
     if (cost > 0 && cost <= gold && (!best || cost > best.cost)) best = { id: c, name: partOf(c).name, cost };
   }
@@ -1687,7 +1691,8 @@ function renderBuyNow() {
   const el = $("#buy-now");
   if (!el) return;
   const top = state.nextTop;
-  if (state.gold == null || !top) { el.innerHTML = ""; return; }
+  // 못 정하면 게임 화면 상자 문구도 비운다 (지난 판·지난 골드 기준 '💰 지금 …'이 남았다)
+  if (state.gold == null || !top) { el.innerHTML = ""; state.buyNowText = ""; return; }
   const g = Math.floor(state.gold);
   const b = buyNow(top, g, state.inventory);
   el.innerHTML = `💰 지금 골드 <b>${fmt(g)}</b> · ${esc(top.name)} 완성까지 <b>${fmt(b.left)}G</b><br>`
@@ -1747,8 +1752,9 @@ function buyNowCurrent(gold) {
     const p = partOf(id) || {};
     cands.set(id, { ...(it || {}), id, name: (it || p).name, gold: cost, stats: (it || p).stats || {}, uses: usesOf(id), kind: "item" });
   };
-  const walkAll = (id) => { add(id); for (const c of partFrom(id)) walkAll(c); };
-  for (const id of tops) walkAll(id);
+  // 가진 부품 아래(하위 부품)로는 내려가지 않는다: 점화석을 가졌으면 그 안의 루비 수정은 후보가 아니다 (트리마다 가진 개수를 따로 쓴다)
+  const walkAll = (id, o) => { add(id); for (const c of partFrom(id)) { if (o[c] > 0) { o[c]--; continue; } walkAll(c, o); } };
+  for (const id of tops) walkAll(id, owned());
   // 결과를 바꾸는 것은 모두 키에: 살 수 있는 후보(골드는 이걸로), 가중치·칼바람·적 마법 비율(statOpts)·기준 상대 방어
   // (v0.1.55 후속 기획 A-②: 예전 키엔 가중치·statOpts·기준 상대가 없어 적 구성이 바뀌어도 옛 추천이 남을 수 있었다)
   const key = JSON.stringify([state.champ.id, level, state.items.map((i) => i.id), inv, [...cands.values()].map((c) => [c.id, c.gold]),

@@ -1346,3 +1346,63 @@ test("증강을 고르면 상점 인식 없이도 그 증강 기준 다음 구�
   assert.deepEqual(p.errors, []);
   p.w.close();
 });
+
+test("효과 없는 증강은 '강한 선택'·변신으로 권하지 않는다", async () => {
+  // 징크스에게 '너만을 위해'(아군 회복·보호막 스킬이 없어 발동 안 함)가 셋 다 D 등급인 선택지에서 이득 0 으로 1순위가 되어
+  // 게임 화면 카드에 '효과 없음 · 강한 선택', 표에 '💪 강한 선택 🔄 서포터형으로 변신'이 같이 떴다
+  const p = await loadPage();
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 6, items: [] });
+  const offers = ["너만을 위해", "천상의 신체", "간지럼 괴물"];
+  p.w.applyAug({ offers, seq: 1, picked: null, pickSeq: 0 });
+  const card = sent.at(-1).cards[0];
+  assert.equal(card.name, "너만을 위해");
+  assert.match(card.label, /효과 없음/);
+  assert.doesNotMatch(card.label, /강한 선택/);
+  const row = p.qa(".offer-table tr").slice(1).find((r) => r.textContent.includes("너만을 위해"));
+  assert.doesNotMatch(row.textContent, /강한 선택|변신/);
+  assert.ok(sent.at(-1).cards.some((c) => /강한 선택/.test(c.label)), "다른 카드에 강한 선택");
+});
+
+test("강한 선택 카드에 '새로고침 권장'을 같이 붙이지 않는다 (게임 화면 카드와 같게)", async () => {
+  // 가렌: 더블 타임(C, 같은 등급 하위)이 강한 선택이면서 새로고침 권장 → 게임 화면 카드는 강한 선택만 보였는데 표엔 둘 다
+  const p = await loadPage();
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Garen", level: 6, items: [] });
+  p.w.applyAug({ offers: ["더블 타임", "너만을 위해", "기본으로 돌아가기"], seq: 1, picked: null, pickSeq: 0 });
+  for (const r of p.qa(".offer-table tr").slice(1)) {
+    assert.ok(!(/강한 선택/.test(r.textContent) && /새로고침 권장/.test(r.textContent)), r.textContent.slice(0, 60));
+  }
+});
+
+test("지금 살 것: 가진 중간 부품 안에 이미 들어 있는 하위 부품은 다시 권하지 않는다", async () => {
+  // 황혼과 새벽(2510) = 광휘의 검 + 방출의 마법봉 + 점화석(루비 수정·빛나는 티끌) + 단검. 루비 수정은 점화석 안에만 있는데,
+  // 점화석을 가진 채 450G 에 '루비 수정부터 사세요'라고 했다 (트리 전체 개수만 세서 가진 중간 부품 안을 빼지 않았다)
+  const p = await loadPage({ simple: true });
+  const DD = p.data.items.find((i) => i.id === "2510");
+  const b = p.w.buyNow(DD, 450, ["3067"]);
+  assert.ok(b.part && b.part.id !== "1028", `살 부품: ${b.part && b.part.name}`);
+  assert.equal(p.w.buyNow(DD, 900, ["3067"]).part.id, "3057", "더 비싼 다른 부품은 그대로");
+  // '⚡ 지금 강해지는 것'도 같게
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Ornn", level: 9, items: ["3067"], gold: 450, gameTime: 300 });
+  p.q("#next-buy").innerHTML = '<div class="next-row" data-id="2510"></div>';
+  p.q("#build").innerHTML = "";
+  const r = p.w.buyNowCurrent(450);
+  assert.ok(!r || r.id !== "1028", `지금 강해지는 것: ${r && r.name}`);
+});
+
+test("지금 살 것을 못 정하면 지난 '💰 지금' 문구를 게임 화면 상자에 남기지 않는다", async () => {
+  // 2026-10-25 기록: 아크샨 판이 끝나고 챔피언 정보 없이 시작된 다음 기록의 상자에 '💰 지금 무한의 대검 완성 가능 (3,768G 기준)'이 남았다.
+  // renderBuyNow 가 골드·1순위가 없을 때 애드온 창만 비우고 상자 문구(buyNowText)는 지우지 않았다
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const base = { enabled: true, inGame: true, champion: "Jinx", level: 9, items: ["1001"], gameTime: 300, aug: { shop: true } };
+  p.w.applyLive({ ...base, gold: 1300 });
+  assert.ok(sent.at(-1).hud.some((h) => h.startsWith("💰")), "골드가 있으면 문구");
+  p.w.applyLive({ ...base, gold: null });
+  assert.equal(p.text("#buy-now"), "");
+  assert.equal(sent.at(-1).hud.filter((h) => h.startsWith("💰")).length, 0, "애드온 창처럼 상자도 비운다");
+});

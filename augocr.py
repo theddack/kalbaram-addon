@@ -416,7 +416,9 @@ class Tracker:
             return
         if self._pending and (offers3 or now - self._pending["at"] >= self.REOPEN_WAIT):
             frm, self._pending = self._pending["from"], None
-            if not offers3 or offers3 != frm:  # 안 돌아왔거나 다른 선택지(다음 선택 화면)가 떴다 → 그때 못 정함으로
+            # 안 돌아왔거나 다른 선택지(다음 선택 화면)가 떴다 → 그때 못 정함으로. 다시 뜬 화면을 한 칸 못 읽은 것(빈칸)은 같은 선택지
+            # (빈칸 하나를 다른 선택지로 보고 '못 정함'을 먼저 알린 뒤, 이어서 고르면 고른 것이 하나 더 생겼다)
+            if not offers3 or not all(n is None or n == f for n, f in zip(offers3, frm)):
                 self.state = {**self.state, "picked": None, "pickedFrom": frm, "replaces": None, "by": "click",
                               "pickSeq": self.state["pickSeq"] + 1}
         if offers3 and self._reroll_old:
@@ -445,7 +447,9 @@ class Tracker:
                 return  # 일부 칸만 못 읽음(설명 창·마우스가 가림) → 같은 선택지 그대로 (클릭도 그대로)
             # 새 화면 이름을 다 못 읽었어도(한 칸 빈칸) 아는 이름이 하나도 없고 두 칸 이상 다르면 다음 선택 화면이다
             # (2026-10-28 바드 판: 죽지 않아를 누르자 바로 뜬 다음 화면을 '최첨단 발명가 / ? / 광휘의 검'으로 읽어 고른 것을 잃었다)
-            if (self._last is not None and self._chosen() is not None and not rerolling
+            # 새로고침 대기 칸이 있어도 본다: 새로고침 연출 중엔 나머지 칸이 옛 이름 그대로라 아래 조건에 걸리지 않는다.
+            # 새로고침한 칸 새 이름을 읽기 전에 다른 카드를 누르고 다음 화면이 뜨면, 그 칸 빈칸을 '새로고침 중'으로 보고 고른 것을 잃었다
+            if (self._last is not None and self._chosen() is not None
                     and sum(1 for a, b in zip(offers3, self._last) if a and b and a != b) >= 2
                     and not any(a and a in self._last for a in offers3)):
                 # 카드를 누른 뒤 닫히지 않고 바로 세 칸이 다 다른 선택 화면이 떴다 = 누른 카드를 고르고 다음 선택 화면 (2026-10-22 하이머딩거 판:
@@ -878,6 +882,8 @@ class Reader(threading.Thread):
                 self._rec("verify", {"from": v["from"], "click": v["click"], "result": found[0]})
                 self._picked_names.add(found[0])
                 if found[0] != v["click"]:
+                    # 틀린 클릭 이름은 고른 것에서 뺀다 (_settle_unverified 와 같게). 남으면 고른 수가 하나 많게 세졌다
+                    self._picked_names.discard(v["click"])
                     self._fix = (found[0], v["from"], v["click"])
         self._settle_unverified(ids)
         changed = ids != self.hud_ids
