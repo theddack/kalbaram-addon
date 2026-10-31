@@ -357,7 +357,6 @@ function newProblems(r, base) {
 if (require.main === module) {
   const r = audit();
   if (process.argv.includes("--check")) {
-    let base = null;
     // 저장된 대조를 못 읽으면 조용히 '새 문제 없음'으로 끝내지 않는다 (매일 갱신이 실패로 알 수 있게)
     const base = read(path.join(ROOT, "docs", "증강_원본_대조.json"));
     process.stdout.write(newProblems(r, base));
