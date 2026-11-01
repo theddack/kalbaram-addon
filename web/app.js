@@ -114,7 +114,8 @@ function nowChamp() {
   return { ...at(k), stackNow: k };
 }
 
-function statCheck() {
+// 계산 vs 실제 능력치 줄 {능력치: [계산, 실제]} (상태를 바꾸지 않는다). 비교할 수 없으면 null
+function statRows() {
   const s = state.liveStats;
   if (!liveOn || !s || !state.champ || !state.data) return null;
   if (!Number(s.moveSpeed)) return null;  // 불러오는 중 (게임 능력치가 전부 0)
@@ -130,14 +131,52 @@ function statCheck() {
     if ((k === "CRIT" || k === "LS") && real > 1) real /= 100;  // 게임은 0~1 또는 0~100 (형식 미확인 → 둘 다)
     rows[k] = [r2(t[k] || 0), r2(real)];
   }
+  return { rows, stackKey: c && c.stackNow != null ? Object.keys(c.stackStats || {})[0] : null };
+}
+function statCheck() {
+  const sr = statRows();
+  if (!sr) return null;
+  const rows = sr.rows;
   // 모루 능력치를 새로 정했으면 한 번 더 계산 (다음 비교부터 차이가 없어진다)
-  const sk = c && c.stackNow != null ? Object.keys(c.stackStats || {})[0] : null;
-  if (trackAnvil(rows, sk)) return statCheck();
+  if (trackAnvil(rows, sr.stackKey)) return statCheck();
   return { level: state.level, items: state.items.map((i) => i.id), augs: state.chosen.map((a) => a.id), rows,
     anvil: Object.keys(state.anvil || {}).length ? { ...state.anvil } : undefined };
 }
 // 5% 넘게 다르면 (아주 작은 값은 반올림 차이를 빼려고 최소 폭: 비율·공속 0.02, 나머지 1)
 const statOff = ([calc, real], k) => Math.abs(calc - real) > Math.max(Math.abs(real) * STAT_OFF, ["AS", "CRIT", "LS"].includes(k) ? 0.02 : 1);
+
+// 클릭으로 짐작한 고른 증강을 실제 능력치로 바로잡기. 2026-11-01 라이즈 판: 보석 건틀릿(치명타 29%)을 골랐는데 클릭이
+// 가운데 카드(죽음의 춤)로 잡혀 한 판 내내 틀린 증강으로 계산했다. 실제 치명타 29%가 계산 0% 와 계속 달랐다 (증강 칸은 안 보이는 화면).
+// 지금 증강으로는 어긋나는 능력치가 있는데, 같은 선택지의 다른 하나로 바꾸면 모든 능력치가 맞고, 그런 것이 하나뿐이며,
+// PICK_CHECK_GAP 넘게 떨어진 두 번의 게임 데이터에서 같을 때만 바꾼다 (싸움 중 버프로 잠깐 흔들린 값으로 바꾸지 않게)
+const PICK_CHECK_MS = 10 * 60 * 1000;  // 고른 뒤 이만큼만 본다
+const PICK_CHECK_GAP = 5000;
+function checkPickByStats() {
+  const pc = state.pickCheck;
+  if (!pc) return false;
+  const idx = state.chosen.findIndex((x) => x.id === pc.id);
+  if (idx < 0 || Date.now() - pc.at > PICK_CHECK_MS) { state.pickCheck = null; return false; }
+  const rowsWith = (list) => {
+    const keep = state.chosen;
+    state.chosen = list;
+    try { const sr = statRows(); return sr && sr.rows; } finally { state.chosen = keep; }
+  };
+  const offKeys = (rows) => (rows ? Object.entries(rows).filter(([k, v]) => statOff(v, k)).map(([k]) => k) : null);
+  const now = offKeys(rowsWith(state.chosen));
+  if (!now || !now.length) { pc.alt = null; return false; }
+  const fits = pc.from.map((id) => state.data.augments.find((a) => a.id === id))
+    .filter((b) => b && !state.chosen.some((x) => x.id === b.id))
+    .filter((b) => { const o = offKeys(rowsWith(state.chosen.map((x, i) => (i === idx ? b : x)))); return o && !o.length; });
+  if (fits.length !== 1) { pc.alt = null; return false; }
+  const t = Date.now();
+  if (pc.alt !== fits[0].id) { pc.alt = fits[0].id; pc.altAt = t; return false; }
+  if (t - pc.altAt < PICK_CHECK_GAP) return false;
+  const old = state.chosen[idx];
+  state.chosen = state.chosen.map((x, i) => (i === idx ? fits[0] : x));
+  state.pickCheck = null;
+  state.pickFix = { from: old.name, to: fits[0].name, off: now };
+  return true;
+}
 
 // 적 구성 (게임 중 데이터): 주 피해 유형 비율, 회복 많은 적, 탱커
 function enemyInfo() {
@@ -1429,7 +1468,7 @@ function sendOverlay(src) {
   const sw = swapAdvice();
   const swap = sw && !sw.review ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0, why: sw.why || null } : null;
   api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null,
-    calcMs: state.calcMs, calcSeq: state.calcSeq, statCheck: statCheck(),
+    calcMs: state.calcMs, calcSeq: state.calcSeq, statCheck: statCheck(), pickFix: state.pickFix || undefined,
     // 상점 창 안에서 자리를 찾아볼 아이템 (시험: 기록만). 다음 구매 위 3개 + 바꿀 때 살 것
     shopMarks: [...new Set([...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id).filter(Boolean).slice(0, 3)
       .concat(swap ? [swap.buy] : []))] });  // 기록용: 마지막 추천 다시 계산에 걸린 시간
@@ -2041,6 +2080,9 @@ function applyAug(A) {
       const wrong = A.by === "hud" && byName(A.replaces);
       if (wrong) state.chosen = state.chosen.filter((x) => x.id !== wrong.id);
       if (state.chosen.length < AUG_MAX && !state.chosen.some((x) => x.id === a.id)) { state.chosen.push(a); showBoxAfterPick(); }
+      // 클릭으로 짐작한 것은 실제 능력치로 한동안 확인한다 (증강 칸 그림으로 확인한 것은 그대로)
+      const alts = (A.pickedFrom || []).map(byName).filter((x) => x && x.id !== a.id);
+      state.pickCheck = A.by !== "hud" && alts.length ? { id: a.id, from: alts.map((x) => x.id), at: Date.now(), alt: null } : null;
       // 고른 것과 다음 선택 화면이 한 번에 왔으면(누르자마자 다른 선택 화면) 새 선택지는 남긴다 (2026-10-22 하이머딩거 판)
       const next = offersOnly && A.offers ? { offers: state.offers, rerolled: state.rerolled } : null;
       clearOffers();
@@ -2125,6 +2167,7 @@ function applyLive(L) {
     state.nextSnap = null;
     state.nextChange = null;
     state.buyUntil = 0;
+    state.pickCheck = state.pickFix = null;  // 지난 판 바로잡기가 새 판 기록에 남지 않게
   }
   const d = state.data;
   // 게임 내부 이름과 Data Dragon id 의 대소문자가 다른 챔피언이 있다 (FiddleSticks ↔ Fiddlesticks)
@@ -2199,6 +2242,12 @@ function applyLive(L) {
     if (lv !== (state.enemyBuilds || []).map((x) => `${x.level}/${x.kills}`).join(",")) { state.enemyBuilds = eb; showTarget(); }
   }
   trackTimers(L);  // 증강 쿨타임: 체력은 매번 바뀌니 아래 '같은 값이면 그만' 전에
+  if (checkPickByStats()) {
+    // 고른 증강을 바꿨다 → 아래 '같은 값이면 그만'에 걸리지 않게 전부 다시 계산
+    liveLast = null;
+    $("#offer-result") && $("#offer-result").insertAdjacentHTML("afterbegin",
+      `<p class="warn small">게임 능력치를 보니 고른 증강은 <b>${esc(state.pickFix.to)}</b>였어요 (${esc(state.pickFix.from)} 대신). 바로잡았어요.</p>`);
+  }
   // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
   // 계산에 들어가는 상대 값: 예상 상대 능력치 + 받는 피해의 마법 비율(statOpts enemyMagic, 0.1 단위)
   const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts().enemyMagic ?? null]);

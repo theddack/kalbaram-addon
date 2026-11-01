@@ -970,6 +970,13 @@ class Api:
             if key != self._statcheck_key:
                 self._statcheck_key = key
                 self._rec.event("statcheck", sc)
+        fix = payload.get("pickFix")
+        if self._rec and isinstance(fix, dict):
+            # 실제 능력치로 고른 증강을 바로잡음 (클릭 짐작이 틀렸을 때). 같은 것은 한 번만
+            key = (str(getattr(self._rec, "dir", "")), json.dumps(fix, ensure_ascii=False, sort_keys=True))
+            if key != getattr(self, "_pickfix_key", None):
+                self._pickfix_key = key
+                self._rec.event("pickfix", fix)
         if self._rec:
             # 보여 준 것 (카드 평가·상자 글) — 추천이 상황에 맞았는지 나중에 보려고. 같은 내용은 한 번만
             cards = [c and f"{c.get('name')}: {c.get('label')}" for c in (payload.get("cards") or [])]
