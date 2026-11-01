@@ -391,6 +391,22 @@ class Desktop(unittest.TestCase):
         checks = [d for k, d in got if k == "statcheck"]
         self.assertEqual([c["level"] for c in checks], [3, 4])
 
+    def test_pickfix_logged_once(self):
+        # 화면이 실제 능력치로 고른 증강을 바로잡으면 그 판 기록에 한 번만 남긴다 (매번 보내는 화면 정보에 같이 실려 온다)
+        api = desktop.Api(Settings_stub())
+        got = []
+
+        class Rec:
+            dir = "g1"
+
+            def event(self, kind, data=None, dedupe=False):
+                got.append((kind, data))
+        api._rec = Rec()
+        fix = {"from": "죽음의 춤", "to": "보석 건틀릿", "off": ["CRIT"]}
+        for _ in range(3):
+            api.set_overlay({"pickFix": fix})
+        self.assertEqual([d for k, d in got if k == "pickfix"], [fix])
+
     def test_live_url_local_only(self):
         old = os.environ.get("ARAM_LIVE_URL")
         try:
@@ -1044,6 +1060,7 @@ class AugOcr(unittest.TestCase):
         a._changed = lambda: None
         a._click_at((0, 0, 2520, 1575), (1575, 1573, 1260, 720))
         self.assertEqual(got[-1]["guess"], 1)
+        self.assertEqual(got[-1]["tap"], [0.5, 0.457], "뗀 클릭은 직전 위치도 기록")
         for _ in range(3):
             a.tracker.feed(None)
         self.assertEqual(a.tracker.state["picked"], "한 발에 두 놈")

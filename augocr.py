@@ -1064,8 +1064,11 @@ class Reader(threading.Thread):
             self.tracker.reroll(rr)
             self._reread_n = self._frag_n = 0  # 새로고침한 칸 이름을 다시 읽을 수 있게 (조각 글자 횟수도 새로)
             self._changed()
+        # 이미 뗀 클릭은 직전 확인 때 위치도 남긴다: 지금 위치가 카드 위여도 누른 카드가 아닐 수 있다
+        # (2026-11-01 라이즈 판: 보석 건틀릿을 골랐는데 클릭이 가운데 카드 위쪽 끝으로 잡혔다. 그 판은 원인을 가를 기록이 없었다)
+        tap = {"tap": [round((hit[2] - gx) / gw, 3), round((hit[3] - gy) / gh, 3)]} if len(hit) > 2 else {}
         self._rec("click", {"x": round(rx, 3), "y": round(ry, 3), "slot": slot, **({"reroll": rr} if rr is not None else {}),
-                            **({"guess": guess} if guess is not None else {})})
+                            **({"guess": guess} if guess is not None else {}), **tap})
 
     def wait_shop_keys(self, mouse, end, active=True):
         """end 까지 쉬되, 상점 여닫기(P·ESC·왼쪽 클릭)를 보면 SHOP_KEY_DELAY 뒤 바로 돌아가 상점 창을 읽게 한다"""

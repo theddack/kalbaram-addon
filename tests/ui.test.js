@@ -1406,3 +1406,47 @@ test("지금 살 것을 못 정하면 지난 '💰 지금' 문구를 게임 화�
   assert.equal(p.text("#buy-now"), "");
   assert.equal(sent.at(-1).hud.filter((h) => h.startsWith("💰")).length, 0, "애드온 창처럼 상자도 비운다");
 });
+
+test("클릭으로 짐작한 고른 증강을 실제 능력치로 바로잡는다 (라이즈 판)", async () => {
+  // 2026-11-01 라이즈 판: 보석 건틀릿(치명타 29%)을 골랐는데 클릭이 가운데 카드로 잡혀 죽음의 춤으로 계산했다.
+  // 실제 치명타 29% 가 계산 0% 와 계속 달랐다 → 같은 선택지 중 모든 능력치가 맞는 하나(보석 건틀릿)로 바꾼다
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  let now = 1_000_000;
+  p.w.Date.now = () => now;
+  const stats = (crit) => ({ maxHealth: 1512.57, attackDamage: 72.32, abilityPower: 100, attackSpeed: 0.73, critChance: crit, armor: 49.14,
+    magicResist: 39.51, abilityHaste: 80, moveSpeed: 385, physicalLethality: 0, lifeSteal: 0 });
+  const live = (crit, gold) => p.w.applyLive({ enabled: true, inGame: true, champion: "Ryze", level: 8, items: ["2031", "6655", "3020"], gold, stats: stats(crit), gameTime: 300 });
+  live(0, 100);
+  p.w.applyAug({ offers: null, seq: 1, picked: "기본으로 돌아가기", pickedFrom: ["기본으로 돌아가기", "우르프의 챔피언", "지옥불 난사 발동"], pickSeq: 1 });
+  const from = ["보석 건틀릿", "죽음의 춤", "유리 대포"];
+  p.w.applyAug({ offers: null, seq: 2, picked: "죽음의 춤", pickedFrom: from, pickSeq: 2 });
+  live(0, 110);
+  assert.match(p.text("#chosen"), /죽음의 춤/, "치명타가 안 맞기 전엔 그대로");
+  live(0.29, 120);
+  assert.match(p.text("#chosen"), /죽음의 춤/, "한 번 어긋난 것만으로는 바꾸지 않는다");
+  now += 6000;
+  live(0.29, 130);
+  assert.match(p.text("#chosen"), /보석 건틀릿/);
+  assert.doesNotMatch(p.text("#chosen"), /죽음의 춤/);
+  assert.match(p.text("#chosen"), /기본으로 돌아가기/, "다른 증강은 그대로");
+  assert.equal(sent.at(-1).pickFix.to, "보석 건틀릿");
+});
+
+test("능력치가 어긋나도 맞는 선택지가 없거나 둘 이상이면 바꾸지 않는다", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.pywebview = { api: { set_overlay: () => {} } };
+  let now = 1_000_000;
+  p.w.Date.now = () => now;
+  const stats = (ad) => ({ maxHealth: 1512.57, attackDamage: ad, abilityPower: 100, attackSpeed: 0.73, critChance: 0, armor: 49.14,
+    magicResist: 39.51, abilityHaste: 80, moveSpeed: 385, physicalLethality: 0, lifeSteal: 0 });
+  const live = (ad, gold) => p.w.applyLive({ enabled: true, inGame: true, champion: "Ryze", level: 8, items: ["2031", "6655", "3020"], gold, stats: stats(ad), gameTime: 300 });
+  live(72.32, 100);
+  p.w.applyAug({ offers: null, seq: 1, picked: "죽음의 춤", pickedFrom: ["보석 건틀릿", "죽음의 춤", "유리 대포"], pickSeq: 1 });
+  // 공격력이 싸움 중 버프로 크게 뛴 값: 어느 선택지로도 맞지 않는다
+  live(140, 110);
+  now += 6000;
+  live(140, 120);
+  assert.match(p.text("#chosen"), /죽음의 춤/);
+});
