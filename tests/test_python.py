@@ -1296,6 +1296,18 @@ class LiveEnemies(unittest.TestCase):
         self.assertEqual(st["champion"], "MissFortune")
         self.assertEqual(sorted(st["enemies"]), ["Chogath", "Jax", "Lissandra", "Nidalee", "Velkoz"])  # 내 팀(CHAOS)이 아닌 ORDER
 
+    def test_champion_with_character_name_format(self):
+        # 2026-11-01 세라핀 판: 세라핀만 rawChampionName 이 'Character_Seraphine_Name' 이라 내 챔피언을 못 알아봤다
+        raw = json.loads((ROOT / "tests" / "data" / "live_missfortune_4s.json").read_text(encoding="utf-8"))
+        me = raw["activePlayer"].get("riotId") or raw["activePlayer"].get("summonerName")
+        mine = next(p for p in raw["allPlayers"] if me in (p.get("riotId"), p.get("summonerName")))
+        mine["rawChampionName"] = "Character_Seraphine_Name"
+        foe = next(p for p in raw["allPlayers"] if p.get("team") != mine.get("team"))
+        foe["rawChampionName"] = "Character_Seraphine_Name"
+        st = desktop.parse_live(raw)
+        self.assertEqual(st["champion"], "Seraphine")
+        self.assertIn("Seraphine", st["enemies"])
+
     def test_enemy_builds(self):
         # 적이 산 아이템·레벨 (Tab 점수판 정보): 적 수만큼, 챔피언 순서 그대로
         raw = json.loads((ROOT / "tests" / "data" / "live_missfortune_4s.json").read_text(encoding="utf-8"))
