@@ -250,7 +250,9 @@ def parse_live(raw):
     players = raw.get("allPlayers") or []
     mine = next((p for p in players if me and (p.get("riotId") == me or p.get("summonerName") == me)), None)
     def cid(p):
-        m = re.search(r"displayname_(\w+)", p.get("rawChampionName") or "", re.I)
+        # 보통 'game_character_displayname_Zed', 세라핀만 'Character_Seraphine_Name' (2026-11-01)
+        name = p.get("rawChampionName") or ""
+        m = re.search(r"displayname_(\w+)", name, re.I) or re.fullmatch(r"Character_([A-Za-z]+)_Name", name)
         return m.group(1) if m else None
     champ_id = cid(mine) if mine else None
     # 적 챔피언: 팀이 다른 사람 (적 구성에 맞춘 추천용. 연습 모드처럼 혼자면 빈 목록)
