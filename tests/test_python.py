@@ -2248,6 +2248,55 @@ class GameLog(unittest.TestCase):
         src = pathlib.Path(desktop.__file__).read_text(encoding="utf-8")
         self.assertIn("self.state = {\"inGame\": False, \"error\"", src)
 
+    def test_slow_live_logged_in_game(self):
+        # 게임 화면이 멈춘 때와 맞춰 보려고 게임 정보 응답이 늦은 시각을 남긴다 (2026-11-01 '아무 때나 자주 멈춤')
+        got = []
+        class Rec:
+            active = True
+            def event(self, kind, data=None, dedupe=False):
+                got.append((kind, data))
+        w = desktop.LiveWatcher.__new__(desktop.LiveWatcher)
+        w.rec, w.state = Rec(), {"inGame": True, "gameTime": 312.4}
+        w._slow_live(time.time() - 0.8)
+        w._slow_live(time.time() - 0.05)  # 평소 응답은 남기지 않는다
+        w.state = {"inGame": False}
+        w._slow_live(time.time() - 3)  # 게임 밖(끝나며 끊김)은 남기지 않는다
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0][0], "slow")
+        self.assertEqual(got[0][1]["what"], "게임 정보")
+        self.assertEqual(got[0][1]["gameTime"], 312)
+        self.assertGreaterEqual(got[0][1]["ms"], 800)
+
+    def test_slow_grab_logged(self):
+        # 화면 잡기가 느린 순간만 기록한다 (평소 20ms 안팎)
+        import ctypes, types
+        import augocr
+        got = []
+        class Rec:
+            def event(self, kind, data=None, dedupe=False):
+                got.append((kind, data))
+        rd = augocr.Reader.__new__(augocr.Reader)
+        rd.rec = Rec()
+        cap = augocr._Capture.__new__(augocr._Capture)
+        cap.ct = ctypes
+        delay = [0.0]
+        def blit(*a):
+            time.sleep(delay[0])
+        noop = lambda *a: 1
+        cap.u = types.SimpleNamespace(GetDC=noop, ReleaseDC=noop)
+        cap.g = types.SimpleNamespace(CreateCompatibleDC=noop, CreateCompatibleBitmap=noop, SelectObject=noop,
+                                      BitBlt=blit, StretchBlt=blit, SetStretchBltMode=noop, GetDIBits=noop,
+                                      DeleteObject=noop, DeleteDC=noop)
+        cap.on_slow = rd._slow_grab
+        cap.grab(0, 0, 4, 2)
+        self.assertEqual(got, [])
+        delay[0] = (augocr.SLOW_GRAB_MS + 50) / 1000
+        cap.grab(0, 0, 4, 2)
+        self.assertEqual(len(got), 1)
+        self.assertEqual(got[0][0], "slow")
+        self.assertEqual(got[0][1]["what"], "화면 잡기")
+        self.assertEqual(got[0][1]["size"], [4, 2])
+
 class LowResource(unittest.TestCase):
     def test_one_mode_low_resource(self):
         # 모드는 하나: 게임 중 CPU 상한이 게임 밖보다 낮고, 화면 엔진은 저사양 옵션

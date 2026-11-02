@@ -408,13 +408,24 @@ class LiveWatcher(threading.Thread):
                               **{k: v for k, v in smp.items() if k != "cpu"}})
         self._res = (now, smp)
 
+    SLOW_LIVE_MS = 500  # 게임 정보 응답이 이보다 늦으면 그 시각을 기록 (게임 화면이 멈춘 때와 맞춰 보려고)
+
+    def _slow_live(self, t0):
+        """게임 정보는 게임이 직접 주므로, 게임이 멈추면 응답도 늦을 수 있다 (게임 중에만, 평소 수십 ms)"""
+        ms = (time.time() - t0) * 1000
+        rec = getattr(self, "rec", None)
+        if ms > self.SLOW_LIVE_MS and rec and rec.active and self.state.get("inGame"):
+            rec.event("slow", {"what": "게임 정보", "ms": round(ms), "gameTime": round(self.state.get("gameTime") or 0)})
+
     def poll(self):
+        t0 = time.time()
         try:
             with _local.open(LIVE_URL, timeout=2) as r:
                 raw = json.loads(r.read())
             if not isinstance(raw, dict):
                 raise ValueError("게임 데이터 형식이 아님")
         except Exception:
+            self._slow_live(t0)
             # 한 번 끊긴 걸로 게임이 끝났다고 보지 않는다 (3번 연속 실패해야 끝, 기록 파일이 쓸데없이 늘지 않게)
             self._fails = getattr(self, "_fails", 0) + 1
             if self._fails >= 3:
@@ -424,6 +435,7 @@ class LiveWatcher(threading.Thread):
                     self.on_game_end()  # 한 판 기록 마무리 (zip). 실패해도 게임은 끝난 것으로 둔다
             return
         self._fails = 0
+        self._slow_live(t0)
         try:
             st = parse_live(raw)
         except Exception as e:

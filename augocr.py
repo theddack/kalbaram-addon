@@ -39,6 +39,7 @@ SHOP_EVERY = 2  # 상점 탭은 이 횟수마다 한 번만 읽는다 (1초마�
 HUD_EVERY = 30.0  # 초. 증강 칸 찾기 기본 간격 (증강을 고른 직후엔 바로)
 SLOW_MS = 250  # 글자 읽기 한 바퀴가 최근 평균 이만큼 넘으면 '느림' → 진단용 그림·덜 중요한 읽기부터 줄인다 (자동 보호)
 SLOW_N = 20  # 최근 몇 바퀴로 보는지
+SLOW_GRAB_MS = 150  # 화면 잡기 한 번이 이보다 오래 걸리면 그 시각을 기록 (게임 화면이 멈춘 때와 맞춰 보려고. 평소 20ms 안팎)
 HUD_SETTLED = 60.0  # 초. 고른 증강을 증강 칸에서 다 찾았으면 다음 고르기 전까지는 이만큼에 한 번만 (확인용)
 MAX_AUGMENTS = 4  # 한 판에 고르는 증강 수. 다 찾으면 증강 칸은 다시 안 읽는다 (새로 고르면 그때만)
 HUD_EVERY_MISSING = 60.0  # 초. 그 판 선택 화면을 하나도 못 봤으면(증강 215개 전부와 비교해 무겁다) 더 드물게
@@ -523,6 +524,7 @@ class _Capture:
                                       wintypes.HDC, ctypes.c_int, ctypes.c_int, ctypes.c_int, ctypes.c_int, wintypes.DWORD]
         self.g.SetStretchBltMode.argtypes = [wintypes.HDC, ctypes.c_int]
         self.g.DeleteDC.argtypes = [wintypes.HDC]
+        self.on_slow = None  # (ms, 너비, 높이) → 느린 화면 잡기를 기록하는 곳
 
     def grab(self, x, y, w, h, tw=None, th=None):
         """화면 (x, y, w, h) → BGRA 바이트 (위에서 아래로). tw·th 를 주면 그 크기로 줄여서 (StretchBlt, 부드럽게)"""
@@ -538,6 +540,7 @@ class _Capture:
         mdc = self.g.CreateCompatibleDC(sdc)
         bmp = self.g.CreateCompatibleBitmap(sdc, tw, th)
         old = self.g.SelectObject(mdc, bmp)
+        t0 = time.time()
         try:
             if (tw, th) == (w, h):
                 self.g.BitBlt(mdc, 0, 0, w, h, sdc, x, y, 0x00CC0020)  # SRCCOPY
@@ -547,6 +550,9 @@ class _Capture:
             bih = BIH(ct.sizeof(BIH), tw, -th, 1, 32, 0, 0, 0, 0, 0, 0)
             buf = ct.create_string_buffer(tw * th * 4)
             self.g.GetDIBits(mdc, bmp, 0, th, buf, ct.byref(bih), 0)
+            ms = (time.time() - t0) * 1000
+            if ms > SLOW_GRAB_MS and getattr(self, "on_slow", None):
+                self.on_slow(round(ms), w, h)
             return buf.raw
         finally:
             self.g.SelectObject(mdc, old)
@@ -918,6 +924,7 @@ class Reader(threading.Thread):
         lower_thread(-1)  # 화면 잡기·글자 읽기가 게임 스레드를 밀어내지 않게
         try:
             cap, ocr, mouse = _Capture(), _Ocr(), _Mouse()
+            cap.on_slow = self._slow_grab
         except Exception as e:
             self.status = f"글자 인식을 쓸 수 없음: {str(e)[:120]}"
             return
@@ -977,6 +984,9 @@ class Reader(threading.Thread):
                 self.on_change()
             except Exception:
                 pass
+
+    def _slow_grab(self, ms, w, h):
+        self._rec("slow", {"what": "화면 잡기", "ms": ms, "size": [w, h]})
 
     def _rec(self, kind, data, dedupe=False):
         if self.rec:
@@ -1325,6 +1335,7 @@ class Reader(threading.Thread):
             lower_thread()
             if getattr(self, "_hud_cap", None) is None:
                 self._hud_cap = _Capture()  # 화면 캡처 도구는 스레드마다 따로
+                self._hud_cap.on_slow = self._slow_grab
             import hudicons
             offered = set(self.offered)
             # 넓혀 찾기 중이면 증강 전체와, 아니면 그 판 선택 화면에 뜬 증강하고만
