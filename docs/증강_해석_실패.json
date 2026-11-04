@@ -34,17 +34,5 @@
   "name": "위력 추구",
   "ref": "QuestRequirement",
   "why": "원본에 이름 없음"
- },
- {
-  "id": "SupportMain",
-  "name": "서포터 주력",
-  "ref": "QuestRequirement",
-  "why": "원본에 이름 없음"
- },
- {
-  "id": "SupportMain",
-  "name": "서포터 주력",
-  "ref": "QuestProgress",
-  "why": "원본에 이름 없음"
  }
 ]

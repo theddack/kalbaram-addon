@@ -1,49 +1,24 @@
-# 확인 필요 — 패치 16.21.1
+# 확인 필요 — 패치 16.22.1
 
 매일 갱신 때 자동으로 만든 목록이에요. 확인 후 rules.json 을 고치거나 이 이슈를 닫아 주세요.
 
-## ✨ 새 증강 (39)
-- **음속 장벽** (`Sound_Barrier`) — 숫자 없음: 규칙 필요
-- **구원** (`Salvation`) — 효과 자동 추출됨
-- **트럼펫 폭발** (`BrassBlast`) — 효과 자동 추출됨
-- **모시핏 괴물** (`MoshMonster`) — 효과 자동 추출됨
-- **고반동** (`Recoil`) — 효과 자동 추출됨
-- **죽음의 춤** (`Totentanz`) — 효과 자동 추출됨
-- **간지럼 괴물** (`TickleMonster`) — 효과 자동 추출됨
-- **마나 없음, 상관없음** (`NoManaNoProblem`) — 효과 자동 추출됨
-- **가라앉은 자의 축복** (`GiftoftheDrowned`) — 효과 자동 추출됨
-- **리치 두뇌** (`LichBrain`) — 효과 자동 추출됨
-- **묵직한 한 방** (`BigShot`) — 효과 자동 추출됨
-- **튕기는 꿀벌** (`BouncingBees`) — 효과 자동 추출됨
-- **더블 타임** (`DoubleTime`) — 효과 자동 추출됨
-- **해악의 숫자 3** (`ThirdTimesTheHarm`) — 효과 자동 추출됨
-- **벌이다!!!** (`BEES`) — 효과 자동 추출됨
-- **붐 앤 베이스** (`TheBoomAndTheBass`) — 효과 자동 추출됨
-- **전부 다 무너뜨려** (`TakeemDownDownDown`) — 효과 자동 추출됨
-- **장갑 충격** (`ArmoredImpact`) — 효과 자동 추출됨
-- **과일화** (`Fruitify`) — 효과 자동 추출됨
-- **보석 팔찌** (`JeweledBracelet`) — 효과 자동 추출됨
-- **떴다, 징크스** (`GetJinxed`) — 효과 자동 추출됨
-- **죽지 않아** (`StillHere`) — 효과 자동 추출됨
-- **마법 흡수** (`SapMagic`) — 효과 자동 추출됨
-- **왕관의 무게** (`HeavyIsTheCrown`) — 효과 자동 추출됨
-- **푸른 방어막** (`BlueBarrier`) — 효과 자동 추출됨
-- **핏빛 코발트** (`CrimsonCobalt`) — 효과 자동 추출됨
-- **운명의 무기** (`WeaponOfDestiny`) — 효과 자동 추출됨
-- **영혼의 흐름** (`FlowOfSpirit`) — 효과 자동 추출됨
-- **단체 포옹** (`GroupHug`) — 숫자 없음: 규칙 필요
-- **황홀한 나비** (`EnchantingButterflies`) — 효과 자동 추출됨
-- **궁극의 반복** (`UltimateRecursion`) — 효과 자동 추출됨
-- **아티스트 보호** (`HandsOffTheTalent`) — 효과 자동 추출됨
-- **고독한 전사** (`LonelyWarrior`) — 효과 자동 추출됨
-- **헤비** (`GoH_PentakillAug_Q`) — 효과 자동 추출됨
-- **파워** (`GoH_PentakillAug_W`) — 효과 자동 추출됨
-- **스래시** (`GoH_PentakillAug_E`) — 효과 자동 추출됨
-- **둠** (`GoH_PentakillAug_R`) — 효과 자동 추출됨
-- **비전 원칙** (`ArcaneAxiom`) — 효과 자동 추출됨
-- **폭풍 쇄도 업그레이드** (`Upgrade_Stormsurge`) — 효과 자동 추출됨
+## ✨ 새 증강 (2)
+- **RISE** (`RISE`) — 숫자 없음: 규칙 필요
+- **원 히트 원더** (`OneHitWonder`) — 숫자 없음: 규칙 필요
 
-## ✏️ 설명이 바뀐 증강 (숫자 말고 문장이 바뀜) (3)
-- **지옥불 영혼** (`ARAM_InfernalSoul`)
-- **보석 건틀릿** (`ARAM_JeweledGauntlet`) — 직접 만든 규칙 있음, 다시 확인
-- **불사르기 업그레이드** (`ARAM_Upgrade_Immolate`) — 직접 만든 규칙 있음, 다시 확인
+## 패치 노트 대조 (4)
+- ⚠️ 이전·이후 값 모두 데이터에 없음 — **확고한 의지로**: 스킬 적중당 방어력 및 마법 저항력: 1/7/11레벨 - 1/2/3 ⇒ 1/11레벨 - 2/3
+- ⚠️ 게임 데이터가 아직 이전 값 (자리 못 짚음, 계산은 이전 값) — **벌이다!!!**: 벌집 이동 시간: 0.75초 ⇒ 1.1초
+- ⚠️ 이전·이후 값 모두 데이터에 없음 — **전부 다 무너뜨려**: 5회 적중 시 발동 피해량: 잃은 체력의 (15 + 추가 공격 속도의 5% + 전체 스킬 가속의 0.15%)% ⇒ 잃은 체력의 17%
+- ⚠️ 게임 데이터가 아직 이전 값 (자리 못 짚음, 계산은 이전 값) — **헤카림**: 스킬 가속: 10 ⇒ 0
+
+## 증강 원본 대조 (tools/aug_audit.js --check)
+
+게임 데이터 16.22.8348910+branch.releases-16-22.content.release · 저장된 대조 16.21.8298620+branch.releases-16-21.content.release
+
+### 새 증강의 계산 안 되는 수치 (4)
+
+- RISE (RISE) Calc_RecastWindow ⚠해시 = 5: 미구현
+- RISE (RISE) Calc_RecastDamageMod ⚠해시 = 0.25: 미구현
+- 원 히트 원더 (OneHitWonder) AHMultiplier ⚠해시 = 100: 미구현
+- 원 히트 원더 (OneHitWonder) Calc_AbilityDamagetoAH ⚠해시 = 75: 미구현
