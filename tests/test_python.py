@@ -177,6 +177,15 @@ class PatchBehind(unittest.TestCase):
         self.assertFalse(B.patch_behind("16.21.1", "16.21.8300000+branch.releases-16-21.content.release"))
         self.assertFalse(B.patch_behind("16.21.1", "16.22.8301522+branch.main.content.beta"))
 
+    def test_preview_name_needs_translation(self):
+        # 2026-11-04 16.22: PBE 미리 보기 증강 'RISE' 는 한국어 문자열도 영문 그대로라 이름이 영문 id 처럼 나와
+        # 데이터 검사에 걸려 자동 갱신이 멈췄다 → 번역 안 된 PBE 증강은 미리 가져오지 않는다
+        self.assertFalse(B.preview_name_ok("RISE"))
+        self.assertFalse(B.preview_name_ok(""))
+        self.assertFalse(B.preview_name_ok("둠"))  # 한 글자 이름은 글자 인식 오인이 잦다
+        self.assertTrue(B.preview_name_ok("음속 장벽"))
+        self.assertTrue(B.preview_name_ok("Hide on bush"))  # 실제 한국어 이름이 영어인 증강
+
 
 class AutoAndWiki(unittest.TestCase):
     def test_auto_stats_conservative(self):
