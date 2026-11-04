@@ -40,6 +40,13 @@ def patch_behind(game_version, data_version):
         m = re.match(r"(\d+)\.(\d+)", v or "")
         return (int(m.group(1)), int(m.group(2))) if m else (0, 0)
     return mm(game_version) > mm(data_version)
+
+
+def preview_name_ok(ko):
+    """PBE 미리 보기로 가져올 만한 한국어 이름인가: 한 글자 이름(펜타킬 '둠')은 글자 인식 오인이 잦고,
+    영문 id 같은 이름('RISE')은 아직 번역 전이다 (2026-11-04 16.22: 데이터 검사에 걸려 자동 갱신이 멈췄다)"""
+    ko = (ko or "").strip()
+    return len(ko) >= 2 and not re.fullmatch(r"[A-Za-z_]+", ko)
 WIKI = "https://wiki.leagueoflegends.com/en-us"
 MODE = "KIWI"  # 칼바람 증강 모드 내부 이름
 MODE_PATH = "Maps/Shipping/Map12/Modes/KIWI"
@@ -1333,7 +1340,7 @@ def main():
             p_names = [p.split("/")[-1] for p in next(g["augmentList"] for g in p_lists if g["modeName"] == MODE)]
             p_data = {v["AugmentNameId"]: v for v in p_kiwi.values() if isinstance(v, dict) and v.get("__type") == "AugmentData"}
             new = [n for n in p_names if n not in aug_data and n in p_data and p_data[n].get("Enabled") is not False
-                   and len((p_str.get((p_data[n].get("NameTra") or "").lower()) or "").strip()) >= 2]  # 한 글자 이름(펜타킬 '둠')은 글자 인식 오인이 잦아 뺀다
+                   and preview_name_ok(p_str.get((p_data[n].get("NameTra") or "").lower()))]
             aug_sources.append((new, p_data, p_kiwi, p_str, p_en, "PBE"))
             print(f"  게임 {version} > 데이터 {cd_version}: PBE 에서 새 증강 {len(new)}개 미리 가져옴")
         except Exception as e:
