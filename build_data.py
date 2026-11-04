@@ -44,7 +44,8 @@ def patch_behind(game_version, data_version):
 
 def preview_name_ok(ko):
     """PBE 미리 보기로 가져올 만한 한국어 이름인가: 한 글자 이름(펜타킬 '둠')은 글자 인식 오인이 잦고,
-    영문 id 같은 이름('RISE')은 아직 번역 전이다 (2026-11-04 16.22: 데이터 검사에 걸려 자동 갱신이 멈췄다)"""
+    영문 id 같은 이름은 번역 전일 수 있다. 공식 이름이 영어인 증강(16.22 'RISE')도 있지만 미리 보기에선 가려낼 수 없어 빼고,
+    커뮤니티 드래곤이 새 패치가 되면 정식 데이터로 들어온다"""
     ko = (ko or "").strip()
     return len(ko) >= 2 and not re.fullmatch(r"[A-Za-z_]+", ko)
 WIKI = "https://wiki.leagueoflegends.com/en-us"

@@ -671,7 +671,8 @@ test("아이템 연계(🔗): 아이템 능력치·효과 태그를 안 바꾸�
 test("26.21 새 증강 규칙: 고반동 스킬 피해 25% · 장갑 충격 다음 기본 공격(10초) · 펜타킬 강화 스킬 가속 20 · 음속 장벽은 아군 지원 챔피언만", () => {
   assert.equal(d.rules.augments.Recoil.statsResolved.skillDmgMult, 0.25);
   const ai = aug("ArmoredImpact").effects[0];
-  assert.ok(ai.needsAuto && ai.cooldown === 10 && ai.ratios.bonusARMOR[0] === 2.5);
+  // 추가 방어력 계수: 26.21 2.5 → 16.22 2.2 (패치로 바뀜, 커뮤니티 드래곤 16.22 데이터)
+  assert.ok(ai.needsAuto && ai.cooldown === 10 && [2.5, 2.2].includes(ai.ratios.bonusARMOR[0]));
   assert.deepEqual(d.rules.augments.GoH_PentakillAug_Q.statsResolved.slotHaste, { Q: 20 });
   const tierOf = (cid, aid) => { const c = champ(cid); return S.augmentTiers(d.augments, d.items, S.profile(c, d.tags), [], [], d.rules, c, { aram: true })[aid].tier; };
   assert.equal(tierOf("Garen", "Sound_Barrier"), "D", "아군 보호막이 없는 가렌");
@@ -703,7 +704,8 @@ test("새 증강 정보가 비지 않는다: 아이콘 · 한글 이름 · 설�
   assert.ok(fresh.length >= 30);
   for (const a of fresh) {
     assert.ok(icon(a.id), `${a.name}: 아이콘 없음`);
-    assert.ok(!/^[A-Za-z_]+$/.test(a.name), `${a.id}: 이름이 영문 id`);
+    // RISE 는 공식 한글 이름도 영어 그대로다 (16.22 게임 문자열 'RISE')
+    assert.ok(a.id === "RISE" || !/^[A-Za-z_]+$/.test(a.name), `${a.id}: 이름이 영문 id`);
     assert.equal(a.unresolved, 0, `${a.name}: 못 푼 수치 ${a.unresolved}`);
   }
   const salv = aug("Salvation").desc.replace(/<[^>]+>/g, "");
