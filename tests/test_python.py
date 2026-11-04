@@ -186,6 +186,16 @@ class PatchBehind(unittest.TestCase):
         self.assertTrue(B.preview_name_ok("음속 장벽"))
         self.assertTrue(B.preview_name_ok("Hide on bush"))  # 실제 한국어 이름이 영어인 증강
 
+    def test_one_hit_wonder_rule_reads_game_value(self):
+        # 16.22 원 히트 원더: 원본 계산식은 해시 이름({8530cf80} = Calc_AbilityDamagetoAH 75)만 있다 → 가속 1당 0.75%
+        rules = json.loads((ROOT / "rules.json").read_text(encoding="utf-8"))
+        rules["augments"] = {"OneHitWonder": rules["augments"]["OneHitWonder"]}
+        part = lambda n: {"mFormulaParts": [{"mNumber": n, "__type": "NumberCalculationPart"}], "__type": "GameCalculation"}
+        spell = {"mSpellCalculations": {"{8530cf80}": part(75.0), "{0fc39473}": part(100.0)}}
+        warn = B.resolve_rule_stats(rules, {"OneHitWonder": spell})
+        self.assertEqual(warn, [])
+        self.assertAlmostEqual(rules["augments"]["OneHitWonder"]["statsResolved"]["HASTEtoDmg"], 0.0075)
+
 
 class AutoAndWiki(unittest.TestCase):
     def test_auto_stats_conservative(self):

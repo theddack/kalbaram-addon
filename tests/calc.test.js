@@ -730,6 +730,17 @@ test("새 증강 계산 보강: 폭풍 쇄도 업그레이드는 폭풍 쇄도�
   assert.equal(aug("HandsOffTheTalent").effects[0].uptime, 0.5);
 });
 
+// 16.22 원 히트 원더: 스킬 가속 100당 피해량 75% (원본 Calc_AbilityDamagetoAH 75 · AHMultiplier 100), 스킬 가속 효과는 더 이상 없음
+test("16.22 변환: 스킬 가속 → 피해량, 가속은 0 (원 히트 원더)", () => {
+  const lux = champ("Lux"), items = [item("우주의 추진력")];
+  const r0 = St.computeStats(lux, 18, items, [], { aram: true });
+  const r1 = St.computeStats(lux, 18, items, [{ HASTEtoDmg: 0.0075, ultHaste: 30 }], { aram: true });
+  assert.ok(r0.total.HASTE > 0, "비교하려면 가속이 있어야");
+  assert.equal(r1.total.HASTE, 0);
+  assert.equal(r1.flags.ultHaste, 0, "궁극기 가속도 안 받는다");
+  assert.ok(Math.abs(r1.flags.dmgDealtMult - r0.total.HASTE * 0.0075) < 1e-9, `피해 ${r1.flags.dmgDealtMult} (가속 ${r0.total.HASTE})`);
+});
+
 test("늦게 더하는 주문력(리치 두뇌)도 주문력 % 증가를 받는다 · 순수주의자-마법사는 간지럼 괴물이 바꾼 공속도 가속으로 (2026-10-23 점검)", () => {
   const lux = champ("Lux");
   const ap = (ids) => St.computeStats(lux, 18, [], S.augStatsOf(ids.map(aug), d.rules, lux)).total.AP;

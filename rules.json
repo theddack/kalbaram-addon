@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, dropEffects=[설명에서 잘못 뽑힌 자동 효과 이름](능력치를 피해로 읽은 것), effects[].rangedScale=원거리 챔피언 배수,effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
+  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS HASTEtoDmg(가속 → 피해량, 가속은 0) bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, dropEffects=[설명에서 잘못 뽑힌 자동 효과 이름](능력치를 피해로 읽은 것), effects[].rangedScale=원거리 챔피언 배수,effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -24,7 +24,7 @@
         "calc": "첫 번째 증강이 아니면 방어력·마법 저항력 20 (원본 AdditionalARMR)",
         "assume": [
           {
-            "what": "첫 번째 증강이 아니라고 봄 · 스킬 적중마다 쌓는 1~3(레벨)은 계산하지 않음",
+            "what": "첫 번째 증강이 아니라고 봄 · 스킬 적중마다 쌓는 2~3(레벨)은 계산하지 않음",
             "why": "이 증강은 7·11·15레벨에 고르는 일이 많아요. 쌓는 양은 스킬 적중 횟수에 따라 끝없이 늘어 평균을 정할 수 없어요 (실게임 기록으로 맞출 예정)",
             "noData": true
           }
@@ -883,6 +883,35 @@
           {
             "what": "콤보 중 평균 2중첩",
             "why": "콤보 처음엔 0중첩이라 4번 적중 중 평균 2중첩이에요",
+            "noData": true
+          }
+        ]
+      }
+    },
+    "RISE": {
+      "tags": {
+        "HASTE": 0.6
+      },
+      "note": "스킬로 적을 마무리하면 같은 스킬을 다시 써요. 물리·마법 스킬 모두에 붙어요",
+      "_why": "16.22 새 증강. 다시 쓰는 횟수가 처치에 달려 숫자로 계산하지 않고 비슷한 '스킬 한 번 더'(Ability_SelfAOE_DoubleCast)처럼 태그로만 (실게임 검증 필요)"
+    },
+    "OneHitWonder": {
+      "tags": {
+        "HASTE": 0.8
+      },
+      "stats": {
+        "HASTEtoDmg": {
+          "calc18": "Calc_AbilityDamagetoAH",
+          "scale": 0.0001
+        }
+      },
+      "note": "스킬 가속이 피해량으로 바뀌어요. 재사용 대기시간은 줄지 않아요",
+      "basis": {
+        "calc": "스킬 가속 100당 피해량 75% (원본 Calc_AbilityDamagetoAH 75 ÷ AHMultiplier 100) → 가속 1당 0.75%. 스킬 가속 효과(궁극기·스킬별 포함)는 더 이상 받지 않는다 (설명). 16.22 새 증강",
+        "assume": [
+          {
+            "what": "늘어나는 피해량은 기본 공격·스킬 모든 피해에",
+            "why": "설명이 '피해량'이라고만 써서 스킬 피해만인지 모든 피해인지 알 수 없어요 (실게임 검증 필요)",
             "noData": true
           }
         ]
@@ -2990,6 +3019,7 @@
   "_설명칸": "augments.*.descFill: 설명의 자리표시자가 해시 계산식을 가리켜 못 풀 때(?) 넣을 게임 데이터 값 이름. 숫자를 직접 적지 않아 패치를 따라간다",
   "_쓰는법": "tips: 자동 문장(playTip)이 비는 증강에 사람이 쓴 쓰는 법 한 줄 (게임 설명 수치 그대로, 어떻게 쓰면 재밌는지)",
   "tips": {
+    "OneHitWonder": "스킬 가속이 재사용 대기시간 대신 피해량이 돼요(가속 100당 75%). 가속 아이템을 그대로 사면 스킬 한 방이 세지니, 자주 쓰기보다 크게 맞히는 챔피언에게 좋아요.",
     "RISE": "스킬로 적을 마무리하면 5초 안에 같은 스킬을 다시 쓸 수 있고, 최대 2번까지 쓸 때마다 25%씩 더 아파요. 한타에서 체력이 낮은 적부터 스킬로 끊어 연쇄로 이어 가세요.",
     "Fruitify": "처치에 관여하면 적이 과일 3~6개로 터져요. 하나 먹을 때마다 최대 체력·마나 6% 회복이니 한타 뒤 과일을 주워 먹고 바로 다음 싸움에 들어가세요.",
     "MightyShield":"보호막을 받는 순간 3초 동안 강해져요. 자기 보호막 스킬을 쓰거나 보호막을 주는 아군 곁에서 싸우세요.",
