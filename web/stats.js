@@ -217,6 +217,14 @@
       else if (k in flags) flags[k] += v;
       else conv[k] = (conv[k] || 0) + v;
     }
+    // 원 히트 원더(16.22): 스킬 가속 1당 피해량 0.75% (가속 100당 75%), 가속 효과는 궁극기·스킬별까지 더 이상 안 받는다.
+    // 늦게 더한 주문력의 가속 전환까지 다 끝난 뒤에 바꾼다
+    if (conv.HASTEtoDmg) {
+      flags.dmgDealtMult += t.HASTE * conv.HASTEtoDmg;
+      t.HASTE = 0;
+      flags.ultHaste = 0;
+      flags.slotHaste = {};
+    }
     return { total: t, base, flags, aram, effects, conv };
   }
 

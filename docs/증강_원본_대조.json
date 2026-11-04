@@ -1,17 +1,10 @@
 {
- "version": "16.21.8298620+branch.releases-16-21.content.release",
- "dataVersion": "16.21.8298620+branch.releases-16-21.content.release",
- "builtAt": "2026-10-23 13:01",
+ "version": "16.22.8348910+branch.releases-16-22.content.release",
+ "dataVersion": "16.22.8348910+branch.releases-16-22.content.release",
+ "builtAt": "2026-11-04 23:25",
  "augments": 239,
  "disabled": [
-  "인내심",
-  "단호함",
-  "양자 연산",
-  "눈덩이 업그레이드",
   "신발 수집가",
-  "흡혈병",
-  "어깨 위의 악마",
-  "공허 돌진",
   "원상복구"
  ],
  "rows": [
@@ -260,7 +253,7 @@
    "name": "빛의 인도자 결의",
    "ref": "HealAmount*100",
    "kind": "수치",
-   "source": 0.30000001192092896,
+   "source": 0.3499999940395355,
    "applied": "효과식",
    "how": "자동 추출",
    "key": "heal",
@@ -866,8 +859,8 @@
    "applied": null,
    "how": "-",
    "key": null,
-   "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "state": "계산 제외",
+   "why": "규칙 메모만 있음: 평타 사거리 크게 증가"
   },
   {
    "id": "ARAM_ScopiestWeapons",
@@ -878,8 +871,8 @@
    "applied": null,
    "how": "-",
    "key": null,
-   "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영)"
+   "state": "계산 제외",
+   "why": "규칙 메모만 있음: 평타 사거리 아주 크게 증가"
   },
   {
    "id": "ARAM_SkilledSniper",
@@ -2735,8 +2728,8 @@
    "name": "영혼의 포식자",
    "ref": "HealthGainPerStack",
    "kind": "중첩",
-   "source": 20,
-   "applied": 300,
+   "source": 30,
+   "applied": 450,
    "how": "배수 가정",
    "key": "HP",
    "state": "가정",
@@ -2747,8 +2740,8 @@
    "name": "영혼의 포식자",
    "ref": "HealthGained",
    "kind": "수치",
-   "source": "계산식 (HealthGainPerStack=20)",
-   "applied": 300,
+   "source": "계산식 (HealthGainPerStack=30)",
+   "applied": 450,
    "how": "배수 가정 (계산식 안의 값)",
    "key": "HP",
    "state": "일치",
@@ -3519,7 +3512,7 @@
    "name": "굶주린 속박",
    "ref": "Heal",
    "kind": "수치",
-   "source": "계산식 (Heal_APRatio=0.05, Heal_bHPRatio=0.1)",
+   "source": "계산식 (Heal_APRatio=0.05, Heal_bHPRatio=0.12)",
    "applied": "효과식",
    "how": "자동 추출",
    "key": "heal",
@@ -3627,7 +3620,7 @@
    "name": "거인의 결의",
    "ref": "Stacks_Max",
    "kind": "중첩",
-   "source": 10,
+   "source": 7,
    "applied": null,
    "how": "-",
    "key": null,
@@ -4598,56 +4591,6 @@
    "why": ""
   },
   {
-   "id": "SupportMain",
-   "name": "서포터 주력",
-   "ref": "QuestRequirement",
-   "kind": "수치",
-   "source": null,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "원본 확인 불가",
-   "why": "툴팁이 가리키는 값이 원본 데이터에 없음 · 빌드 계산기가 못 풀어 설명에 '?' (원본에 이름 없음)",
-   "buildFail": "원본에 이름 없음"
-  },
-  {
-   "id": "SupportMain",
-   "name": "서포터 주력",
-   "ref": "HealDuration",
-   "kind": "지속 시간",
-   "source": 3,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "계산 제외",
-   "why": "퀘스트형 (조건 달성 보상이라 시점을 정할 수 없음)"
-  },
-  {
-   "id": "SupportMain",
-   "name": "서포터 주력",
-   "ref": "HealPercent",
-   "kind": "수치",
-   "source": 25,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "계산 제외",
-   "why": "퀘스트형 (조건 달성 보상이라 시점을 정할 수 없음)"
-  },
-  {
-   "id": "SupportMain",
-   "name": "서포터 주력",
-   "ref": "QuestProgress",
-   "kind": "수치",
-   "source": null,
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "원본 확인 불가",
-   "why": "툴팁이 가리키는 값이 원본 데이터에 없음 · 빌드 계산기가 못 풀어 설명에 '?' (원본에 이름 없음)",
-   "buildFail": "원본에 이름 없음"
-  },
-  {
    "id": "Upgrade_SunderedSky",
    "name": "갈라진 하늘 업그레이드",
    "ref": "PerTargetCooldown",
@@ -4709,6 +4652,509 @@
    "why": ""
   },
   {
+   "id": "Sound_Barrier",
+   "name": "음속 장벽",
+   "ref": "BurstDecayDuration",
+   "kind": "지속 시간",
+   "source": 1.5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "계산 제외",
+   "why": "규칙 메모만 있음: 아군에게 보호막을 씌울 때만 발동 (설명). 아군 지원 스킬이 없으면 효과 없음"
+  },
+  {
+   "id": "Sound_Barrier",
+   "name": "음속 장벽",
+   "ref": "SpeedPercent ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "계산 제외",
+   "why": "규칙 메모만 있음: 아군에게 보호막을 씌울 때만 발동 (설명). 아군 지원 스킬이 없으면 효과 없음"
+  },
+  {
+   "id": "Sound_Barrier",
+   "name": "음속 장벽",
+   "ref": "PerTargetCooldown",
+   "kind": "발동 주기",
+   "source": 1.5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "계산 제외",
+   "why": "규칙 메모만 있음: 아군에게 보호막을 씌울 때만 발동 (설명). 아군 지원 스킬이 없으면 효과 없음"
+  },
+  {
+   "id": "Salvation",
+   "name": "구원",
+   "ref": "HealthThresholdTooltipPercent ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (HealthPercentTrigger=0.5)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, heal, heal)"
+  },
+  {
+   "id": "Salvation",
+   "name": "구원",
+   "ref": "Damage",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "Salvation",
+   "name": "구원",
+   "ref": "TotalHeal",
+   "kind": "수치",
+   "source": "계산식 (HealAPRatio=1.2)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "heal",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "BrassBlast",
+   "name": "트럼펫 폭발",
+   "ref": "ChargeTimeTT",
+   "kind": "지속 시간",
+   "source": 1.5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "계산 제외",
+   "why": "소환사 주문 변경"
+  },
+  {
+   "id": "BrassBlast",
+   "name": "트럼펫 폭발",
+   "ref": "BrassBlastDamage_Min ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "계산 제외",
+   "why": "소환사 주문 변경"
+  },
+  {
+   "id": "BrassBlast",
+   "name": "트럼펫 폭발",
+   "ref": "BrassBlastDamage_Max ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "BrassBlast",
+   "name": "트럼펫 폭발",
+   "ref": "MinChargeTimeTT",
+   "kind": "지속 시간",
+   "source": 0.25,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "계산 제외",
+   "why": "소환사 주문 변경"
+  },
+  {
+   "id": "MoshMonster",
+   "name": "모시핏 괴물",
+   "ref": "InitialHPGain ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: HP)"
+  },
+  {
+   "id": "MoshMonster",
+   "name": "모시핏 괴물",
+   "ref": "SlowAmount",
+   "kind": "수치",
+   "source": 0.5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: HP)"
+  },
+  {
+   "id": "MoshMonster",
+   "name": "모시핏 괴물",
+   "ref": "HPIncreasePerTakedown ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": 300,
+   "how": "이름 참조",
+   "key": "HP",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "Recoil",
+   "name": "고반동",
+   "ref": "DamageAmp",
+   "kind": "수치",
+   "source": 0.25,
+   "applied": 0.25,
+   "how": "이름 참조",
+   "key": "skillDmgMult",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "Totentanz",
+   "name": "죽음의 춤",
+   "ref": "Buff_Duration",
+   "kind": "지속 시간",
+   "source": 5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "계산 제외",
+   "why": "소환사 주문 변경"
+  },
+  {
+   "id": "Totentanz",
+   "name": "죽음의 춤",
+   "ref": "Calc_Heal",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "heal",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "Totentanz",
+   "name": "죽음의 춤",
+   "ref": "Calc_Cooldown_Refund ⚠해시",
+   "kind": "수치",
+   "source": 20,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "계산 제외",
+   "why": "소환사 주문 변경"
+  },
+  {
+   "id": "TickleMonster",
+   "name": "간지럼 괴물",
+   "ref": "Calc_ADtoAS ⚠해시",
+   "kind": "수치",
+   "source": 1,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, itemADtoAS)"
+  },
+  {
+   "id": "TickleMonster",
+   "name": "간지럼 괴물",
+   "ref": "Calc_ASPerAD ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (CalcASVal=0.0175)",
+   "applied": 0.0175,
+   "how": "이름 참조 (계산식 안의 값)",
+   "key": "itemADtoAS",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "TickleMonster",
+   "name": "간지럼 괴물",
+   "ref": "Calc_OnHitDamage ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "NoManaNoProblem",
+   "name": "마나 없음, 상관없음",
+   "ref": "Calc_ManaToAP ⚠해시",
+   "kind": "수치",
+   "source": 10,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: APmult)"
+  },
+  {
+   "id": "NoManaNoProblem",
+   "name": "마나 없음, 상관없음",
+   "ref": "Calc_APPerMana ⚠해시",
+   "kind": "수치",
+   "source": 0.800000011920929,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: APmult)"
+  },
+  {
+   "id": "NoManaNoProblem",
+   "name": "마나 없음, 상관없음",
+   "ref": "APAmp*100",
+   "kind": "수치",
+   "source": 0.15000000596046448,
+   "applied": 0.15000000596046448,
+   "how": "이름 참조",
+   "key": "APmult",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "GiftoftheDrowned",
+   "name": "가라앉은 자의 축복",
+   "ref": "Calc_HPtoLethality ⚠해시",
+   "kind": "수치",
+   "source": 100,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: LETHALITY)"
+  },
+  {
+   "id": "GiftoftheDrowned",
+   "name": "가라앉은 자의 축복",
+   "ref": "Calc_LethalitytoHP ⚠해시",
+   "kind": "수치",
+   "source": 5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: LETHALITY) · 규칙 bonusHPtoLETHALITY=0.05 과 값이 같음 (같은 효과인지 확인 필요)"
+  },
+  {
+   "id": "GiftoftheDrowned",
+   "name": "가라앉은 자의 축복",
+   "ref": "Calc_BonusLethality ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "이름 참조",
+   "key": "LETHALITY",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "LichBrain",
+   "name": "리치 두뇌",
+   "ref": "Calc_AP ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "이름 참조",
+   "key": "AP",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "BigShot",
+   "name": "묵직한 한 방",
+   "ref": "Calc_Bonus_Crit_Damage ⚠해시",
+   "kind": "수치",
+   "source": 0.3499999940395355,
+   "applied": 0.35,
+   "how": "이름 참조",
+   "key": "CRITDMG",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "BigShot",
+   "name": "묵직한 한 방",
+   "ref": "Calc_Bonus_AD ⚠해시",
+   "kind": "수치",
+   "source": 0.25,
+   "applied": 0.25,
+   "how": "이름 참조",
+   "key": "bonusADmult",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "BigShot",
+   "name": "묵직한 한 방",
+   "ref": "Calc_Percent_AS_To_Convert ⚠해시",
+   "kind": "수치",
+   "source": 0.75,
+   "applied": 0.75,
+   "how": "이름 참조",
+   "key": "AStoCRITDMG",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "BigShot",
+   "name": "묵직한 한 방",
+   "ref": "Calc_AS_To_Crit_Damage ⚠해시",
+   "kind": "수치",
+   "source": 0.009999999776482582,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: CRITDMG, bonusADmult, AStoCRITDMG)"
+  },
+  {
+   "id": "BigShot",
+   "name": "묵직한 한 방",
+   "ref": "Calc_Crit_Damage_Per_AS ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (ConversionCritNum=0.0067)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: CRITDMG, bonusADmult, AStoCRITDMG)"
+  },
+  {
+   "id": "BouncingBees",
+   "name": "튕기는 꿀벌",
+   "ref": "ADPerMilestone",
+   "kind": "수치",
+   "source": 30,
+   "applied": 30,
+   "how": "이름 참조",
+   "key": "AD",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "DoubleTime",
+   "name": "더블 타임",
+   "ref": "DamageWindowSeconds",
+   "kind": "지속 시간",
+   "source": 4,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, effectCooldown)"
+  },
+  {
+   "id": "DoubleTime",
+   "name": "더블 타임",
+   "ref": "PercentOfManaDamage ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "DoubleTime",
+   "name": "더블 타임",
+   "ref": "ManaGain",
+   "kind": "수치",
+   "source": 25,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, effectCooldown)"
+  },
+  {
+   "id": "DoubleTime",
+   "name": "더블 타임",
+   "ref": "ManaGainCD",
+   "kind": "수치",
+   "source": 4,
+   "applied": null,
+   "how": "이름 참조",
+   "key": "effectCooldown",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "ThirdTimesTheHarm",
+   "name": "해악의 숫자 3",
+   "ref": "Mark_Duration",
+   "kind": "지속 시간",
+   "source": 4,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: true, true)"
+  },
+  {
+   "id": "ThirdTimesTheHarm",
+   "name": "해악의 숫자 3",
+   "ref": "Calc_Damage",
+   "kind": "수치",
+   "source": 0.05999999865889549,
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "true",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "ThirdTimesTheHarm",
+   "name": "해악의 숫자 3",
+   "ref": "Calc_Damage_Per_Stack ⚠해시",
+   "kind": "중첩",
+   "source": 10,
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "true",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
    "id": "Upgrade_DeathDance",
    "name": "죽음의 무도 업그레이드",
    "ref": "Gold",
@@ -4743,6 +5189,68 @@
    "key": "heal",
    "state": "일치",
    "why": ""
+  },
+  {
+   "id": "BEES",
+   "name": "벌이다!!!",
+   "ref": "Calc_Cooldown ⚠해시",
+   "kind": "발동 주기",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+  },
+  {
+   "id": "BEES",
+   "name": "벌이다!!!",
+   "ref": "Damage_Duration",
+   "kind": "지속 시간",
+   "source": 2,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+  },
+  {
+   "id": "BEES",
+   "name": "벌이다!!!",
+   "ref": "Calc_Slow",
+   "kind": "수치",
+   "source": 0.20000000298023224,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+  },
+  {
+   "id": "BEES",
+   "name": "벌이다!!!",
+   "ref": "Calc_Damage",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "BEES",
+   "name": "벌이다!!!",
+   "ref": "Calc_OnHit_Efficacy ⚠해시",
+   "kind": "수치",
+   "source": 0.4000000059604645,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
   },
   {
    "id": "ARAM_ClownCollege",
@@ -4815,6 +5323,776 @@
    "key": null,
    "state": "미구현",
    "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, physical, true)"
+  },
+  {
+   "id": "TheBoomAndTheBass",
+   "name": "붐 앤 베이스",
+   "ref": "Charge_Duration",
+   "kind": "지속 시간",
+   "source": 6,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+  },
+  {
+   "id": "TheBoomAndTheBass",
+   "name": "붐 앤 베이스",
+   "ref": "Calc_Damage",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "TheBoomAndTheBass",
+   "name": "붐 앤 베이스",
+   "ref": "Move_Speed_Duration",
+   "kind": "지속 시간",
+   "source": 2,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+  },
+  {
+   "id": "TheBoomAndTheBass",
+   "name": "붐 앤 베이스",
+   "ref": "Calc_Move_Speed",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+  },
+  {
+   "id": "TakeemDownDownDown",
+   "name": "전부 다 무너뜨려",
+   "ref": "Stack_Duration",
+   "kind": "지속 시간",
+   "source": 5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic)"
+  },
+  {
+   "id": "TakeemDownDownDown",
+   "name": "전부 다 무너뜨려",
+   "ref": "Calc_Damage_Hit ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "TakeemDownDownDown",
+   "name": "전부 다 무너뜨려",
+   "ref": "Calc_Damage_Per_Previous_Stack ⚠해시",
+   "kind": "중첩",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "TakeemDownDownDown",
+   "name": "전부 다 무너뜨려",
+   "ref": "Stacks_Max",
+   "kind": "중첩",
+   "source": 5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic)"
+  },
+  {
+   "id": "TakeemDownDownDown",
+   "name": "전부 다 무너뜨려",
+   "ref": "Calc_Damage_Consume ⚠해시",
+   "kind": "수치",
+   "source": 0.17000000178813934,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic)"
+  },
+  {
+   "id": "TakeemDownDownDown",
+   "name": "전부 다 무너뜨려",
+   "ref": "Calc_Healing ⚠해시",
+   "kind": "수치",
+   "source": 0.6700000166893005,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic)"
+  },
+  {
+   "id": "ArmoredImpact",
+   "name": "장갑 충격",
+   "ref": "ArmorDamage",
+   "kind": "수치",
+   "source": "계산식 (ArmorPercent=2.2)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "physical",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "Fruitify",
+   "name": "과일화",
+   "ref": "FruitsPerTakedown ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: heal)"
+  },
+  {
+   "id": "Fruitify",
+   "name": "과일화",
+   "ref": "HealingPerFruit ⚠해시",
+   "kind": "수치",
+   "source": 0.05999999865889549,
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "heal",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "Fruitify",
+   "name": "과일화",
+   "ref": "ManaPerFruit ⚠해시",
+   "kind": "수치",
+   "source": 0.05999999865889549,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: heal)"
+  },
+  {
+   "id": "Fruitify",
+   "name": "과일화",
+   "ref": "WeirdResourcePerFruit ⚠해시",
+   "kind": "수치",
+   "source": 10,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: heal)"
+  },
+  {
+   "id": "JeweledBracelet",
+   "name": "보석 팔찌",
+   "ref": "CritDamageTooltip",
+   "kind": "수치",
+   "source": 45,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: CRIT, ultCritDmg)"
+  },
+  {
+   "id": "JeweledBracelet",
+   "name": "보석 팔찌",
+   "ref": "CritChance",
+   "kind": "확률",
+   "source": 0.25,
+   "applied": 0.25,
+   "how": "이름 참조",
+   "key": "CRIT",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "GetJinxed",
+   "name": "떴다, 징크스",
+   "ref": "Calc_Damage_Flat_Min ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "계산 제외",
+   "why": "소환사 주문 변경"
+  },
+  {
+   "id": "GetJinxed",
+   "name": "떴다, 징크스",
+   "ref": "Calc_Damage_Percent_Min ⚠해시",
+   "kind": "수치",
+   "source": 0.029999999329447746,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "계산 제외",
+   "why": "소환사 주문 변경"
+  },
+  {
+   "id": "GetJinxed",
+   "name": "떴다, 징크스",
+   "ref": "Calc_Damage_Flat_Max ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "physical",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "GetJinxed",
+   "name": "떴다, 징크스",
+   "ref": "Calc_Damage_Percent_Max ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "계산 제외",
+   "why": "소환사 주문 변경"
+  },
+  {
+   "id": "StillHere",
+   "name": "죽지 않아",
+   "ref": "ASPerMissingPercentHP*100",
+   "kind": "수치",
+   "source": 0.019999999552965164,
+   "applied": 0.5,
+   "how": "배수 가정",
+   "key": "AS",
+   "state": "가정",
+   "why": "싸우는 동안 평균 잃은 체력 25%"
+  },
+  {
+   "id": "StillHere",
+   "name": "죽지 않아",
+   "ref": "OmnivampPerMissingPercentHP*100",
+   "kind": "수치",
+   "source": 0.0035000001080334187,
+   "applied": 0.0875,
+   "how": "배수 가정",
+   "key": "OMNIVAMP",
+   "state": "가정",
+   "why": "싸우는 동안 평균 잃은 체력 25%"
+  },
+  {
+   "id": "SapMagic",
+   "name": "마법 흡수",
+   "ref": "TimeLockout ⚠해시",
+   "kind": "지속 시간",
+   "source": 20,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, heal)"
+  },
+  {
+   "id": "SapMagic",
+   "name": "마법 흡수",
+   "ref": "CalcDamage ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "physical",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "SapMagic",
+   "name": "마법 흡수",
+   "ref": "CalcHeal ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "heal",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "SapMagic",
+   "name": "마법 흡수",
+   "ref": "TimeRefund ⚠해시",
+   "kind": "지속 시간",
+   "source": 3,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, heal)"
+  },
+  {
+   "id": "HeavyIsTheCrown",
+   "name": "왕관의 무게",
+   "ref": "InitialFlatAD",
+   "kind": "수치",
+   "source": 10,
+   "applied": 10,
+   "how": "이름 참조",
+   "key": "AD",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "HeavyIsTheCrown",
+   "name": "왕관의 무게",
+   "ref": "InitialFlatAP",
+   "kind": "수치",
+   "source": 25,
+   "applied": 25,
+   "how": "이름 참조",
+   "key": "AP",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "HeavyIsTheCrown",
+   "name": "왕관의 무게",
+   "ref": "InitialStatIncrease*100",
+   "kind": "수치",
+   "source": 0.10000000149011612,
+   "applied": null,
+   "how": "근사 규칙",
+   "key": null,
+   "state": "가정",
+   "why": "공격력 10·주문력 25 + 추가 공격력·주문력·총 공격 속도 10% (+처치 관여 중첩당 5%), 전투 중 이동 속도 −5% (중첩당 −2.5%) × 평균 4중첩 → 30%·−15%. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+  },
+  {
+   "id": "HeavyIsTheCrown",
+   "name": "왕관의 무게",
+   "ref": "InitialMSDecrease*-100",
+   "kind": "수치",
+   "source": -0.05000000074505806,
+   "applied": null,
+   "how": "근사 규칙",
+   "key": null,
+   "state": "가정",
+   "why": "공격력 10·주문력 25 + 추가 공격력·주문력·총 공격 속도 10% (+처치 관여 중첩당 5%), 전투 중 이동 속도 −5% (중첩당 −2.5%) × 평균 4중첩 → 30%·−15%. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+  },
+  {
+   "id": "HeavyIsTheCrown",
+   "name": "왕관의 무게",
+   "ref": "StatIncreasePercentPerTakedown*100",
+   "kind": "수치",
+   "source": 0.05000000074505806,
+   "applied": null,
+   "how": "근사 규칙",
+   "key": null,
+   "state": "가정",
+   "why": "공격력 10·주문력 25 + 추가 공격력·주문력·총 공격 속도 10% (+처치 관여 중첩당 5%), 전투 중 이동 속도 −5% (중첩당 −2.5%) × 평균 4중첩 → 30%·−15%. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+  },
+  {
+   "id": "HeavyIsTheCrown",
+   "name": "왕관의 무게",
+   "ref": "MSDecreasePerTakedown*-100",
+   "kind": "수치",
+   "source": -0.02500000037252903,
+   "applied": null,
+   "how": "근사 규칙",
+   "key": null,
+   "state": "가정",
+   "why": "공격력 10·주문력 25 + 추가 공격력·주문력·총 공격 속도 10% (+처치 관여 중첩당 5%), 전투 중 이동 속도 −5% (중첩당 −2.5%) × 평균 4중첩 → 30%·−15%. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+  },
+  {
+   "id": "HeavyIsTheCrown",
+   "name": "왕관의 무게",
+   "ref": "PercentStackLostOnDeath*100",
+   "kind": "중첩",
+   "source": 0.5,
+   "applied": null,
+   "how": "근사 규칙",
+   "key": null,
+   "state": "가정",
+   "why": "공격력 10·주문력 25 + 추가 공격력·주문력·총 공격 속도 10% (+처치 관여 중첩당 5%), 전투 중 이동 속도 −5% (중첩당 −2.5%) × 평균 4중첩 → 30%·−15%. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+  },
+  {
+   "id": "BlueBarrier",
+   "name": "푸른 방어막",
+   "ref": "ManaToShieldPercent ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: shield)"
+  },
+  {
+   "id": "BlueBarrier",
+   "name": "푸른 방어막",
+   "ref": "ShieldDuration",
+   "kind": "지속 시간",
+   "source": 1.5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: shield)"
+  },
+  {
+   "id": "BlueBarrier",
+   "name": "푸른 방어막",
+   "ref": "ShieldMax",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "shield",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "CrimsonCobalt",
+   "name": "핏빛 코발트",
+   "ref": "Debuff_Duration",
+   "kind": "지속 시간",
+   "source": 4,
+   "applied": null,
+   "how": "근사 규칙",
+   "key": null,
+   "state": "가정",
+   "why": "표식을 기본 공격으로 터뜨리면 그 스킬의 재사용 대기시간 65% 감소 (설명 · 영어 원문 'reduce the cooldown of {{SpellName}} by 65%'). 절반만 터뜨린다고 보면 재사용 대기시간 × (1 − 0.65 × 0.5) = 0.675 → 스킬 가속 48과 같음"
+  },
+  {
+   "id": "CrimsonCobalt",
+   "name": "핏빛 코발트",
+   "ref": "Calc_Damage",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "CrimsonCobalt",
+   "name": "핏빛 코발트",
+   "ref": "Calc_Cooldown_Refund ⚠해시",
+   "kind": "수치",
+   "source": 0.6499999761581421,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+  },
+  {
+   "id": "FlowOfSpirit",
+   "name": "영혼의 흐름",
+   "ref": "Buff_Duration",
+   "kind": "지속 시간",
+   "source": 4,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: AS)"
+  },
+  {
+   "id": "FlowOfSpirit",
+   "name": "영혼의 흐름",
+   "ref": "Calc_Attack_Speed",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": 0.6,
+   "how": "이름 참조",
+   "key": "AS",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "GroupHug",
+   "name": "단체 포옹",
+   "ref": "TargetToPick",
+   "kind": "수치",
+   "source": 2,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "계산 제외",
+   "why": "규칙 메모만 있음: 스킬로 아군을 회복·보호막할 때만 발동 (설명). 아군 지원 스킬이 없으면 효과 없음"
+  },
+  {
+   "id": "GroupHug",
+   "name": "단체 포옹",
+   "ref": "Efficiency_Heal ⚠해시",
+   "kind": "수치",
+   "source": 1,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "계산 제외",
+   "why": "규칙 메모만 있음: 스킬로 아군을 회복·보호막할 때만 발동 (설명). 아군 지원 스킬이 없으면 효과 없음"
+  },
+  {
+   "id": "EnchantingButterflies",
+   "name": "황홀한 나비",
+   "ref": "MaxButterfly ⚠해시",
+   "kind": "수치",
+   "source": 7,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+  },
+  {
+   "id": "EnchantingButterflies",
+   "name": "황홀한 나비",
+   "ref": "SingleFireDamage",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "EnchantingButterflies",
+   "name": "황홀한 나비",
+   "ref": "RepeatDamageMod",
+   "kind": "수치",
+   "source": 0.75,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+  },
+  {
+   "id": "UltimateRecursion",
+   "name": "궁극의 반복",
+   "ref": "UltimateHaste",
+   "kind": "수치",
+   "source": 50,
+   "applied": 50,
+   "how": "이름 참조",
+   "key": "ultHaste",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "HandsOffTheTalent",
+   "name": "아티스트 보호",
+   "ref": "MaxDistanceProximityTooltip ⚠해시",
+   "kind": "거리·범위",
+   "source": "계산식 (MaxDistanceProximity=0.75)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: physical, physical)"
+  },
+  {
+   "id": "HandsOffTheTalent",
+   "name": "아티스트 보호",
+   "ref": "AdditionalDamage",
+   "kind": "수치",
+   "source": "계산식 (IncreasedDamage=0.15)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "physical",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "LonelyWarrior",
+   "name": "고독한 전사",
+   "ref": "ProximityRange",
+   "kind": "거리·범위",
+   "source": 600,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: AS, ARMOR, MR)"
+  },
+  {
+   "id": "LonelyWarrior",
+   "name": "고독한 전사",
+   "ref": "ASPerEnemyTooltip ⚠해시",
+   "kind": "수치",
+   "source": "계산식 (ASPerEnemy=0.15)",
+   "applied": 0.45,
+   "how": "배수 가정 (계산식 안의 값)",
+   "key": "AS",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "LonelyWarrior",
+   "name": "고독한 전사",
+   "ref": "ArmorPerEnemy",
+   "kind": "수치",
+   "source": 10,
+   "applied": 30,
+   "how": "배수 가정",
+   "key": "ARMOR",
+   "state": "가정",
+   "why": "한타 중 근처 적 평균 3명"
+  },
+  {
+   "id": "LonelyWarrior",
+   "name": "고독한 전사",
+   "ref": "MRPerEnemy",
+   "kind": "수치",
+   "source": 10,
+   "applied": 30,
+   "how": "배수 가정",
+   "key": "MR",
+   "state": "가정",
+   "why": "한타 중 근처 적 평균 3명"
+  },
+  {
+   "id": "ArcaneAxiom",
+   "name": "비전 원칙",
+   "ref": "ResetWindow",
+   "kind": "지속 시간",
+   "source": 3,
+   "applied": null,
+   "how": "근사 규칙",
+   "key": null,
+   "state": "가정",
+   "why": "처치 관여(3초 안 처치)마다 궁극기 재사용 대기시간 15~30% 반환 (원본 UltimateRefund) → 평균 22.5% × 궁극기 한 번에 1.5번 ≈ 34% 감소 ≈ 궁극기 가속 51. 26.21 새 증강 (2026-10-21 PBE 16.22 원본으로 미리 작성 — 라이브 데이터가 오면 같은 이름 값으로 자동 갱신)"
+  },
+  {
+   "id": "ArcaneAxiom",
+   "name": "비전 원칙",
+   "ref": "UltimateRefund",
+   "kind": "수치",
+   "source": "계산식 (상수)",
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: -)"
+  },
+  {
+   "id": "Upgrade_Stormsurge",
+   "name": "폭풍 쇄도 업그레이드",
+   "ref": "PercentHealthDamage",
+   "kind": "수치",
+   "source": "계산식 (PercentHealthBase=0.1, PercentHealthPerAP=0.0002)",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "state": "일치",
+   "why": ""
+  },
+  {
+   "id": "Upgrade_Stormsurge",
+   "name": "폭풍 쇄도 업그레이드",
+   "ref": "Gold",
+   "kind": "수치",
+   "source": 500,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic) · 규칙 goldValue=500 과 값이 같음 (같은 효과인지 확인 필요)"
+  },
+  {
+   "id": "RISE",
+   "name": "RISE",
+   "ref": "Calc_RecastWindow ⚠해시",
+   "kind": "지속 시간",
+   "source": 5,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "계산 제외",
+   "why": "규칙 메모만 있음: 스킬로 적을 마무리하면 같은 스킬을 다시 써요. 물리·마법 스킬 모두에 붙어요"
+  },
+  {
+   "id": "RISE",
+   "name": "RISE",
+   "ref": "Calc_RecastDamageMod ⚠해시",
+   "kind": "수치",
+   "source": 0.25,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "계산 제외",
+   "why": "규칙 메모만 있음: 스킬로 적을 마무리하면 같은 스킬을 다시 써요. 물리·마법 스킬 모두에 붙어요"
+  },
+  {
+   "id": "OneHitWonder",
+   "name": "원 히트 원더",
+   "ref": "AHMultiplier ⚠해시",
+   "kind": "수치",
+   "source": 100,
+   "applied": null,
+   "how": "-",
+   "key": null,
+   "hashed": true,
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: HASTEtoDmg)"
+  },
+  {
+   "id": "OneHitWonder",
+   "name": "원 히트 원더",
+   "ref": "Calc_AbilityDamagetoAH ⚠해시",
+   "kind": "수치",
+   "source": 75,
+   "applied": 0.0075,
+   "how": "이름 참조",
+   "key": "HASTEtoDmg",
+   "hashed": true,
+   "state": "일치",
+   "why": ""
   }
  ],
  "hidden": [
@@ -7515,22 +8793,6 @@
    "used": null
   },
   {
-   "id": "Sound_Barrier",
-   "name": "음속 장벽",
-   "value": 1.5,
-   "dv": "BurstDecayDuration",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
-   "id": "Sound_Barrier",
-   "name": "음속 장벽",
-   "value": 1.5,
-   "dv": "PerTargetCooldown",
-   "kind": "발동 주기",
-   "used": null
-  },
-  {
    "id": "Salvation",
    "name": "구원",
    "value": 2,
@@ -7573,14 +8835,6 @@
   {
    "id": "Salvation",
    "name": "구원",
-   "value": 1.2000000476837158,
-   "dv": "HealAPRatio",
-   "kind": "수치",
-   "used": "자동 추출"
-  },
-  {
-   "id": "Salvation",
-   "name": "구원",
    "value": 0.10000000149011612,
    "dv": "HealHealthRatio",
    "kind": "수치",
@@ -7605,14 +8859,6 @@
   {
    "id": "Salvation",
    "name": "구원",
-   "value": 0.5,
-   "dv": "HealthPercentTrigger",
-   "kind": "수치",
-   "used": null
-  },
-  {
-   "id": "Salvation",
-   "name": "구원",
    "value": 90,
    "dv": "AuraCooldown",
    "kind": "발동 주기",
@@ -7631,14 +8877,6 @@
    "name": "트럼펫 폭발",
    "value": 2.5,
    "dv": "MaxChargeTime",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
-   "id": "BrassBlast",
-   "name": "트럼펫 폭발",
-   "value": 1.5,
-   "dv": "ChargeTimeTT",
    "kind": "지속 시간",
    "used": null
   },
@@ -7680,14 +8918,6 @@
    "value": 250,
    "dv": "KnockbackHeight",
    "kind": "수치",
-   "used": null
-  },
-  {
-   "id": "BrassBlast",
-   "name": "트럼펫 폭발",
-   "value": 0.25,
-   "dv": "MinChargeTimeTT",
-   "kind": "지속 시간",
    "used": null
   },
   {
@@ -7757,14 +8987,6 @@
   {
    "id": "Totentanz",
    "name": "죽음의 춤",
-   "value": 5,
-   "dv": "Buff_Duration",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
-   "id": "Totentanz",
-   "name": "죽음의 춤",
    "value": 3,
    "dv": "Takedown_Window",
    "kind": "지속 시간",
@@ -7803,22 +9025,6 @@
    "used": null
   },
   {
-   "id": "TickleMonster",
-   "name": "간지럼 괴물",
-   "value": 0.017500000074505806,
-   "dv": "CalcASVal",
-   "kind": "수치",
-   "used": "이름 참조"
-  },
-  {
-   "id": "NoManaNoProblem",
-   "name": "마나 없음, 상관없음",
-   "value": 0.15000000596046448,
-   "dv": "APAmp",
-   "kind": "수치",
-   "used": "이름 참조"
-  },
-  {
    "id": "BigShot",
    "name": "묵직한 한 방",
    "value": 3,
@@ -7843,14 +9049,6 @@
    "used": null
   },
   {
-   "id": "BigShot",
-   "name": "묵직한 한 방",
-   "value": 0.0066999997943639755,
-   "dv": "ConversionCritNum",
-   "kind": "수치",
-   "used": null
-  },
-  {
    "id": "BouncingBees",
    "name": "튕기는 꿀벌",
    "value": 700,
@@ -7865,14 +9063,6 @@
    "dv": "BounceAngle",
    "kind": "수치",
    "used": null
-  },
-  {
-   "id": "BouncingBees",
-   "name": "튕기는 꿀벌",
-   "value": 30,
-   "dv": "ADPerMilestone",
-   "kind": "수치",
-   "used": "이름 참조"
   },
   {
    "id": "BouncingBees",
@@ -7899,43 +9089,11 @@
    "used": null
   },
   {
-   "id": "DoubleTime",
-   "name": "더블 타임",
-   "value": 4,
-   "dv": "DamageWindowSeconds",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
-   "id": "DoubleTime",
-   "name": "더블 타임",
-   "value": 4,
-   "dv": "ManaGainCD",
-   "kind": "수치",
-   "used": "이름 참조"
-  },
-  {
-   "id": "ThirdTimesTheHarm",
-   "name": "해악의 숫자 3",
-   "value": 4,
-   "dv": "Mark_Duration",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
    "id": "Upgrade_DeathDance",
    "name": "죽음의 무도 업그레이드",
    "value": 0.25,
    "dv": "BonusHealPercentTT",
    "kind": "수치",
-   "used": null
-  },
-  {
-   "id": "BEES",
-   "name": "벌이다!!!",
-   "value": 2,
-   "dv": "Damage_Duration",
-   "kind": "지속 시간",
    "used": null
   },
   {
@@ -7997,22 +9155,6 @@
   {
    "id": "TheBoomAndTheBass",
    "name": "붐 앤 베이스",
-   "value": 6,
-   "dv": "Charge_Duration",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
-   "id": "TheBoomAndTheBass",
-   "name": "붐 앤 베이스",
-   "value": 2,
-   "dv": "Move_Speed_Duration",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
-   "id": "TheBoomAndTheBass",
-   "name": "붐 앤 베이스",
    "value": 2,
    "dv": "Max_Counters",
    "kind": "중첩",
@@ -8024,22 +9166,6 @@
    "value": 4,
    "dv": "Stacks_Max_Minus_One",
    "kind": "중첩",
-   "used": null
-  },
-  {
-   "id": "TakeemDownDownDown",
-   "name": "전부 다 무너뜨려",
-   "value": 5,
-   "dv": "Stacks_Max",
-   "kind": "중첩",
-   "used": null
-  },
-  {
-   "id": "TakeemDownDownDown",
-   "name": "전부 다 무너뜨려",
-   "value": 5,
-   "dv": "Stack_Duration",
-   "kind": "지속 시간",
    "used": null
   },
   {
@@ -8065,14 +9191,6 @@
    "dv": "Attack_Empower_Duration",
    "kind": "지속 시간",
    "used": null
-  },
-  {
-   "id": "ArmoredImpact",
-   "name": "장갑 충격",
-   "value": 2.5,
-   "dv": "ArmorPercent",
-   "kind": "수치",
-   "used": "자동 추출"
   },
   {
    "id": "ArmoredImpact",
@@ -8269,40 +9387,8 @@
   {
    "id": "StillHere",
    "name": "죽지 않아",
-   "value": 0.019999999552965164,
-   "dv": "ASPerMissingPercentHP",
-   "kind": "수치",
-   "used": "배수 가정"
-  },
-  {
-   "id": "StillHere",
-   "name": "죽지 않아",
    "value": 2,
    "dv": "AHMissingPercentHP",
-   "kind": "수치",
-   "used": null
-  },
-  {
-   "id": "StillHere",
-   "name": "죽지 않아",
-   "value": 0.0035000001080334187,
-   "dv": "OmnivampPerMissingPercentHP",
-   "kind": "수치",
-   "used": "배수 가정"
-  },
-  {
-   "id": "HeavyIsTheCrown",
-   "name": "왕관의 무게",
-   "value": 0.05000000074505806,
-   "dv": "StatIncreasePercentPerTakedown",
-   "kind": "수치",
-   "used": null
-  },
-  {
-   "id": "HeavyIsTheCrown",
-   "name": "왕관의 무게",
-   "value": -0.02500000037252903,
-   "dv": "MSDecreasePerTakedown",
    "kind": "수치",
    "used": null
   },
@@ -8333,49 +9419,9 @@
   {
    "id": "HeavyIsTheCrown",
    "name": "왕관의 무게",
-   "value": 0.10000000149011612,
-   "dv": "InitialStatIncrease",
-   "kind": "수치",
-   "used": null
-  },
-  {
-   "id": "HeavyIsTheCrown",
-   "name": "왕관의 무게",
-   "value": -0.05000000074505806,
-   "dv": "InitialMSDecrease",
-   "kind": "수치",
-   "used": null
-  },
-  {
-   "id": "HeavyIsTheCrown",
-   "name": "왕관의 무게",
    "value": 10,
    "dv": "InitialAHIncrease",
    "kind": "수치",
-   "used": null
-  },
-  {
-   "id": "HeavyIsTheCrown",
-   "name": "왕관의 무게",
-   "value": 10,
-   "dv": "InitialFlatAD",
-   "kind": "수치",
-   "used": "이름 참조"
-  },
-  {
-   "id": "HeavyIsTheCrown",
-   "name": "왕관의 무게",
-   "value": 25,
-   "dv": "InitialFlatAP",
-   "kind": "수치",
-   "used": "이름 참조"
-  },
-  {
-   "id": "HeavyIsTheCrown",
-   "name": "왕관의 무게",
-   "value": 0.5,
-   "dv": "PercentStackLostOnDeath",
-   "kind": "중첩",
    "used": null
   },
   {
@@ -8391,22 +9437,6 @@
    "name": "왕관의 무게",
    "value": 7,
    "dv": "CombatDuration",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
-   "id": "BlueBarrier",
-   "name": "푸른 방어막",
-   "value": 1.5,
-   "dv": "ShieldDuration",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
-   "id": "CrimsonCobalt",
-   "name": "핏빛 코발트",
-   "value": 4,
-   "dv": "Debuff_Duration",
    "kind": "지속 시간",
    "used": null
   },
@@ -8501,7 +9531,7 @@
   {
    "id": "WeaponOfDestiny",
    "name": "운명의 무기",
-   "value": 35,
+   "value": 20,
    "dv": "UpgradeArmorPenFlat",
    "kind": "수치",
    "used": null
@@ -8509,7 +9539,7 @@
   {
    "id": "WeaponOfDestiny",
    "name": "운명의 무기",
-   "value": 25,
+   "value": 15,
    "dv": "UpgradeMagicPenFlat",
    "kind": "수치",
    "used": null
@@ -8517,7 +9547,7 @@
   {
    "id": "WeaponOfDestiny",
    "name": "운명의 무기",
-   "value": 0.25,
+   "value": 0.15000000596046448,
    "dv": "UpgradeArmorPenPercent",
    "kind": "수치",
    "used": null
@@ -8525,7 +9555,7 @@
   {
    "id": "WeaponOfDestiny",
    "name": "운명의 무기",
-   "value": 0.15000000596046448,
+   "value": 0.09000000357627869,
    "dv": "UpgradeMagicPenPercent",
    "kind": "수치",
    "used": null
@@ -8571,22 +9601,6 @@
    "used": null
   },
   {
-   "id": "FlowOfSpirit",
-   "name": "영혼의 흐름",
-   "value": 4,
-   "dv": "Buff_Duration",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
-   "id": "GroupHug",
-   "name": "단체 포옹",
-   "value": 2,
-   "dv": "TargetToPick",
-   "kind": "수치",
-   "used": null
-  },
-  {
    "id": "GroupHug",
    "name": "단체 포옹",
    "value": 500,
@@ -8603,83 +9617,11 @@
    "used": null
   },
   {
-   "id": "HandsOffTheTalent",
-   "name": "아티스트 보호",
-   "value": 0.75,
-   "dv": "MaxDistanceProximity",
-   "kind": "거리·범위",
-   "used": null
-  },
-  {
-   "id": "HandsOffTheTalent",
-   "name": "아티스트 보호",
-   "value": 0.15000000596046448,
-   "dv": "IncreasedDamage",
-   "kind": "수치",
-   "used": "자동 추출"
-  },
-  {
-   "id": "LonelyWarrior",
-   "name": "고독한 전사",
-   "value": 0.15000000596046448,
-   "dv": "ASPerEnemy",
-   "kind": "수치",
-   "used": "배수 가정"
-  },
-  {
-   "id": "LonelyWarrior",
-   "name": "고독한 전사",
-   "value": 10,
-   "dv": "ArmorPerEnemy",
-   "kind": "수치",
-   "used": "배수 가정"
-  },
-  {
-   "id": "LonelyWarrior",
-   "name": "고독한 전사",
-   "value": 10,
-   "dv": "MRPerEnemy",
-   "kind": "수치",
-   "used": "배수 가정"
-  },
-  {
-   "id": "LonelyWarrior",
-   "name": "고독한 전사",
-   "value": 600,
-   "dv": "ProximityRange",
-   "kind": "거리·범위",
-   "used": null
-  },
-  {
-   "id": "ArcaneAxiom",
-   "name": "비전 원칙",
-   "value": 3,
-   "dv": "ResetWindow",
-   "kind": "지속 시간",
-   "used": null
-  },
-  {
    "id": "Upgrade_Stormsurge",
    "name": "폭풍 쇄도 업그레이드",
    "value": 350,
    "dv": "BlastRadius",
    "kind": "거리·범위",
-   "used": null
-  },
-  {
-   "id": "Upgrade_Stormsurge",
-   "name": "폭풍 쇄도 업그레이드",
-   "value": 0.10000000149011612,
-   "dv": "PercentHealthBase",
-   "kind": "수치",
-   "used": null
-  },
-  {
-   "id": "Upgrade_Stormsurge",
-   "name": "폭풍 쇄도 업그레이드",
-   "value": 0.00019999999494757503,
-   "dv": "PercentHealthPerAP",
-   "kind": "수치",
    "used": null
   },
   {
@@ -10066,10 +11008,10 @@
    "states": {
     "일치": 0,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
-    "계산 제외": 0
+    "계산 제외": 1
    }
   },
   {
@@ -10084,10 +11026,10 @@
    "states": {
     "일치": 0,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
-    "계산 제외": 0
+    "계산 제외": 1
    }
   },
   {
@@ -11409,8 +12351,16 @@
    "name": "영혼의 포식자",
    "rarity": "골드",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "중첩당 체력 증가량: 20 ⇒ 30"
+   ],
+   "patchCheck": [
+    {
+     "line": "중첩당 체력 증가량: 20 ⇒ 30",
+     "status": "ok",
+     "source": "게임 데이터"
+    }
+   ],
    "auto": false,
    "items": 3,
    "states": {
@@ -11931,8 +12881,16 @@
    "name": "확고한 의지로",
    "rarity": "실버",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "스킬 적중당 방어력 및 마법 저항력: 1/7/11레벨 - 1/2/3 ⇒ 1/11레벨 - 2/3"
+   ],
+   "patchCheck": [
+    {
+     "line": "스킬 적중당 방어력 및 마법 저항력: 1/7/11레벨 - 1/2/3 ⇒ 1/11레벨 - 2/3",
+     "status": "differ",
+     "source": "게임 데이터"
+    }
+   ],
    "auto": false,
    "items": 2,
    "states": {
@@ -11967,8 +12925,22 @@
    "name": "굶주린 속박",
    "rarity": "골드",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "추가 체력 비례 체력 회복량 계수: 0.1 ⇒ 0.12",
+    "기본 체력 회복량: 50~200 ⇒ 75~300"
+   ],
+   "patchCheck": [
+    {
+     "line": "추가 체력 비례 체력 회복량 계수: 0.1 ⇒ 0.12",
+     "status": "ok",
+     "source": "게임 데이터"
+    },
+    {
+     "line": "기본 체력 회복량: 50~200 ⇒ 75~300",
+     "status": "ok",
+     "source": "게임 데이터"
+    }
+   ],
    "auto": false,
    "items": 3,
    "states": {
@@ -12003,8 +12975,16 @@
    "name": "거인의 결의",
    "rarity": "프리즘",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "전쟁기계 출동 레벨당 전쟁기계 출동 중첩 요구량: 10 ⇒ 7"
+   ],
+   "patchCheck": [
+    {
+     "line": "전쟁기계 출동 레벨당 전쟁기계 출동 중첩 요구량: 10 ⇒ 7",
+     "status": "ok",
+     "source": "게임 데이터"
+    }
+   ],
    "auto": false,
    "items": 7,
    "states": {
@@ -12327,8 +13307,16 @@
    "name": "말랑 찰싹 손",
    "rarity": "프리즘",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "끌어당긴 대상당 보호막: 50~200 + 추가 방어력의 50% + 추가 마법 저항력의 50% ⇒ 100~300 + 추가 방어력의 70% + 추가 마법 저항력의 70%"
+   ],
+   "patchCheck": [
+    {
+     "line": "끌어당긴 대상당 보호막: 50~200 + 추가 방어력의 50% + 추가 마법 저항력의 50% ⇒ 100~300 + 추가 방어력의 70% + 추가 마법 저항력의 70%",
+     "status": "ok",
+     "source": "게임 데이터"
+    }
+   ],
    "auto": false,
    "items": 6,
    "states": {
@@ -12629,42 +13617,6 @@
    }
   },
   {
-   "id": "DoubleStrike",
-   "name": "2연속 공격",
-   "rarity": "실버",
-   "category": null,
-   "patch": null,
-   "patchCheck": null,
-   "auto": false,
-   "items": 0,
-   "states": {
-    "일치": 0,
-    "불일치": 0,
-    "미구현": 0,
-    "가정": 0,
-    "원본 확인 불가": 0,
-    "계산 제외": 0
-   }
-  },
-  {
-   "id": "SupportMain",
-   "name": "서포터 주력",
-   "rarity": "실버",
-   "category": "quest",
-   "patch": null,
-   "patchCheck": null,
-   "auto": false,
-   "items": 4,
-   "states": {
-    "일치": 0,
-    "불일치": 0,
-    "미구현": 0,
-    "가정": 0,
-    "원본 확인 불가": 2,
-    "계산 제외": 2
-   }
-  },
-  {
    "id": "Upgrade_SunderedSky",
    "name": "갈라진 하늘 업그레이드",
    "rarity": "골드",
@@ -12708,14 +13660,14 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
     "일치": 0,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
-    "계산 제외": 0
+    "계산 제외": 3
    }
   },
   {
@@ -12726,11 +13678,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12741,17 +13693,30 @@
    "name": "트럼펫 폭발",
    "rarity": "골드",
    "category": "spell",
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "재사용 대기시간: 75초 ⇒ 50초",
+    "삭제 미니언 피해량: 삭제되었습니다."
+   ],
+   "patchCheck": [
+    {
+     "line": "재사용 대기시간: 75초 ⇒ 50초",
+     "status": "ok",
+     "source": "게임 데이터"
+    },
+    {
+     "line": "삭제 미니언 피해량: 삭제되었습니다.",
+     "status": "unknown"
+    }
+   ],
    "auto": false,
-   "items": 0,
+   "items": 4,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
-    "계산 제외": 0
+    "계산 제외": 3
    }
   },
   {
@@ -12762,11 +13727,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12780,9 +13745,9 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
@@ -12798,14 +13763,14 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
-    "계산 제외": 0
+    "계산 제외": 2
    }
   },
   {
@@ -12834,11 +13799,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12852,11 +13817,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12870,11 +13835,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12888,9 +13853,9 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
@@ -12906,11 +13871,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 5,
    "states": {
-    "일치": 0,
+    "일치": 3,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12924,9 +13889,9 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
@@ -12942,11 +13907,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 4,
    "states": {
-    "일치": 0,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12960,11 +13925,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -12993,14 +13958,28 @@
    "name": "벌이다!!!",
    "rarity": "골드",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "기본 피해량 계수: 75~200 + 추가 공격력의 150% + 총주문력의 70% ⇒ 75~140 + 추가 공격력의 150% + 총주문력의 70%",
+    "벌집 이동 시간: 0.75초 ⇒ 1.1초"
+   ],
+   "patchCheck": [
+    {
+     "line": "기본 피해량 계수: 75~200 + 추가 공격력의 150% + 총주문력의 70% ⇒ 75~140 + 추가 공격력의 150% + 총주문력의 70%",
+     "status": "ok",
+     "source": "게임 데이터"
+    },
+    {
+     "line": "벌집 이동 시간: 0.75초 ⇒ 1.1초",
+     "status": "stale",
+     "source": "게임 데이터"
+    }
+   ],
    "auto": false,
-   "items": 0,
+   "items": 5,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 4,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13032,11 +14011,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 4,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 3,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13047,14 +14026,22 @@
    "name": "전부 다 무너뜨려",
    "rarity": "골드",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "5회 적중 시 발동 피해량: 잃은 체력의 (15 + 추가 공격 속도의 5% + 전체 스킬 가속의 0.15%)% ⇒ 잃은 체력의 17%"
+   ],
+   "patchCheck": [
+    {
+     "line": "5회 적중 시 발동 피해량: 잃은 체력의 (15 + 추가 공격 속도의 5% + 전체 스킬 가속의 0.15%)% ⇒ 잃은 체력의 17%",
+     "status": "differ",
+     "source": "게임 데이터 (설명의 같은 항목)"
+    }
+   ],
    "auto": false,
-   "items": 0,
+   "items": 6,
    "states": {
-    "일치": 0,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 4,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13065,12 +14052,20 @@
    "name": "장갑 충격",
    "rarity": "골드",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "피해량: 50~125 + 추가 방어력의 250% ⇒ 25~125 + 추가 방어력의 220%"
+   ],
+   "patchCheck": [
+    {
+     "line": "피해량: 50~125 + 추가 방어력의 250% ⇒ 25~125 + 추가 방어력의 220%",
+     "status": "ok",
+     "source": "게임 데이터"
+    }
+   ],
    "auto": false,
-   "items": 0,
+   "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
@@ -13086,11 +14081,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 4,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 3,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13104,11 +14099,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 2,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13122,14 +14117,14 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 4,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
-    "계산 제외": 0
+    "계산 제외": 3
    }
   },
   {
@@ -13140,12 +14135,12 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 2,
    "states": {
     "일치": 0,
     "불일치": 0,
     "미구현": 0,
-    "가정": 0,
+    "가정": 2,
     "원본 확인 불가": 0,
     "계산 제외": 0
    }
@@ -13158,11 +14153,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 4,
    "states": {
-    "일치": 0,
+    "일치": 2,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13176,12 +14171,12 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 7,
    "states": {
-    "일치": 0,
+    "일치": 2,
     "불일치": 0,
     "미구현": 0,
-    "가정": 0,
+    "가정": 5,
     "원본 확인 불가": 0,
     "계산 제외": 0
    }
@@ -13194,11 +14189,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13209,15 +14204,23 @@
    "name": "핏빛 코발트",
    "rarity": "골드",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "표식 시각 효과: 모든 플레이어에게 표시 ⇒ 증강 보유자에게만 표시"
+   ],
+   "patchCheck": [
+    {
+     "line": "표식 시각 효과: 모든 플레이어에게 표시 ⇒ 증강 보유자에게만 표시",
+     "status": "unknown",
+     "source": "게임 데이터"
+    }
+   ],
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
-    "가정": 0,
+    "미구현": 1,
+    "가정": 1,
     "원본 확인 불가": 0,
     "계산 제외": 0
    }
@@ -13227,8 +14230,34 @@
    "name": "운명의 무기",
    "rarity": "골드",
    "category": null,
-   "patch": null,
-   "patchCheck": null,
+   "patch": [
+    "고정 방어구 관통력 계수: 35 ⇒ 20",
+    "고정 마법 관통력 계수: 25 ⇒ 15",
+    "퍼센트 방어구 관통력 계수: 0.25 ⇒ 0.15",
+    "퍼센트 마법 관통력 계수: 0.15 ⇒ 0.09"
+   ],
+   "patchCheck": [
+    {
+     "line": "고정 방어구 관통력 계수: 35 ⇒ 20",
+     "status": "ok",
+     "source": "게임 데이터"
+    },
+    {
+     "line": "고정 마법 관통력 계수: 25 ⇒ 15",
+     "status": "ok",
+     "source": "게임 데이터"
+    },
+    {
+     "line": "퍼센트 방어구 관통력 계수: 0.25 ⇒ 0.15",
+     "status": "ok",
+     "source": "게임 데이터"
+    },
+    {
+     "line": "퍼센트 마법 관통력 계수: 0.15 ⇒ 0.09",
+     "status": "ok",
+     "source": "게임 데이터"
+    }
+   ],
    "auto": false,
    "items": 0,
    "states": {
@@ -13248,11 +14277,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 2,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13266,14 +14295,14 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 2,
    "states": {
     "일치": 0,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
-    "계산 제외": 0
+    "계산 제외": 2
    }
   },
   {
@@ -13284,11 +14313,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 3,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 2,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13302,9 +14331,9 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
     "미구현": 0,
     "가정": 0,
@@ -13320,11 +14349,11 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 2,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13338,12 +14367,12 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 4,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 0,
-    "가정": 0,
+    "미구현": 1,
+    "가정": 2,
     "원본 확인 불가": 0,
     "계산 제외": 0
    }
@@ -13428,12 +14457,12 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 2,
    "states": {
     "일치": 0,
     "불일치": 0,
-    "미구현": 0,
-    "가정": 0,
+    "미구현": 1,
+    "가정": 1,
     "원본 확인 불가": 0,
     "계산 제외": 0
    }
@@ -13446,11 +14475,54 @@
    "patch": null,
    "patchCheck": null,
    "auto": false,
-   "items": 0,
+   "items": 2,
+   "states": {
+    "일치": 1,
+    "불일치": 0,
+    "미구현": 1,
+    "가정": 0,
+    "원본 확인 불가": 0,
+    "계산 제외": 0
+   }
+  },
+  {
+   "id": "RISE",
+   "name": "RISE",
+   "rarity": "프리즘",
+   "category": null,
+   "patch": null,
+   "patchCheck": null,
+   "auto": false,
+   "items": 2,
    "states": {
     "일치": 0,
     "불일치": 0,
     "미구현": 0,
+    "가정": 0,
+    "원본 확인 불가": 0,
+    "계산 제외": 2
+   }
+  },
+  {
+   "id": "OneHitWonder",
+   "name": "원 히트 원더",
+   "rarity": "골드",
+   "category": null,
+   "patch": [
+    "신규 효과: [스킬] 피해량이 스킬 가속에 비례해 증가하지만, 더 이상 스킬 가속 효과를 받지 않습니다."
+   ],
+   "patchCheck": [
+    {
+     "line": "신규 효과: [스킬] 피해량이 스킬 가속에 비례해 증가하지만, 더 이상 스킬 가속 효과를 받지 않습니다.",
+     "status": "unknown"
+    }
+   ],
+   "auto": false,
+   "items": 2,
+   "states": {
+    "일치": 1,
+    "불일치": 0,
+    "미구현": 1,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -13458,12 +14530,12 @@
   }
  ],
  "count": {
-  "일치": 154,
+  "일치": 194,
   "불일치": 0,
-  "미구현": 158,
-  "가정": 58,
-  "원본 확인 불가": 7,
-  "계산 제외": 22
+  "미구현": 197,
+  "가정": 69,
+  "원본 확인 불가": 5,
+  "계산 제외": 37
  },
  "fails": [
   {
@@ -13500,18 +14572,6 @@
    "id": "SpecializedEmpowerment",
    "name": "위력 추구",
    "ref": "QuestRequirement",
-   "why": "원본에 이름 없음"
-  },
-  {
-   "id": "SupportMain",
-   "name": "서포터 주력",
-   "ref": "QuestRequirement",
-   "why": "원본에 이름 없음"
-  },
-  {
-   "id": "SupportMain",
-   "name": "서포터 주력",
-   "ref": "QuestProgress",
    "why": "원본에 이름 없음"
   }
  ],

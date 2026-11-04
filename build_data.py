@@ -901,7 +901,7 @@ STAT_LABEL = {
     "ehpMagFlat": "마법 보호막", "bonusMANAtoAP": "추가 마나 → 주문력", "itemHPbonus": "아이템 체력 추가",
     "bonusResistMult": "추가 방어·마법 저항", "onhitRemainingPct": "남은 재사용 대기시간 감소",
     "refundAll": "모든 스킬에 반환 적용", "manaToHP": "최대 마나 → 체력", "skillVamp": "스킬 피해 → 회복",
-    "healToDamage": "회복 → 피해", "ehpMult": "받는 피해 감소", "shieldMult": "스킬 보호막 강화", "ARPEN": "방어구 관통력", "AStoHASTE": "공격 속도 → 스킬 가속 전환", "critToHaste": "치명타 → 스킬 가속",
+    "healToDamage": "회복 → 피해", "ehpMult": "받는 피해 감소", "shieldMult": "스킬 보호막 강화", "ARPEN": "방어구 관통력", "AStoHASTE": "공격 속도 → 스킬 가속 전환", "HASTEtoDmg": "스킬 가속 1당 피해량", "critToHaste": "치명타 → 스킬 가속",
     "ultRefundEvery": "궁극기 추가 사용 주기(초)", "ultTriggerHaste": "궁극기 후 가속", "ultTriggerDur": "궁극기 후 지속(초)",
     "ultTriggerMs": "궁극기 후 이동 속도", "dashHaste": "돌진 스킬 가속", "fearCdDiv": "공포 시간 계산 나눗수",
     "APtoCRIT": "주문력 → 치명타 확률", "skillCritDmg": "스킬 치명타 피해", "onhitOnCrit": "치명타 시 적중 효과 추가",
@@ -912,7 +912,7 @@ STAT_LABEL = {
 PCT_KEYS = {"AS", "CRIT", "MSP", "LS", "OMNIVAMP", "HSP", "MPENP", "HPmult", "ADmult", "APmult", "ASmult",
             "adaptiveMult", "dmgDealtMult", "skillDmgMult", "effectDmgMult", "refundPct", "refundChanceRanged",
             "refundChanceMelee", "ehpPhysMult", "itemHPbonus", "bonusResistMult", "onhitRemainingPct",
-            "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN", "skillCritDmg", "effectCritDmg", "allyHealMult", "allyShieldMult", "dmgToAllyHeal"}
+            "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN", "skillCritDmg", "effectCritDmg", "allyHealMult", "allyShieldMult", "dmgToAllyHeal", "HASTEtoDmg"}
 
 
 def _fmt_val(v, key=None):
