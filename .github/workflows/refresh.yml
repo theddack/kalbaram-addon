@@ -112,9 +112,17 @@ jobs:
           elif [ "$(gh issue view "$num" --json body -q .body | tr -d '\r' | sed -e 's/[[:space:]]*$//')" = "$(sed -e 's/[[:space:]]*$//' web/review.md)" ]; then
             echo "#$num 와 내용이 같음 (이미 확인했거나 확인 중) → 그대로"
           else
+            # 닫았는데 새 항목('- ' 줄)이 생겼을 때만 다시 연다. 항목이 줄거나 문구만 바뀐 건 내용만 고친다
+            # (2026-11-04 #99: 정리하고 닫았는데 대조 항목이 빠진 것만으로 다시 열렸다)
+            gh issue view "$num" --json body -q .body | tr -d '\r' | sed -e 's/[[:space:]]*$//' > /tmp/old_review.md
+            added=$(sed -e 's/[[:space:]]*$//' web/review.md | grep '^- ' | grep -vxFf /tmp/old_review.md || true)
             gh issue edit "$num" --body-file web/review.md
-            gh issue reopen "$num" 2>/dev/null || true  # 닫았는데 새 항목이 생기면 다시 연다
-            echo "#$num 내용이 바뀜 → 갱신"
+            if [ -n "$added" ]; then
+              gh issue reopen "$num" 2>/dev/null || true
+              printf '#%s 새 항목 → 갱신하고 다시 엶:\n%s\n' "$num" "$added"
+            else
+              echo "#$num 새 항목 없음 → 내용만 갱신"
+            fi
           fi
 
       - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
