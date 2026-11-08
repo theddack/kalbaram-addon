@@ -1062,14 +1062,22 @@ class Reader(threading.Thread):
         gx, gy, gw, gh = rect
         rx, ry = (hit[0] - gx) / gw, (hit[1] - gy) / gh
         pos = self.tracker.state.get("pos")
-        slot = card_at(pos, rx, ry)
-        self.tracker.click(slot)
-        rr = None if slot is not None else reroll_at(pos, rx, ry)
         guess = None
-        if slot is None and rr is None and len(hit) > 2:
-            # 이미 뗀 클릭이 카드 밖이면 직전 위치로 짐작한다 (짐작은 그 화면에 확실한 카드 클릭이 없을 때만 쓴다)
-            guess = card_at(pos, (hit[2] - gx) / gw, (hit[3] - gy) / gh)
-            self.tracker.click(guess, sure=False)
+        if len(hit) > 2:
+            # 이미 뗀 클릭은 직전 확인 때 위치가 누른 자리에 더 가깝다 → 그 카드가 고른 카드 (확실한 클릭).
+            # 지금 위치는 뗀 뒤 옮긴 자리라 카드 위여도 짐작으로만 (2026-11-08 아지르 판: 왼쪽 보석 건틀릿을 고르고
+            # 가운데로 옮긴 위치로 '궁극의 각성' 기록 · 퀸 판: 직전 위치 짐작(부식)이 카드가 닫힌 뒤 누른 가운데 클릭에 졌다)
+            px, py = (hit[2] - gx) / gw, (hit[3] - gy) / gh
+            slot = card_at(pos, px, py)
+            rr = None if slot is not None else reroll_at(pos, px, py)
+            if slot is None and rr is None:
+                guess = card_at(pos, rx, ry)
+                rr = None if guess is not None else reroll_at(pos, rx, ry)
+        else:
+            slot = card_at(pos, rx, ry)
+            rr = None if slot is not None else reroll_at(pos, rx, ry)
+        self.tracker.click(slot)
+        self.tracker.click(guess, sure=False)
         if rr is not None:
             self.tracker.reroll(rr)
             self._reread_n = self._frag_n = 0  # 새로고침한 칸 이름을 다시 읽을 수 있게 (조각 글자 횟수도 새로)
