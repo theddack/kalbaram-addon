@@ -1116,6 +1116,32 @@ class AugOcr(unittest.TestCase):
             a.tracker.feed(None)
         self.assertEqual(a.tracker.state["picked"], "부식")
 
+    PENTA = {"GoH_PentakillAug_Q": "헤비", "GoH_PentakillAug_W": "파워", "GoH_PentakillAug_E": "스래시",
+             "GoH_PentakillAug_R": "둠", "Quest_UltraHydra": "궁극의 히드라"}
+
+    def test_pentakill_blank_card_is_remaining_member(self):
+        # 2026-11-08 쉬바나·사미라 판: 마지막 펜타킬 선택 '파워 / 스래시 / ?' — 한 글자 이름 '둠'은 윈도우 글자 인식이 못 읽는다.
+        # 같은 묶음(헤비·파워·스래시·둠)에서 보인 두 장과 이미 고른 헤비를 빼면 남는 건 둠 하나
+        a = self.o.Reader.__new__(self.o.Reader)
+        a.tracker = self.o.Tracker()
+        a._id_names = self.PENTA
+        a._picked_names = {"궁극의 히드라", "헤비"}
+        self.assertEqual(a.set_fill(["파워", "스래시", None]), ["파워", "스래시", "둠"])
+        # 남는 게 둘 이상이면 정하지 않는다 (처음 펜타킬 선택에서 한 장을 못 읽은 경우)
+        a._picked_names = set()
+        self.assertEqual(a.set_fill(["파워", "스래시", None]), ["파워", "스래시", None])
+        # 묶음이 아닌 증강이 섞였으면 그대로
+        a._picked_names = {"헤비"}
+        self.assertEqual(a.set_fill(["파워", "궁극의 히드라", None]), ["파워", "궁극의 히드라", None])
+        # 새로고침을 기다리는 칸은 채우지 않는다
+        a.tracker._reroll_wait = {2}
+        self.assertEqual(a.set_fill(["파워", "스래시", None]), ["파워", "스래시", None])
+
+    def test_matcher_reads_one_letter_name_exactly(self):
+        m = self.o.Matcher(["둠", "헤비", "궁극의 히드라"])
+        self.assertEqual(m.match("둠"), ("둠", 1.0))
+        self.assertEqual(m.match("듬")[0], None, "한 글자는 정확히 같을 때만")
+
     def test_tooltip_title_does_not_move_cards(self):
         # 2026-10-24 빅토르 판: 왕관의 무게 설명 창 제목이 가운데에서 읽혀 선택지·카드 위치가 틀어졌고, 왕관의 무게 클릭이 빈칸으로
         t = self.o.Tracker()
@@ -2251,6 +2277,27 @@ class GameLog(unittest.TestCase):
             names = zipfile.ZipFile(str(folder) + ".zip").namelist()
             self.assertEqual(f"{folder.name}/card_01.png" in names, not match)
         self.assertIsNone(gamelog.tidy(base / "없음", ["취약"]))
+
+    def test_tidy_ignores_pick_order(self):
+        # 펜타킬 판은 경기 결과에서 펜타킬 증강이 앞쪽 칸에 온다 (2026-11-08 쉬바나: 고른 순서 궁극의 히드라 → 헤비, 결과는 헤비 → 궁극의 히드라)
+        import gamelog
+        base = pathlib.Path(tempfile.mkdtemp())
+        rec = gamelog.GameRecorder(base)
+        rec.start("Shyvana")
+        rec.event("picked", {"picked": "궁극의 히드라"})
+        rec.event("picked", {"picked": "헤비"})
+        folder = rec.dir
+        rec.finish()
+        self.assertEqual(gamelog.tidy(folder, ["헤비", "궁극의 히드라"]), (True, 0))
+
+    def test_eog_names_skip_pentakill_display_augment(self):
+        # 2026-11-08 쉬바나·사미라 판: 경기 결과 첫 칸이 3176 (GoH_PentakillAug_Generic, 이름 없는 펜타킬 표시용) →
+        # 모르는 번호라 대조를 통째로 건너뛰어 'eog' 기록이 빠졌다
+        names = {3170: "헤비", 2141: "궁극의 히드라"}
+        stats = {"playerAugment1": 3176, "playerAugment2": 3170, "playerAugment3": 2141, "playerAugment4": 0}
+        self.assertEqual(desktop.eog_aug_names(stats, names.get, {3176: "GoH_PentakillAug_Generic"}), ["헤비", "궁극의 히드라"])
+        self.assertEqual(desktop.eog_aug_names(stats, names.get, {}), ["헤비", "궁극의 히드라"], "번호표를 못 읽어도")
+        self.assertIsNone(desktop.eog_aug_names({"playerAugment1": 9999}, names.get, {}), "정말 모르는 번호면 판정하지 않음")
 
     def test_eog_before_game_end(self):
         # 경기 결과가 판 끝 처리보다 먼저 와도 (2026-10-18 세나 판: 4초 먼저) 판을 끝낼 때 맞춰 본다

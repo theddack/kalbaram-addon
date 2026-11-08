@@ -538,6 +538,27 @@ def redact_eog(eog):
     return walk(eog)
 
 
+# 경기 결과에 나오지만 고르는 증강이 아닌 표시용 번호 (이름 없음). 3176 = GoH_PentakillAug_Generic
+EOG_DISPLAY_NUMS = {3176}
+
+
+def eog_aug_names(stats, name_of_num, client_ids):
+    """경기 결과 playerAugment1~6 → 고른 증강 이름 (고른 칸 순서). 이름 없는 표시용 증강(펜타킬 Generic)은 뺀다.
+    모르는 번호가 남으면 None (판정하지 않는다). 2026-11-08 쉬바나·사미라 판: 3176 때문에 대조를 통째로 건너뛰었다"""
+    names = []
+    for i in range(1, 7):
+        n = stats.get(f"playerAugment{i}")
+        if not n:
+            continue
+        name = name_of_num(n)
+        if name is None and (n in EOG_DISPLAY_NUMS or str(client_ids.get(n, "")).endswith("_Generic")):
+            continue
+        if name is None:
+            return None
+        names.append(name)
+    return names
+
+
 def eog_summary(eog):
     """경기 결과 → 내 기록 한 줄 {분, 챔피언, 칸별 값}. 형식이 다르면 None"""
     if not isinstance(eog, dict):
@@ -1724,8 +1745,8 @@ def main():
         if not aug_by_num:
             return
         st = ((eog.get("localPlayer") or {}).get("stats") or {})
-        names = [name_of_num(st.get(f"playerAugment{i}")) for i in range(1, 7) if st.get(f"playerAugment{i}")]
-        if None in names:  # 클라이언트 번호표에도 없는 번호 → 판정하지 않는다
+        names = eog_aug_names(st, name_of_num, lw.augment_ids())
+        if names is None:  # 클라이언트 번호표에도 없는 번호 → 판정하지 않는다
             return
         eog_result(rec.end_of_game(names))  # 판 기록이 아직 안 끝났으면 끝날 때 맞춘다
 
