@@ -69,7 +69,8 @@ jobs:
 
   mac:
     needs: test
-    runs-on: macos-14
+    # macos-14 실행기는 GitHub 에서 지원이 끝나 작업이 시작도 못 하고 취소됐다 (2026-11-08 v0.1.81 빌드)
+    runs-on: macos-15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
