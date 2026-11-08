@@ -1078,11 +1078,43 @@ class AugOcr(unittest.TestCase):
         a._rec = lambda kind, data, **k: got.append(data)
         a._changed = lambda: None
         a._click_at((0, 0, 2520, 1575), (1575, 1573, 1260, 720))
-        self.assertEqual(got[-1]["guess"], 1)
+        # 2026-11-08 부터 뗀 클릭의 직전 위치 카드는 짐작이 아니라 확실한 클릭 (아지르·퀸 판, 아래 두 테스트)
+        self.assertEqual(got[-1]["slot"], 1)
         self.assertEqual(got[-1]["tap"], [0.5, 0.457], "뗀 클릭은 직전 위치도 기록")
         for _ in range(3):
             a.tracker.feed(None)
         self.assertEqual(a.tracker.state["picked"], "한 발에 두 놈")
+
+    def _click_reader(self, offers, pos):
+        a = self.o.Reader.__new__(self.o.Reader)
+        a.tracker = self.o.Tracker()
+        a.tracker.feed(offers, pos)
+        got = []
+        a._rec = lambda kind, data, **k: got.append(data)
+        a._changed = lambda: None
+        return a, got
+
+    def test_released_click_uses_previous_card_over_current_card(self):
+        # 2026-11-08 아지르 판: 보석 건틀릿(왼쪽)을 고르고 마우스를 가운데 카드로 옮긴 뒤에 확인돼 '궁극의 각성'으로 기록,
+        # 경기 결과는 보석 건틀릿. 기록의 직전 위치(tap 0.279)는 왼쪽 카드였다 (2026-11-01 라이즈 판도 같은 증상)
+        a, got = self._click_reader(["보석 건틀릿", "궁극의 각성", "능력치!"], {"xs": [0.2868, 0.5, 0.7247], "nameY": 0.4401})
+        r = (0, 0, 2520, 1575)
+        a._click_at(r, (round(0.427 * 2520), round(0.575 * 1575), round(0.279 * 2520), round(0.551 * 1575)))
+        self.assertEqual(got[-1]["slot"], 0, "뗀 클릭은 직전 위치의 카드")
+        for _ in range(3):
+            a.tracker.feed(None)
+        self.assertEqual(a.tracker.state["picked"], "보석 건틀릿")
+
+    def test_click_after_released_pick_does_not_override(self):
+        # 2026-11-08 퀸 판: 부식(왼쪽)을 누르고 뗀 뒤 확인(직전 위치 왼쪽 카드) → 카드가 닫힌 뒤 화면 가운데를 누른 클릭이
+        # 확실한 클릭으로 이겨 '확률적 방어'로 기록, 경기 결과는 부식
+        a, got = self._click_reader(["부식", "확률적 방어", "채널 고정"], {"xs": [0.2872, 0.5, 0.7125], "nameY": 0.4019})
+        r = (0, 0, 2520, 1575)
+        a._click_at(r, (round(0.807 * 2520), round(0.804 * 1575), round(0.301 * 2520), round(0.474 * 1575)))
+        a._click_at(r, (round(0.423 * 2520), round(0.383 * 1575)))
+        for _ in range(3):
+            a.tracker.feed(None)
+        self.assertEqual(a.tracker.state["picked"], "부식")
 
     def test_tooltip_title_does_not_move_cards(self):
         # 2026-10-24 빅토르 판: 왕관의 무게 설명 창 제목이 가운데에서 읽혀 선택지·카드 위치가 틀어졌고, 왕관의 무게 클릭이 빈칸으로
