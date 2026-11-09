@@ -267,6 +267,9 @@ def parse_live(raw):
     gd = raw.get("gameData") or {}
     return {
         "inGame": True,
+        # 관전·리플레이: 내 챔피언이 없다 (activePlayer 가 'Spectator mode ...' 오류). 증강 인식·한 판 기록을 쉰다
+        # (2026-11-09 아리 판 직후 그 판을 다시 보며 19분 동안 'unknown' 판으로 증강 칸 읽기까지 돌렸다)
+        "spectator": isinstance(ap, dict) and "spectator" in str(ap.get("error") or "").lower(),
         "champion": champ_id,
         "championName": mine.get("championName") if mine else None,
         "level": ap.get("level"),
@@ -432,7 +435,8 @@ class LiveWatcher(threading.Thread):
             self._fails = getattr(self, "_fails", 0) + 1
             if self._fails >= 3:
                 self._game_key = None
-                was, self.state = self.state.get("inGame"), {"inGame": False}
+                was = self.state.get("inGame") and not self.state.get("spectator")  # 관전은 시작한 판이 없다
+                self.state = {"inGame": False}
                 if was and getattr(self, "on_game_end", None):
                     self.on_game_end()  # 한 판 기록 마무리 (zip). 실패해도 게임은 끝난 것으로 둔다
             return
@@ -473,6 +477,8 @@ class LiveWatcher(threading.Thread):
 
     def snapshot(self, raw, st):
         # 게임 시작 시각으로 게임을 구분 (gameTime 이 줄어들면 새 게임)
+        if st.get("spectator"):
+            return  # 관전·리플레이는 새 판으로 시작하지 않고 게임 정보도 남기지 않는다
         t = st.get("gameTime") or 0
         key = (st.get("champion"), st.get("gameMode"))
         now = time.time()

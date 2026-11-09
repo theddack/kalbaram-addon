@@ -942,6 +942,12 @@ class Reader(threading.Thread):
             rect = None
             try:
                 rect, front = self.game_rect()
+                if self.spectating():
+                    self.status = "관전·리플레이: 쉬는 중"
+                    self.tracker.feed(None)
+                    self.shop = None
+                    time.sleep(INTERVAL)
+                    continue
                 if not (self.enabled and rect and front):
                     self.status = "게임 창 기다리는 중" if self.enabled else "꺼짐"
                     if rect is None:
@@ -1543,6 +1549,13 @@ class Reader(threading.Thread):
         """증강을 고를 수 있는 때: 증강 레벨에 올라 아직 안 고름 · 죽어 있음 (칼바람에선 죽어 있을 때 고르는 일이 많다).
         이때는 상점이 열려 있어도 이름 줄을 매번 읽는다 (예전엔 3번에 1번이라 죽어 있을 때 뜬 선택 화면을 약 5초 늦게 알아봤다, 피드백 #8)"""
         return bool(self.aug_pending() or self._live().get("dead"))
+
+    def spectating(self):
+        """관전·리플레이 중이면 True: 고를 증강이 없다 (증강 칸 읽기가 한 번에 5초씩 헛돌았다, 2026-11-09)"""
+        try:
+            return bool(self.live_fn and (self.live_fn() or {}).get("spectator"))
+        except Exception:
+            return False
 
     def selection_likely(self):
         """선택 화면이 떠 있었거나 곧 뜰 때: 떠 있음 · 증강 레벨에 올라 아직 안 고름 · 죽어 있음 · 게임 시작 90초 안 (첫 증강)"""
