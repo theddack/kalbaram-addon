@@ -1142,6 +1142,15 @@ class AugOcr(unittest.TestCase):
         self.assertEqual(m.match("둠"), ("둠", 1.0))
         self.assertEqual(m.match("듬")[0], None, "한 글자는 정확히 같을 때만")
 
+    def test_reader_rests_while_spectating(self):
+        a = self.o.Reader.__new__(self.o.Reader)
+        a.live_fn = lambda: {"inGame": True, "spectator": True}
+        self.assertTrue(a.spectating())
+        a.live_fn = lambda: {"inGame": True, "spectator": False}
+        self.assertFalse(a.spectating())
+        a.live_fn = None
+        self.assertFalse(a.spectating())
+
     def test_tooltip_title_does_not_move_cards(self):
         # 2026-10-24 빅토르 판: 왕관의 무게 설명 창 제목이 가운데에서 읽혀 선택지·카드 위치가 틀어졌고, 왕관의 무게 클릭이 빈칸으로
         t = self.o.Tracker()
@@ -1372,6 +1381,29 @@ class LiveEnemies(unittest.TestCase):
         st = desktop.parse_live(raw)
         self.assertEqual(st["champion"], "MissFortune")
         self.assertEqual(sorted(st["enemies"]), ["Chogath", "Jax", "Lissandra", "Nidalee", "Velkoz"])  # 내 팀(CHAOS)이 아닌 ORDER
+
+    SPECTATE = {"activePlayer": {"error": "Spectator mode doesn't currently support this feature"},
+                "allPlayers": [{"rawChampionName": "game_character_displayname_Ahri", "team": "ORDER"},
+                               {"rawChampionName": "game_character_displayname_Braum", "team": "CHAOS"}],
+                "gameData": {"gameMode": "KIWI", "gameTime": 7.5}}
+
+    def test_spectator_mode(self):
+        # 2026-11-09 아리 판 직후: 관전·리플레이를 한 판으로 보고 19분 동안 증강 인식·기록을 돌렸다 (챔피언 unknown)
+        st = desktop.parse_live(self.SPECTATE)
+        self.assertTrue(st["spectator"])
+        self.assertIsNone(st["champion"])
+        raw = json.loads((ROOT / "tests" / "data" / "live_missfortune_4s.json").read_text(encoding="utf-8"))
+        self.assertFalse(desktop.parse_live(raw)["spectator"])
+
+    def test_spectator_does_not_start_game_record(self):
+        w = desktop.LiveWatcher.__new__(desktop.LiveWatcher)
+        w._game_key, w._last_snap, w.record = None, 0, True
+        w.log_dir = pathlib.Path(tempfile.mkdtemp()) / "logs"
+        started = []
+        w.on_new_game = started.append
+        w.snapshot(self.SPECTATE, desktop.parse_live(self.SPECTATE))
+        self.assertEqual(started, [], "관전은 새 판으로 시작하지 않는다")
+        self.assertFalse(w.log_dir.exists(), "게임 정보 기록도 남기지 않는다")
 
     def test_champion_with_character_name_format(self):
         # 2026-11-01 세라핀 판: 세라핀만 rawChampionName 이 'Character_Seraphine_Name' 이라 내 챔피언을 못 알아봤다
