@@ -77,6 +77,9 @@ def norm(s):
     return re.sub(r"[\s\W_]+", "", str(s))
 
 
+SET_ID = re.compile(r"^(.+)_[QWER]$")  # 스킬 강화 묶음 증강 id (GoH_PentakillAug_Q 등)
+
+
 class Matcher:
     """증강 이름 목록과 OCR 글자를 맞춘다"""
 
@@ -96,6 +99,8 @@ class Matcher:
 
     def match(self, text):
         t = norm(text)
+        if len(t) == 1 and t in self.names:  # 한 글자 이름 (펜타킬 '둠'): 정확히 같을 때만
+            return self.names[t], 1.0
         if len(t) < 2:
             return None, 0.0
         if t in self.names:
@@ -1196,6 +1201,29 @@ class Reader(threading.Thread):
                 have.add(name)
         return [it for it in items if it is not None]
 
+    def set_fill(self, offers3):
+        """한 칸만 못 읽었고 나머지 두 장이 같은 스킬 강화 묶음(펜타킬 헤비·파워·스래시·둠 = 같은 id 에 _Q/_W/_E/_R)이면,
+        묶음에서 보인 두 장과 이번 판 이미 고른 것을 빼고 하나만 남을 때 그 이름으로 채운다.
+        (2026-11-08 쉬바나·사미라 판: 마지막 펜타킬 선택 '파워 / 스래시 / ?' — 한 글자 이름 '둠'은 윈도우 글자 인식이
+        잘라 내도·키워도 못 읽어서 고른 증강을 못 정했다)"""
+        if not offers3 or sum(1 for n in offers3 if n is None) != 1:
+            return offers3
+        blank = offers3.index(None)
+        if blank in getattr(self.tracker, "_reroll_wait", ()):
+            return offers3
+        groups = {}
+        for aid, name in (getattr(self, "_id_names", None) or {}).items():
+            m = SET_ID.match(aid or "")
+            if m:
+                groups.setdefault(m.group(1), set()).add(name)
+        shown = {n for n in offers3 if n}
+        for members in groups.values():
+            if len(members) >= 3 and shown <= members:
+                left = members - shown - set(getattr(self, "_picked_names", ()) or ())
+                if len(left) == 1:
+                    return [left.pop() if n is None else n for n in offers3]
+        return offers3
+
     def apply_fix(self):
         """증강 칸이 고른 증강을 알려 주면 클릭으로 짐작한 것을 고친다 (못 정했으면 채운다)"""
         fix, self._fix = self._fix, None
@@ -1262,7 +1290,7 @@ class Reader(threading.Thread):
                 self.near = " | ".join(segs)[:160]
                 self._rec("near", {"read": segs}, dedupe=True)
         before = dict(self.tracker.state)
-        self.tracker.feed(slots(offers, gw) if offers else None, card_pos(offers, gw, gh) if offers else None, partial)
+        self.tracker.feed(self.set_fill(slots(offers, gw)) if offers else None, card_pos(offers, gw, gh) if offers else None, partial)
         after = self.tracker.state
         if (after.get("seq"), after.get("pickSeq"), bool(after.get("offers"))) != (before.get("seq"), before.get("pickSeq"), bool(before.get("offers"))):
             self._changed()

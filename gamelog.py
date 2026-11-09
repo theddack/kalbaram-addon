@@ -168,7 +168,8 @@ def tidy(game_dir, eog_names):
     except (OSError, ValueError):
         return None
     picked = [e.get("picked") for e in events if e.get("kind") == "picked"]
-    match = bool(eog_names) and picked == list(eog_names)
+    # 고른 순서는 보지 않는다: 펜타킬 판은 경기 결과에서 펜타킬 증강이 앞쪽 칸에 온다 (2026-11-08 쉬바나 판)
+    match = bool(eog_names) and sorted(map(str, picked)) == sorted(map(str, eog_names))
     removed = []
     if match:
         for p in sorted(game_dir.glob("card_*.png")) + sorted(game_dir.glob("shop_*.png")):
