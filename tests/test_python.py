@@ -1151,6 +1151,25 @@ class AugOcr(unittest.TestCase):
         a.live_fn = None
         self.assertFalse(a.spectating())
 
+    def test_released_click_on_used_reroll_is_card(self):
+        # 2026-11-10 퀸 판: 2번 칸 새로고침(327.2초) 뒤 새로 뜬 '불을 밝혀'를 눌렀는데, 이미 뗀 클릭의 직전 위치가
+        # 새로고침 버튼 자리라 새로고침을 또 누른 것으로 봐서 이름을 지웠다 → 고른 증강 못 정함 (경기 결과는 불을 밝혀).
+        # 칸마다 새로고침은 한 번뿐이라 쓴 버튼 자리는 새로고침이 아니다 → 지금 위치 카드로
+        pos = {"xs": [0.2872, 0.4993, 0.7125], "nameY": 0.4019}
+        a, got = self._click_reader(["아티스트 보호", "대지의 영혼", "속전속결"], pos)
+        r = (0, 0, 2520, 1575)
+        a._reread_n = a._frag_n = 0
+        a._click_at(r, (round(0.514 * 2520), round(0.714 * 1575)))
+        a._click_at(r, (round(0.722 * 2520), round(0.704 * 1575)))
+        a.tracker.feed(["아티스트 보호", None, "불을 밝혀"], {"xs": [0.2872, 0.4998, 0.7125], "nameY": 0.4019})
+        a._click_at(r, (round(0.722 * 2520), round(0.549 * 1575), round(0.684 * 2520), round(0.7 * 1575)))
+        self.assertNotIn("reroll", got[-1], "쓴 새로고침 버튼은 새로고침이 아니다")
+        self.assertEqual(a.tracker.state["offers"][2], "불을 밝혀")
+        a._click_at(r, (round(0.971 * 2520), round(0.768 * 1575)))
+        for _ in range(3):
+            a.tracker.feed(None)
+        self.assertEqual(a.tracker.state["picked"], "불을 밝혀")
+
     def test_tooltip_title_does_not_move_cards(self):
         # 2026-10-24 빅토르 판: 왕관의 무게 설명 창 제목이 가운데에서 읽혀 선택지·카드 위치가 틀어졌고, 왕관의 무게 클릭이 빈칸으로
         t = self.o.Tracker()

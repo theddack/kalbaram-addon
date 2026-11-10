@@ -1081,6 +1081,11 @@ class Reader(threading.Thread):
             px, py = (hit[2] - gx) / gw, (hit[3] - gy) / gh
             slot = card_at(pos, px, py)
             rr = None if slot is not None else reroll_at(pos, px, py)
+            used = self.tracker.state.get("rerolled") or [False] * 3
+            if rr is not None and used[rr]:
+                # 칸마다 새로고침은 한 번뿐: 이미 쓴 버튼 자리는 새로고침을 누른 게 아니라 거기서 카드로 옮겨 누른 것
+                # (2026-11-10 퀸 판: 새로 뜬 '불을 밝혀'를 눌렀는데 새로고침으로 보고 이름을 지워 고른 증강을 못 정함)
+                rr = None
             if slot is None and rr is None:
                 guess = card_at(pos, rx, ry)
                 rr = None if guess is not None else reroll_at(pos, rx, ry)
