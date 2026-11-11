@@ -844,3 +844,28 @@ test("점검 5: 신발은 빌드 유형에 맞춘다 (물리에 마법사의 신
   const soraka = ["믿음직한 무기", "파워", "아티스트 보호", "순수주의자 - 마법사"].map((n) => d.augments.find((a) => a.name === n).id);
   assert.ok(legendBuild("Soraka", soraka).length === 6);
 });
+
+test("점검 7: 주문 검(리치베인)은 평타를 섞는 만큼만 — 라이엇 공격 의존도(info.attack)", () => {
+  const lich = item("리치베인");
+  const val = (cid) => {
+    const c = champ(cid);
+    const row = St.evaluate(c, 18, [lich], [], { aram: true }).m;
+    const base = St.evaluate(c, 18, [], [], { aram: true }).m;
+    return row.combo - base.combo;
+  };
+  assert.ok(champ("Lux").info.attack <= 2 && champ("Fizz").info.attack >= 6);
+  // 럭스(평타 거의 안 침)는 피즈(평타 섞음)보다 리치베인으로 덜 강해진다
+  assert.ok(val("Lux") / Math.max(1, St.evaluate(champ("Lux"), 18, [], [], { aram: true }).m.combo)
+    < val("Fizz") / Math.max(1, St.evaluate(champ("Fizz"), 18, [], [], { aram: true }).m.combo));
+  assert.ok(!legendBuild("Lux", []).includes("리치베인"), "럭스 기본 빌드엔 리치베인 없음");
+  assert.ok(legendBuild("Ekko", []).includes("리치베인"), "에코는 그대로");
+});
+
+test("점검 8: 흐르는 물의 지팡이 버프는 피해가 아니라 주문력·스킬 가속 (아군을 돕는 챔피언만)", () => {
+  const fw = item("흐르는 물의 지팡이");
+  assert.ok(!(fw.effects || []).some((e) => e.name === "APMod"), "주문력 +40 버프를 마법 피해 40 으로 세지 않는다");
+  const ap = (cid) => St.evaluate(champ(cid), 18, [fw], [], { aram: true }).stats.total.AP;
+  assert.ok(champ("Janna").features.includes("allysupport") && !champ("Veigar").features.includes("allysupport"));
+  assert.ok(ap("Janna") - St.evaluate(champ("Janna"), 18, [], [], { aram: true }).stats.total.AP >= 75, "잔나: 기본 35 + 버프 40");
+  assert.ok(ap("Veigar") - St.evaluate(champ("Veigar"), 18, [], [], { aram: true }).stats.total.AP < 75, "베이가: 버프 없음");
+});

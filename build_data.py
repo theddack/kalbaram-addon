@@ -1675,6 +1675,11 @@ def main():
         ir = rules.get("items", {}).get(item["name"])
         if not ir:
             continue
+        if ir.get("dropEffects"):  # 버프를 피해로 잘못 뽑은 효과 (흐르는 물의 지팡이 '주문력 +40' → 마법 피해 40)
+            before = {e.get("name") for e in item["effects"]}
+            item["effects"] = [e for e in item["effects"] if e.get("name") not in ir["dropEffects"]]
+            for n in set(ir["dropEffects"]) - before:
+                rule_warn.append(f"아이템 {item['name']}: dropEffects '{n}' 에 해당하는 효과가 없음")
         plain = re.sub(r"<[^>]+>", "", item["desc"])
         if ir.get("check") and ir["check"] not in plain:
             rule_warn.append(f"아이템 {item['name']}: 설명에 '{ir['check']}' 없음 (패치로 수치 변경?) → 미적용")
