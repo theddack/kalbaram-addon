@@ -594,7 +594,7 @@
       },
       "note": "주문 검 효과 아이템과 같이"
     },
-    "ARAM_Quest_WoogletsWitchcap": {
+    "ARAM_Quest_WoogletsWitchcap": { "itemsAll": true,
       "items": [
         "라바돈의 죽음모자",
         "존야의 모래시계"
@@ -604,7 +604,7 @@
       },
       "note": "퀘스트: 라바돈의 죽음모자 + 존야의 모래시계"
     },
-    "ARAM_Quest_VoidImmolation": {
+    "ARAM_Quest_VoidImmolation": { "itemsAll": true,
       "items": [
         "태양불꽃 방패",
         "공허한 광휘"
@@ -623,7 +623,7 @@
       },
       "note": "퀘스트: 강철심장 중첩"
     },
-    "Quest_UltraHydra": {
+    "Quest_UltraHydra": { "itemsAll": true,
       "items": [
         "굶주린 히드라",
         "불경한 히드라",

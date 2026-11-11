@@ -171,10 +171,14 @@
   }
 
   // 고른 증강에서 빌드에 필요한 정보(태그·환산·무시 태그·요구 아이템)를 모은다
-  function augContext(chosen, rules) {
-    const tags = {}, src = {}, convert = {}, zero = new Set(), wanted = {}, must = [], lift = {}, liftSrc = {}, liftBy = {};
+  // champ 를 주면 조건을 못 맞추는 증강(근접 + 조준경 부착 등)은 빌드 방향에도 넣지 않는다: 효과 계산(augStatsOf)에서
+  // 이미 빼는데 아이템 방향은 따라가서, 근접이 사거리 증강을 고르면 윤 탈·루난으로 기울었다 (2026-11-12 점검)
+  function augContext(chosen, rules, champ = null) {
+    const tags = {}, src = {}, convert = {}, zero = new Set(), wanted = {}, must = [], mustAll = new Set(), lift = {}, liftSrc = {}, liftBy = {};
+    const c = champ && withChosenFeatures(champ, chosen, rules);
     for (const a of chosen) {
       const rule = ruleOf(rules, a);
+      if (c && (a.eligible ? !a.eligible.includes(c.id) : rule.requires && !(c.features || []).includes(rule.requires))) continue;
       const et = effTags(rules, a);
       for (const [t, v] of Object.entries(et)) {
         if (v > (tags[t] || 0)) tags[t] = v;
@@ -193,9 +197,13 @@
       Object.assign(convert, rule.convert || {});
       for (const t of rule.zero || []) zero.add(t);
       for (const n of rule.items || []) (wanted[n] = wanted[n] || []).push(a.name);
-      if ((rule.items || []).length) must.push(rule.items);
+      // itemsAll: 퀘스트가 아이템을 모두 요구 (궁극의 히드라 = 히드라 3종). 아니면 그중 하나 (광휘의 검 업그레이드)
+      if ((rule.items || []).length) {
+        if (rule.itemsAll) for (const n of rule.items) { must.push([n]); mustAll.add(n); }
+        else must.push(rule.items);
+      }
     }
-    return { tags, src, convert, zero, wanted, must, lift, liftSrc, liftBy };
+    return { tags, src, convert, zero, wanted, must, mustAll, lift, liftSrc, liftBy };
   }
   // 증강이 '키우는' 능력치: 효과 계수(주문력 300% 보호막 → 주문력)·배율(체력 +35% → 체력). 고정 수치(주문력 +80)는 아이템 가치를 안 올린다
   // 숫자가 하나도 없는 증강은 null (효과 종류만 믿는다)
@@ -289,27 +297,49 @@
     const items = ids.map((id) => (pool || []).find((i) => i.id === id)).filter((i) => i && i.kind === "legendary");
     return items.length > 0 && items.filter((i) => isOff(critTags(i))).length * 2 >= items.length;
   };
+  // 살 수 없는 아이템: 게임 데이터 구매 제한 (루난의 허리케인 = 원거리만). 변칙 빌드에도 넣지 않는다
+  const cantBuy = (champ, item) => Boolean(champ && item && (item.only === "ranged" ? champ.melee : item.only === "melee" ? !champ.melee : false));
+  const buyable = (champ) => (champ ? (item) => cantBuy(champ, item) : null);
   function offTypeFilter(champ, ctx, concept, pool = null, fixed = []) {
-    const rule = champ && OFF_TYPE[champ.damageType];
-    if (!rule || (concept && concept.flip)) return null;
-    // 이미 산 전설 아이템이 내 유형뿐이면 그 방향으로 간다: 공식 추천이 반대 유형이어도 섞지 않는다
-    // (2026-11-11 카이사: 삼위일체·윤 탈을 산 뒤 공식 칼바람 추천(AP) 때문에 리안드리를 '다음 구매' 1순위로 섞었다)
-    const isOffItem = (t) => rule.off.some((k) => (t[k] || 0) >= 0.5) && !rule.own.some((k) => (t[k] || 0) >= 0.5);
-    const isOwnItem = (t) => rule.own.some((k) => (t[k] || 0) >= 0.5);
-    const bought = (fixed || []).filter((i) => i && i.kind === "legendary").map((i) => critTags(i, ctx.convert || {}));
-    const committed = bought.some(isOwnItem) && !bought.some(isOffItem);
-    if (!committed && officialAgainst(champ, rule, pool)) return null;
-    // 치명타 아이템은 공격력이 같이 붙어 있어도 뺀다 (치명타를 못 살리는 챔피언)
+    if (!champ) return null;
+    if (concept && concept.flip) return buyable(champ);
+    const rule = OFF_TYPE[champ.damageType];
     const lift = ctx.lift || ctx.tags;
-    const noCrit = champ.damageType === "physical" && !critUser(champ) && !((lift.CRIT || 0) >= 0.5);
-    if (Object.keys(ctx.convert || {}).some((t) => rule.off.includes(ctx.convert[t]) || rule.off.includes(t))) return null;
-    // 고른 증강이 반대 유형을 키우면 막지 않는다. 내 유형도 똑같이 키우는 증강(불을 밝혀: 공격력·주문력)은 반대로 가는 증강이 아니다
-    const liftOf = (keys) => Math.max(0, ...keys.map((t) => lift[t] || 0));
-    if (liftOf(rule.off) >= 0.5 && liftOf(rule.off) > liftOf(rule.own)) return null;
+    const conv = ctx.convert || {};
+    // 치명타 아이템은 공격력이 같이 붙어 있어도 뺀다 (치명타를 못 살리는 물리·혼합 챔피언).
+    // 주문력 증강을 골랐다고·피해 유형이 혼합이라고 이 막기가 꺼지지 않게 따로 본다 (2026-11-12 점검: 잭스·우디르에 윤 탈·루난)
+    const noCrit = champ.damageType !== "magic" && !critUser(champ) && !((lift.CRIT || 0) >= 0.5);
+    let typeOff = null, bootsOff = null;
+    if (rule) {
+      const isOffItem = (t) => rule.off.some((k) => (t[k] || 0) >= 0.5) && !rule.own.some((k) => (t[k] || 0) >= 0.5);
+      const isOwnItem = (t) => rule.own.some((k) => (t[k] || 0) >= 0.5);
+      // 이미 산 전설 아이템이 내 유형뿐이면 그 방향으로 간다: 공식 추천이 반대 유형이어도 섞지 않는다
+      // (2026-11-11 카이사: 삼위일체·윤 탈을 산 뒤 공식 칼바람 추천(AP) 때문에 리안드리를 '다음 구매' 1순위로 섞었다)
+      const bought = (fixed || []).filter((i) => i && i.kind === "legendary").map((i) => critTags(i, conv));
+      const committed = bought.some(isOwnItem) && !bought.some(isOffItem);
+      // 고른 증강이 반대 유형을 키우면 막지 않는다. 내 유형도 똑같이 키우는 증강(불을 밝혀: 공격력·주문력)은 반대로 가는 증강이 아니다
+      const liftOf = (keys) => Math.max(0, ...keys.map((t) => lift[t] || 0));
+      const converts = Object.keys(conv).some((t) => rule.off.includes(conv[t]) || rule.off.includes(t));
+      const flips = converts || (liftOf(rule.off) >= 0.5 && liftOf(rule.off) > liftOf(rule.own));
+      const off = (item) => isOffItem(critTags(item, conv));
+      if (!flips) {
+        bootsOff = off;  // 신발은 공식 추천이 반대여도 빌드 유형에 맞춘다 (2026-11-12 점검: 원딜 카이사 빌드에 마법사의 신발)
+        if (committed || !officialAgainst(champ, rule, pool)) typeOff = off;
+      }
+    }
+    // 마법 챔피언에게 공격 속도 신발(광전사의 군화)은 공격 속도·적중 시 효과를 키우는 증강이나 공식 추천이 있을 때만
+    // (2026-11-12 점검: 소라카·밀리오 AP 빌드에 광전사의 군화)
+    const officialIds = new Set(((champ.officialItems || {}).ranges || []).flat());
+    const noAsBoots = champ.damageType === "magic" && !((lift.AS || 0) >= 0.5 || (lift.ONHIT || 0) >= 0.5);
     return (item) => {
-      const t = critTags(item, ctx.convert || {});
+      if (cantBuy(champ, item)) return true;
+      const t = critTags(item, conv);
       if (noCrit && (t.CRIT || 0) >= 0.5) return true;
-      return rule.off.some((k) => (t[k] || 0) >= 0.5) && !rule.own.some((k) => (t[k] || 0) >= 0.5);
+      if (item.kind === "boots") {
+        if (bootsOff && bootsOff(item)) return true;
+        return noAsBoots && (t.AS || 0) >= 0.5 && !officialIds.has(item.id);
+      }
+      return typeOff ? typeOff(item) : false;
     };
   }
 
@@ -457,7 +487,7 @@
   // 이 빌드(아이템 목록)에서 증강 하나가 보태는 가치: 증강을 더한 뒤 − 더하기 전 (지표 가중치는 증강을 고른 균형 기준으로 고정)
   // 추천 품질 점검(tools/augment_quality.js)에서 '몰빵 빌드가 증강을 더 살리나'를 잴 때 쓴다
   function augContribution(items, w, chosen, aug, rules, champ, statOpts = {}) {
-    const ctx = augContext([...chosen, aug], rules);
+    const ctx = augContext([...chosen, aug], rules, champ);
     const num = { mw: metricWeights(conceptWeights(w, ctx, CONCEPTS[1])), norm: {} };
     const c = withChosenFeatures(champ, [...chosen, aug], rules);
     const base = augStatsOf(chosen, rules, c);
@@ -518,14 +548,15 @@
     };
     let beams = [{ items: [], covered: {}, m: num ? evalM([]) : null, bare: focus ? evalBare([]) : null, total: 0, picks: [] }];
     for (const item of fixed) beams = [step(beams[0], item, true)];
-    const expand = (pool, perBeam) => {
+    const expand = (pool, perBeam, anyLimit = false) => {
       const next = [];
       const seen = new Set();
       for (const st of beams) {
         const names = new Set(st.items.map((i) => i.name));
         const limits = new Set(st.items.map((i) => i.limit).filter(Boolean));
         // 같은 계열 고유 효과(주문 검·히드라·치명 …)는 하나만 적용되니 같이 고르지 않는다
-        pool.filter((i) => !names.has(i.name) && !(i.limit && limits.has(i.limit)))
+        // anyLimit: 퀘스트가 같은 계열을 모두 요구 (궁극의 히드라 = 히드라 3종을 다 가져야 한다)
+        pool.filter((i) => !names.has(i.name) && (anyLimit || !(i.limit && limits.has(i.limit))))
           .map((i) => step(st, i, false))
           .sort((a, b) => b.picks[b.picks.length - 1].score - a.picks[a.picks.length - 1].score)
           .slice(0, perBeam)
@@ -547,7 +578,8 @@
     for (const group of (opts.ctx && opts.ctx.must) || []) {
       if (beams[0].items.length >= SLOTS || fixed.some((i) => group.includes(i.name))) continue;
       const pool = all.filter((i) => group.includes(i.name) && i.kind === "legendary");
-      if (pool.length) expand(pool, 1);
+      const allOf = group.length === 1 && opts.ctx.mustAll && opts.ctx.mustAll.has(group[0]);
+      if (pool.length) expand(pool, 1, allOf);
     }
     const legendary = items.filter((i) => i.kind === "legendary");
     while (beams[0].items.length < SLOTS) {
@@ -576,7 +608,7 @@
   // weightsFrom: 지표 가중치를 정할 증강 목록 (기본 = chosen). 궁합(같이 − 따로)은 양쪽을 같은 가중치로 재야 한다
   function numericAugmentGainsRaw(augs, itemPool, w, chosen, fixed, rules, champ, statOpts = {}, weightsFrom = null) {
     champ = withChosenFeatures(champ, chosen, rules);
-    const ctx = augContext(weightsFrom || chosen, rules);
+    const ctx = augContext(weightsFrom || chosen, rules, champ);
     const iw = conceptWeights(w, ctx, CONCEPTS[1]);
     const bal = buildConcepts(itemPool, w, chosen, fixed, rules, champ, statOpts, ["balanced"])[0];
     const items = bal.pick.map((p) => p.item);
@@ -616,7 +648,7 @@
 
   function buildConceptsRaw(items, w, chosen, fixed = [], rules = null, champ = null, statOpts = {}, keys = null) {
     champ = champ && withChosenFeatures(champ, chosen, rules);  // 고른 증강이 챔피언 특징을 바꾸면(검을 뽑아라 → 근접) 그 기준으로
-    const ctx = augContext(chosen, rules);
+    const ctx = augContext(chosen, rules, champ);
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts } : null;
     // 변칙: 균형 빌드가 중시하는 지표를 뒤집어서, 챔피언이 원래 약한 쪽(럭스면 탱킹·평타)을 키운다
     const normal = metricWeights(conceptWeights(w, ctx, CONCEPTS[1]));
@@ -634,7 +666,7 @@
       const k = twistK(twist);
       const mw = k >= 1 ? inv : lerp(metricWeights(iw), inv, k);
       // 받쳐 주는 증강이 있으면 그 증강이 보태는 가치도 키운다 (뒤집은 쪽 아이템이 증강 덕분에 쓸모가 생기는 방향으로)
-      const built = buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw, focus: twist.s > 0 ? TWIST_FOCUS : 0, off: null });
+      const built = buildWith(items, iw, fixed, { ctx, mismatch: c.mismatch, num, mw, focus: twist.s > 0 ? TWIST_FOCUS : 0, off });
       // 받쳐 주는 증강이 있어도 실제로 뒤집힌 아이템이 2개 미만이면 '실험 빌드'로 (s = 0): 주문력 계수가 없는 제드에게
       // '마나 없음, 상관없음'(총 주문력 15%)이 변칙 근거로 잡혔지만 빌드는 그대로 공격력이었다 (2026-10-22 '어떤 증강이든 재밌게' 점검)
       const flipped = built.pick.filter((p) => !p.fixed && twist.opp.some((t) => ((p.item.tags || {})[t] || 0) >= 0.5)).length;
@@ -650,7 +682,7 @@
     const sc = statsChosen || chosen;
     champ = champ && withChosenFeatures(champ, sc, rules);
     const concept = CONCEPTS.find((c) => c.key === conceptKey) || CONCEPTS[1];
-    const ctx = withOfficial(augContext(chosen, rules), champ, officialK(concept));
+    const ctx = withOfficial(augContext(chosen, rules, champ), champ, officialK(concept));
     const iw = conceptWeights(w, ctx, concept);
     const off = offTypeFilter(champ, ctx, concept, items, fixed);
     const covered = {};
@@ -672,7 +704,7 @@
         const score = (valueOf(m1, num) - valueOf(m0, num)) * NUM_K + tag.score * TAG_K;
         return { item: i, ...tag, tagScore: tag.score, score, gain: gainParts(m0, m1) };
       })
-      .map((r) => (off && off(r.item) ? { ...r, offType: true } : r))
+      .map((r) => (off && off(r.item) ? { ...r, offType: true, cantBuy: cantBuy(champ, r.item) } : r))
       // 주 피해 유형과 반대인 아이템은 목록 맨 뒤로 (지우지는 않는다: 직접 골라 보는 건 자유)
       .sort((a, b) => (a.offType ? 1 : 0) - (b.offType ? 1 : 0) || b.score - a.score);
   }
@@ -684,7 +716,7 @@
     if (!champ || !champ.spells || !cands.length) return [];
     champ = withChosenFeatures(champ, chosen, rules);
     const concept = CONCEPTS.find((c) => c.key === (chosen.length ? "augment" : "balanced"));
-    const ctx = withOfficial(augContext(chosen, rules), champ, officialK(concept));
+    const ctx = withOfficial(augContext(chosen, rules, champ), champ, officialK(concept));
     const num = { mw: metricWeights(conceptWeights(w, ctx, concept)), norm: {} };
     const augStats = augStatsOf(chosen, rules, champ);
     const L = Math.max(1, Math.min(18, Math.round(level)));

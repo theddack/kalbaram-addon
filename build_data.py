@@ -391,6 +391,16 @@ def champion_traits(detail):
 
 
 # ---------------------------------------------------------------- 아이템 고유 효과
+def purchase_only(item_bin):
+    """게임 데이터의 구매 제한 → 'ranged' · 'melee' · None"""
+    ids = [str(x).lower() for x in ((item_bin or {}).get("mRequiredPurchaseIdentities") or [])]
+    if ids == ["ranged"]:
+        return "ranged"
+    if ids == ["melee"]:
+        return "melee"
+    return None
+
+
 def item_passive(item_bin, strings):
     """아이템 고유 효과 설명을 수치로 채우고 피해·보호막·회복 효과를 뽑는다. (효과, 표시용 html, 적용한 모드)"""
     if not item_bin:
@@ -1294,6 +1304,9 @@ def main():
             "sell": it["gold"].get("sell"),  # 팔 때 돌려받는 골드 (교체 추천의 실제 비용)
             "tags": tags, "stats": stats, "desc": html, "effects": effects,
             "limit": item_limit.get(iid),  # 같은 계열 고유 효과(주문 검·히드라 …)는 하나만
+            # 살 수 있는 챔피언 제한 (게임 데이터 mRequiredPurchaseIdentities: 루난의 허리케인 = 원거리만).
+            # 2026-11-12 추천 점검: 근접 챔피언 빌드에 루난이 40번 들어갔다
+            "only": purchase_only(items_bin.get(f"Items/{iid}")),
             "refs": [r for r in [
                 {"label": "게임 데이터", "url": f"{CDRAGON}/game/items.cdtb.bin.json"},
                 {"label": "위키", "url": wiki_page(item_wiki[iid])} if iid in item_wiki else None,

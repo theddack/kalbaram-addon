@@ -379,7 +379,7 @@ function enemyAdvice() {
   // 내 피해 유형은 고른 증강의 환산·특징 변경까지 반영한다 (아이템 추천과 같은 기준: rankItems 의 convert·withChosenFeatures).
   // 예전엔 챔피언 기본 유형만 봐서 징크스 + 적응형 능력치(공격력→주문력)에도 치유 감소로 필멸자의 운명(공격력)을 권했다 (2026-10-22 일관성 점검 R1).
   // 일부 추가 피해를 주는 증강만으로는 바꾸지 않는다 (환산 증강만)
-  const conv = S.augContext(state.chosen, state.data.rules).convert || {};
+  const conv = S.augContext(state.chosen, state.data.rules, state.champ).convert || {};
   const baseType = state.champ.damageType === "magic" ? "magic" : "physical";
   const mineType = baseType === "physical" && conv.AD === "AP" ? "magic" : baseType === "magic" && conv.AP === "AD" ? "physical" : baseType;
   const me = S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
@@ -845,7 +845,7 @@ function champStyle() {
 }
 // 증강이 실제로 키우는 효과 종류: 숫자가 있는 증강은 계수·배율이 붙은 것만 (scoring.js augContext lift).
 // 효과 종류 태그를 그대로 쓰면 '부식'(적 방어력 감소)이 '탱커형으로 변신'으로 나왔다 (2026-10-15)
-const augLift = (a) => S.augContext([a], state.data.rules).lift;
+const augLift = (a) => S.augContext([a], state.data.rules, state.champ).lift;
 // 챔피언 역할(라이엇 태그)이 이미 가진 방향: 우르곳(전사·탱커)에게 체력 증강을 '탱커형으로 변신'이라 하던 것 (2026-10-17)
 const ROLE_STYLE = { Fighter: ["fighter"], Tank: ["ehp", "fighter"], Marksman: ["dps"], Mage: ["combo", "mage"], Assassin: ["combo"], Support: ["support"] };
 function transform(a) {
@@ -1154,13 +1154,13 @@ function renderOfferResult() {
     const idx = pool.findIndex((x) => x.id === aug.id);
     return { top: (idx + 1) / pool.length, n: pool.length, rank: idx + 1 };
   };
-  const twistNow = S.twistSupport(state.weights, S.augContext(state.chosen, d.rules)).s;
+  const twistNow = S.twistSupport(state.weights, S.augContext(state.chosen, d.rules, state.champ)).s;
   // 몰빵 빌드(선택지마다 빌드 다시 짜기)는 무거워서 뒤로 미룬다: 게임 화면 카드 평가(등급·연계·이유)를 먼저 보낸다.
   // 게임 중엔 CPU 를 0.5코어로 묶어서, 같이 계산하면 카드가 1.5초까지 늦게 떴다 (2026-10-15 윈도우 측정)
   const rows = offers.map(({ a, i }) => {
     const sc = ranked.find((r) => r.aug.id === a.id) || { score: 0 };
     // 변칙 열쇠: 이 증강을 고르면 '변칙' 빌드를 받쳐 주는 증강이 생긴다 (성향만 뒤집은 실험 → 증강 덕분에 바뀌는 변칙)
-    const twistKey = S.twistSupport(state.weights, S.augContext([...state.chosen, a], d.rules)).s - twistNow >= 0.5;
+    const twistKey = S.twistSupport(state.weights, S.augContext([...state.chosen, a], d.rules, state.champ)).s - twistNow >= 0.5;
     return { a, i, sc, p: pctile(a), aug: null, changed: 0, twistKey, newItems: [] };
   });
   const addBuilds = () => {
@@ -1305,7 +1305,7 @@ function itemVerdicts() {
   if (verdictCache.key === key) return verdictCache.value;
   const d = state.data;
   const concept = state.chosen.length ? "augment" : "balanced";
-  const must = new Set(S.augContext(state.chosen, d.rules).must.flat());
+  const must = new Set(S.augContext(state.chosen, d.rules, state.champ).must.flat());
   const value = state.items.map((it) => {
     // 증강에 필요한 아이템(징수의 총 업그레이드 → 징수의 총)은 순위와 상관없이 맞는 것 (사미라 판: 사고 나니 🤔)
     if (must.has(it.name)) return { item: it, mark: "✅", text: "고른 증강에 필요해요", swap: null, rank: -1 };
@@ -1323,6 +1323,7 @@ function itemVerdicts() {
   return value;
 }
 function verdictOf(it, row, idx, best) {
+  if (row && row.cantBuy) return { item: it, mark: "⚠️", text: `${it.only === "ranged" ? "원거리" : "근접"} 챔피언만 살 수 있어요` + (best ? ` (추천: ${best.item.name})` : "") };
   if (row && row.offType) return { item: it, mark: "⚠️", text: `${state.champ.damageType === "magic" ? "마법" : "물리"} 챔피언에겐 반대 유형이에요` + (best ? ` (추천: ${best.item.name})` : "") };
   if (idx >= 0 && idx < 5) return { item: it, mark: "✅", text: state.chosen.length ? "고른 증강과 잘 맞아요" : "잘 맞아요" };
   if (idx >= 0 && idx < 15) return { item: it, mark: "👍", text: "괜찮아요" };
@@ -1361,7 +1362,7 @@ function counterSwap(needed) {
 }
 function swapAdvice() {
   if (!state.champ || state.items.length < S.SLOTS) return null;
-  const ctx = S.augContext(state.chosen, state.data.rules);
+  const ctx = S.augContext(state.chosen, state.data.rules, state.champ);
   const needed = (it) => ctx.must.some((g) => g.includes(it.name));
   let pick = counterSwap(needed);
   for (const v of pick ? [] : itemVerdicts()) {
@@ -1682,14 +1683,14 @@ function itemRanking() {
   const rows = S.rankItems(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), state.chosen.length ? "augment" : "balanced");
   if (state.chosen.length) {
     const syn = S.itemSynergy(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts());
-    const ctx = S.augContext(state.chosen, d.rules);
+    const ctx = S.augContext(state.chosen, d.rules, state.champ);
     const links = rows.filter((r) => r.item.kind !== "special" || ctx.wanted[r.item.name])
       .filter((r) => syn[r.item.id] && syn[r.item.id].delta > 0.1)
       .sort((a, b) => syn[b.item.id].delta - syn[a.item.id].delta).slice(0, LINK_TOP).map((r) => r.item.id);
     for (const r of rows) r.synergy = links.includes(r.item.id) || !!ctx.wanted[r.item.name];
   }
   // 점수가 비슷하면 증강 필요 → 증강 연계 → 라이엇 추천 → 점수 순 (scoring tieOrder)
-  const ctx = S.augContext(state.chosen, d.rules);
+  const ctx = S.augContext(state.chosen, d.rules, state.champ);
   const official = S.officialWeights(state.champ, 1) || {};
   const prio = (r) => (ctx.wanted[r.item.name] ? 0 : r.synergy ? 1 : official[r.item.id] ? 2 : 3);
   return S.tieOrder(rows, prio);
@@ -1838,7 +1839,7 @@ function renderNextBuy(rows) {
   const box = $("#next-buy");
   if (!state.champ) { box.innerHTML = ""; return; }
   const hasBoots = state.items.some((i) => i.kind === "boots");
-  const ctx = S.augContext(state.chosen, state.data.rules);
+  const ctx = S.augContext(state.chosen, state.data.rules, state.champ);
   const keep = (r) => !canAdd(r.item)
     && (r.item.kind === "legendary" || (r.item.kind === "boots" && !hasBoots) || (r.item.kind === "special" && ctx.wanted[r.item.name]));
   const avail = rows.filter(keep);
