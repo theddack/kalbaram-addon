@@ -772,3 +772,21 @@ test("증강 등급: 정렬 점수가 같으면 같은 등급 (2026-10-24 진단
   assert.equal(by("폴터가이스트"), by("점멸 2"));
   assert.equal(by("점멸 2"), by("전환: 골드"));
 });
+
+test("2026-11-11 카이사: 원딜 템을 산 뒤엔 공식 추천(AP)·양쪽 증강이 있어도 AP 템을 뒤로", () => {
+  // 운명의 무기 + 불을 밝혀(공격력·주문력 둘 다), 삼위일체·광전사의 군화를 산 상태에서 리안드리의 고통이 '다음 구매' 1순위로 나와
+  // 윤 탈 대신 리안드리를 섞었다 (원딜 빌드에 AP 하나). 공식 칼바람 추천이 AP 라 반대 유형 막기를 건너뛰었다
+  const c = champ("Kaisa"), w = S.profile(c, d.tags);
+  const legend = d.items.filter((i) => i.kind === "legendary");
+  const augs = ["WeaponOfDestiny", "ARAM_LightemUp"].map(aug);
+  const rows = S.rankItems(legend, w, augs, [item("삼위일체"), item("광전사의 군화")], d.rules, c, {}, "augment");
+  for (const n of ["리안드리의 고통", "리치베인", "내셔의 이빨"]) {
+    assert.ok(rows.find((r) => r.item.name === n).offType, `${n} 은 뒤로`);
+  }
+  // AP 로 시작했으면 AP 카이사 그대로 (공식 추천 존중)
+  const ap = S.rankItems(legend, w, [], [item("루덴의 메아리")], d.rules, c, {}, "balanced");
+  assert.ok(!ap.find((r) => r.item.name === "리안드리의 고통").offType, "AP 로 산 카이사는 막지 않음");
+  // 아무것도 안 샀을 땐 지금처럼 (공식 추천이 AP 라 막지 않음)
+  const none = S.rankItems(legend, w, [], [], d.rules, c, {}, "balanced");
+  assert.ok(!none.find((r) => r.item.name === "리안드리의 고통").offType);
+});

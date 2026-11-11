@@ -289,15 +289,23 @@
     const items = ids.map((id) => (pool || []).find((i) => i.id === id)).filter((i) => i && i.kind === "legendary");
     return items.length > 0 && items.filter((i) => isOff(critTags(i))).length * 2 >= items.length;
   };
-  function offTypeFilter(champ, ctx, concept, pool = null) {
+  function offTypeFilter(champ, ctx, concept, pool = null, fixed = []) {
     const rule = champ && OFF_TYPE[champ.damageType];
     if (!rule || (concept && concept.flip)) return null;
-    if (officialAgainst(champ, rule, pool)) return null;
+    // 이미 산 전설 아이템이 내 유형뿐이면 그 방향으로 간다: 공식 추천이 반대 유형이어도 섞지 않는다
+    // (2026-11-11 카이사: 삼위일체·윤 탈을 산 뒤 공식 칼바람 추천(AP) 때문에 리안드리를 '다음 구매' 1순위로 섞었다)
+    const isOffItem = (t) => rule.off.some((k) => (t[k] || 0) >= 0.5) && !rule.own.some((k) => (t[k] || 0) >= 0.5);
+    const isOwnItem = (t) => rule.own.some((k) => (t[k] || 0) >= 0.5);
+    const bought = (fixed || []).filter((i) => i && i.kind === "legendary").map((i) => critTags(i, ctx.convert || {}));
+    const committed = bought.some(isOwnItem) && !bought.some(isOffItem);
+    if (!committed && officialAgainst(champ, rule, pool)) return null;
     // 치명타 아이템은 공격력이 같이 붙어 있어도 뺀다 (치명타를 못 살리는 챔피언)
     const lift = ctx.lift || ctx.tags;
     const noCrit = champ.damageType === "physical" && !critUser(champ) && !((lift.CRIT || 0) >= 0.5);
     if (Object.keys(ctx.convert || {}).some((t) => rule.off.includes(ctx.convert[t]) || rule.off.includes(t))) return null;
-    if (rule.off.some((t) => (lift[t] || 0) >= 0.5)) return null;
+    // 고른 증강이 반대 유형을 키우면 막지 않는다. 내 유형도 똑같이 키우는 증강(불을 밝혀: 공격력·주문력)은 반대로 가는 증강이 아니다
+    const liftOf = (keys) => Math.max(0, ...keys.map((t) => lift[t] || 0));
+    if (liftOf(rule.off) >= 0.5 && liftOf(rule.off) > liftOf(rule.own)) return null;
     return (item) => {
       const t = critTags(item, ctx.convert || {});
       if (noCrit && (t.CRIT || 0) >= 0.5) return true;
@@ -618,7 +626,7 @@
     for (const k of Object.keys(inv)) inv[k] /= invSum;
     return CONCEPTS.filter((c) => !keys || keys.includes(c.key)).map((c) => {
       const iw = conceptWeights(w, ctx, c);
-      const off = offTypeFilter(champ, ctx, c, items);
+      const off = offTypeFilter(champ, ctx, c, items, fixed);
       const octx = withOfficial(ctx, champ, officialK(c));
       const cctx = c.focus ? { ...octx, must: [...ctx.must, ...tagMust(items, chosen, rules, ctx, off)] } : octx;
       if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: null, focus: c.focus, off }) };
@@ -644,7 +652,7 @@
     const concept = CONCEPTS.find((c) => c.key === conceptKey) || CONCEPTS[1];
     const ctx = withOfficial(augContext(chosen, rules), champ, officialK(concept));
     const iw = conceptWeights(w, ctx, concept);
-    const off = offTypeFilter(champ, ctx, concept, items);
+    const off = offTypeFilter(champ, ctx, concept, items, fixed);
     const covered = {};
     for (const it of fixed) addCovered(covered, convertTags(it.tags, ctx.convert));
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(sc, rules, champ), statOpts, mw: metricWeights(iw) } : null;
