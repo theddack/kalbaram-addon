@@ -790,3 +790,57 @@ test("2026-11-11 카이사: 원딜 템을 산 뒤엔 공식 추천(AP)·양쪽 �
   const none = S.rankItems(legend, w, [], [], d.rules, c, {}, "balanced");
   assert.ok(!none.find((r) => r.item.name === "리안드리의 고통").offType);
 });
+
+// ---- 2026-11-12 추천 전체 점검 (전 챔피언 × 무작위 증강) 에서 찾은 버그
+const legendBuild = (cid, augIds, key = "balanced", fixed = []) => {
+  const c = champ(cid);
+  return S.buildConcepts(d.items, S.profile(c, d.tags), augIds.map(aug), fixed.map(item), d.rules, c, {}, [key])[0].pick.map((p) => p.item.name);
+};
+
+test("점검 1: 원거리 전용 루난의 허리케인은 근접 빌드에 넣지 않는다 (게임 데이터 구매 제한)", () => {
+  assert.equal(item("루난의 허리케인").only, "ranged");
+  for (const [cid, augs] of [["Gangplank", ["ARAM_Upgrade_IE"]], ["Renekton", ["ARAM_Upgrade_IE"]], ["Nasus", []]]) {
+    for (const key of ["balanced", "augment"]) assert.ok(!legendBuild(cid, augs, key).includes("루난의 허리케인"), `${cid} ${key}`);
+  }
+  assert.ok(legendBuild("Jinx", [], "balanced").length === 6);
+});
+
+test("점검 2: 치명타 안 쓰는 근접은 주문력 증강을 골라도·피해 유형이 혼합이어도 치명타 템을 넣지 않는다", () => {
+  const crit = (names) => names.filter((n) => { const it = item(n); return it && (((it.tags || {}).CRIT || 0) >= 0.5 || (it.stats && "CRIT" in it.stats)); });
+  // 잭스 + 굶주린 속박(주문력) · 환영 무기 · 유리 대포 → 도미닉·루난이 들어갔다
+  const jaxAugs = ["굶주린 속박", "환영 무기", "공포", "유리 대포"].map((n) => d.augments.find((a) => a.name === n).id);
+  assert.deepEqual(crit(legendBuild("Jax", jaxAugs)), []);
+  // 우디르(혼합) + 작은 도움(공격 속도) → 윤 탈·루난
+  const udyrAugs = ["감시의 장막", "메아리 시전", "선혈포식", "작은 도움"].map((n) => d.augments.find((a) => a.name === n).id);
+  assert.deepEqual(crit(legendBuild("Udyr", udyrAugs)), []);
+  // 무한의 대검 업그레이드처럼 증강이 요구한 치명타 템은 그대로
+  assert.ok(legendBuild("Renekton", ["ARAM_Upgrade_IE"], "augment").includes("무한의 대검"));
+});
+
+test("점검 3: 조건을 못 맞춘 증강(근접 + 조준경 부착)은 빌드 방향도 바꾸지 않는다", () => {
+  const ctx = S.augContext([aug("ARAM_ScopiestWeapons")], d.rules, champ("Renekton"));
+  assert.deepEqual(ctx.lift, {}, "근접 레넥톤에겐 사거리 증강이 아무것도 키우지 않는다");
+  assert.ok((S.augContext([aug("ARAM_ScopiestWeapons")], d.rules, champ("Jinx")).lift.AS || 0) > 0, "원거리는 그대로");
+  assert.deepEqual(legendBuild("Renekton", ["ARAM_ScopiestWeapons"], "augment"), legendBuild("Renekton", [], "augment"));
+});
+
+test("점검 4: 퀘스트가 아이템을 모두 요구하면(궁극의 히드라 3종·우글렛·이케시아) 증강 몰빵 빌드에 다 넣는다", () => {
+  const has = (b, names) => names.filter((n) => b.includes(n)).length;
+  assert.equal(has(legendBuild("Darius", ["Quest_UltraHydra"], "augment"), ["굶주린 히드라", "불경한 히드라", "거대한 히드라"]), 3);
+  assert.equal(has(legendBuild("Veigar", ["ARAM_Quest_WoogletsWitchcap"], "augment"), ["라바돈의 죽음모자", "존야의 모래시계"]), 2);
+  assert.equal(has(legendBuild("Gragas", ["ARAM_Quest_VoidImmolation"], "augment"), ["태양불꽃 방패", "공허한 광휘"]), 2);
+  // 하나만 있으면 되는 업그레이드는 그대로 하나
+  const sheen = legendBuild("Ezreal", ["ARAM_Upgrade_Sheen"], "augment");
+  assert.ok(has(sheen, ["삼위일체", "리치베인", "얼어붙은 건틀릿", "정수 약탈자"]) >= 1);
+});
+
+test("점검 5: 신발은 빌드 유형에 맞춘다 (물리에 마법사의 신발, AP 서포터에 광전사의 군화 X)", () => {
+  const boots = (b) => b.find((n) => item(n) && item(n).kind === "boots");
+  assert.notEqual(boots(legendBuild("Kaisa", [])), "마법사의 신발", "원딜 카이사 시작 빌드");
+  // 밀리오 + 공격 속도와 상관없는 증강 → 광전사의 군화가 들어갔다
+  const milio = ["핏빛 코발트", "압력솥", "신성한 중재", "지옥의 전도체"].map((n) => d.augments.find((a) => a.name === n).id);
+  assert.notEqual(boots(legendBuild("Milio", milio)), "광전사의 군화");
+  // 공격 속도를 스킬 가속으로 바꾸는 증강(순수주의자 - 마법사)이면 광전사의 군화도 스킬 가속 신발이라 막지 않는다
+  const soraka = ["믿음직한 무기", "파워", "아티스트 보호", "순수주의자 - 마법사"].map((n) => d.augments.find((a) => a.name === n).id);
+  assert.ok(legendBuild("Soraka", soraka).length === 6);
+});
