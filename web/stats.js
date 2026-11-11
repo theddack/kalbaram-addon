@@ -157,8 +157,12 @@
     if (conv.bonusMANAtoAP) t.AP += t.bonusMANA * conv.bonusMANAtoAP * (1 + mult.APmult);
     if (conv.manaToHP && t.MANA) { t.HP += t.MANA * conv.manaToHP; t.bonusHP = t.HP - base.HP; }  // 정신 변환: 최대 마나의 50% 체력
     if (conv.bonusHPtoAP) t.AP += t.bonusHP * conv.bonusHPtoAP * (1 + mult.APmult);  // 균열 생성기: 추가 체력의 2% 주문력
+    // 서포터 아이템 버프 (흐르는 물의 지팡이·불타는 향로): 아군을 회복·보호막으로 도울 때 자신도 받는 버프. 아군을 돕는 챔피언만 (rules items)
+    const helps = (champ.features || []).includes("allysupport");
+    if (helps && conv.allyBuffAP) t.AP += conv.allyBuffAP * (1 + mult.APmult);
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
-    let bonusAS = base.asLevelBonus + add.AS + itemASfromAD;
+    if (helps && conv.allyBuffHaste) t.HASTE += conv.allyBuffHaste;
+    let bonusAS = base.asLevelBonus + add.AS + itemASfromAD + (helps ? conv.allyBuffAS || 0 : 0);
     // 순수주의자 - 마법사: 레벨 말고 얻은 추가 공격 속도(아이템 + 간지럼 괴물이 공격력에서 바꾼 것)를 스킬 가속으로.
     // 묵직한 한 방보다 먼저 (예전엔 묵직한 한 방이 옮긴 몫을 다시 덮어써 같은 공속이 두 번 쓰였고, 간지럼 괴물 몫은 사라졌다, 2026-10-23 점검)
     if (conv.AStoHASTE) { t.HASTE += (add.AS + itemASfromAD) * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }
@@ -400,6 +404,13 @@
   }
   const CAST_MIN_CD = 2; // '스킬 사용 시' 효과: 한 스킬은 최대 2초에 1번 (토글·충전형 스킬이 발동을 부풀리지 않게)
   const COMBO_WINDOW = 4; // 콤보 한 번(스킬 4개)에 걸리는 시간 가정(초): 쿨다운 있는 효과의 발동 횟수 상한
+  // 주문 검(리치베인·삼위일체 …)처럼 '스킬 뒤 기본 공격'에 터지는 효과를 실제로 섞어 치는 비율.
+  // 라이엇 공식 챔피언 정보의 공격 의존도(info.attack 1~10)로 정한다: 2 이하(럭스·벨코즈·소라카) 25% ~ 6 이상(피즈·케일·트페) 100%.
+  // 예전엔 스킬마다 평타를 친다고 봐서 마법 챔피언 기본 빌드 79%에 리치베인이 들어갔다 (2026-11-12 추천 점검)
+  const weaveOf = (champ) => {
+    const a = ((champ && champ.info) || {}).attack;
+    return a == null ? 1 : Math.min(1, Math.max(0.25, (a - 1) / 5));
+  };
 
   // 계산 전체에 쓰는 가정값과 이유 (화면 '데이터 출처 → 계산 가정값'에 그대로 나온다)
   // src: data = 게임 데이터·위키에서 계산한 값, assume = 정한 값(실측 아님)
@@ -423,6 +434,7 @@
     { what: "'스킬 사용 시' 효과는 한 스킬당 최대 2초에 1번", src: "assume", why: "재사용 대기시간이 2초보다 짧은 스킬은 대부분 무기 바꾸기·충전형(징크스 Q 0.9초, 티모 R 0.25초)이라 그대로 세면 발동이 부풀어요. 카시오페아 E처럼 실제로 자주 쓰는 스킬은 조금 적게 셀 수 있어요." },
     { what: "최소~최대가 있는 스킬 피해는 최대로 셈", src: "assume", why: "충전·거리·중첩에 따라 커지는 스킬(바이 Q, 다리우스 R, 사이온 Q 등)은 최대치를 기준으로 비교해요. 최소와 최대를 둘 다 더하던 오류를 고치면서 정한 기준이에요." },
     { what: "같은 스킬의 대체 버전은 하나만 셈", src: "assume", why: "총합과 한 번당 값이 같이 있으면 총합만, 강화·벽 통과·지형 같은 조건부 버전은 기본 버전으로, 치명타 버전은 치명타 확률만큼만 더해요 (예: 볼리베어 W 강화, 루시안 R 한 발당, 미스 포츈 Q 치명타)." },
+    { what: "주문 검(리치베인 등)은 평타를 섞는 만큼만", src: "data", why: "스킬을 쓴 뒤 기본 공격을 해야 터져요. 라이엇 챔피언 정보의 공격 의존도(1~10)로 비율을 정해요: 2 이하 25%(럭스·벨코즈·소라카), 3은 40%, 4는 60%, 5는 80%, 6 이상 100%(피즈·케일·트위스티드 페이트)." },
     { what: "지속 피해(화상 등)는 지속 시간마다 1번", src: "data", why: "같은 대상에 다시 걸면 새로 쌓이지 않고 시간만 갱신되는 게임 규칙 그대로예요 (예: 리안드리 화상 3초). 설명에 '무한히 중첩'이 있으면(화염 낙인) 걸 때마다 쌓아요." },
   ];
 
@@ -513,6 +525,7 @@
       if (/cleave/i.test(e.name || "") && !champ.melee && e.rangedScale == null) v *= CLEAVE_RANGED;
       if (e.chance === "CRIT") v *= t.CRIT;  // 확률 발동은 기대값
       const tr = e.trigger || { type: "once" };
+      if (e.needsAuto && tr.type === "cast") v *= weaveOf(champ);  // 주문 검: 스킬 뒤 평타를 섞는 만큼만
       // 쿨다운이 있으면 콤보 한 번(COMBO_WINDOW초) 안 발동 횟수와 초당 발동 횟수를 제한
       // 기본 공격이 필요한 효과는 콤보 시간 동안 칠 수 있는 기본 공격 수·공격 속도로도 제한
       const autos = Math.max(1, Math.floor(t.AS * COMBO_WINDOW));
