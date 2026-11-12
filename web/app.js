@@ -513,7 +513,7 @@ function enemyThreats() {
 }
 const fmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("ko-KR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "고정 피해", shield: "보호막", heal: "회복" };
-const TRIGGER_LABEL = { cast: "스킬마다", boundCast: "지정 스킬 + 기본 공격", onhit: "기본 공격마다", attacks: "기본 공격 N회마다", time: "주기적", once: "1회" };
+const TRIGGER_LABEL = { cast: "스킬마다", boundCast: "지정 스킬 + 기본 공격", onhit: "기본 공격마다", onattack: "기본 공격마다 (치명타 적용)", attacks: "기본 공격 N회마다", time: "주기적", once: "1회" };
 // 처음 하는 사람도 알 수 있게 쉬운 말로 (정확한 용어는 마우스를 올리면 보임)
 const METRIC_LABEL = { combo: "스킬 한 바퀴 피해", dps: "초당 피해", ehp: "버티는 힘", support: "회복·보호막", mobility: "기동성", control: "제어력" };
 const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력", support: "회복·보호막", mobility: "평균 이동 속도", control: "콤보당 CC 시간(둔화 30%)" };
@@ -1627,7 +1627,7 @@ function basisBlock(list, open = false) {
   return `<details class="basis"${open ? " open" : ""}><summary>📐 근거 보기${hasAssume ? " · ⚠️ 가정 포함" : ""}</summary><ul>${rows}</ul></details>`;
 }
 // 게임 데이터에서 뽑은 효과(피해·보호막·회복)의 근거: 발동 빈도를 어떤 문구로 정했는지
-const TRIGGER_WHY = { cast: "스킬을 쓸 때마다", boundCast: "지정 스킬로 표식을 남긴 뒤 기본 공격할 때", onhit: "기본 공격마다", attacks: "기본 공격 N번마다", time: "일정 시간마다", once: "한 번 (처치·조건부)" };
+const TRIGGER_WHY = { cast: "스킬을 쓸 때마다", boundCast: "지정 스킬로 표식을 남긴 뒤 기본 공격할 때", onhit: "기본 공격마다", onattack: "기본 공격할 때마다", attacks: "기본 공격 N번마다", time: "일정 시간마다", once: "한 번 (처치·조건부)" };
 function effectBasis(effects) {
   return (effects || []).map((e) => {
     const tr = e.trigger || { type: "once" };
