@@ -724,21 +724,23 @@ test("새 증강 계산 보강: 폭풍 쇄도 업그레이드는 폭풍 쇄도�
   const w = (augs) => St.evaluate(c, 18, [], S.augStatsOf(augs, d.rules, c), { aram: true }).m.spells.find((s) => s.slot === "W").dmg;
   assert.ok(Math.abs(q([aug("GoH_PentakillAug_Q")]) / q([]) - 1.1) < 1e-6, "Q 피해 10%");
   assert.ok(Math.abs(w([aug("GoH_PentakillAug_Q")]) - w([])) < 1e-6, "W 는 그대로");
-  assert.equal(d.rules.augments.CrimsonCobalt.statsResolved.basicHaste, 48);
+  // 2026-11-12 바꿈: 예전엔 모든 기본 스킬 가속 48로 셌다 → 원본 값 그대로 지정 스킬 하나의 대기시간 65% (아래 '핏빛 코발트:' 테스트)
+  assert.equal(d.rules.augments.CrimsonCobalt.statsResolved.markCdRefund, 0.65);
   const t = S.augmentTiers(d.augments, d.items, S.profile(champ("Garen"), d.tags), [], [], d.rules, champ("Garen"), { aram: true });
   assert.equal(t.HandsOffTheTalent.tier, "D", "근접은 조건 없음");
   assert.equal(aug("HandsOffTheTalent").effects[0].uptime, 0.5);
 });
 
 // 16.22 원 히트 원더: 스킬 가속 100당 피해량 75% (원본 Calc_AbilityDamagetoAH 75 · AHMultiplier 100), 스킬 가속 효과는 더 이상 없음
-test("16.22 변환: 스킬 가속 → 피해량, 가속은 0 (원 히트 원더)", () => {
+test("16.22 원 히트 원더: 능력치 단계에서는 가속·피해량을 바꾸지 않는다 (스킬 하나에만 거는 건 스킬 계산에서)", () => {
+  // 2026-11-12 바꿈: 예전 기대값(가속 0·모든 피해 +가속×0.75%)은 원본 '{{SpellName}} 하나'와 달랐다 (아래 '원 히트 원더:' 테스트)
   const lux = champ("Lux"), items = [item("우주의 추진력")];
   const r0 = St.computeStats(lux, 18, items, [], { aram: true });
   const r1 = St.computeStats(lux, 18, items, [{ HASTEtoDmg: 0.0075, ultHaste: 30 }], { aram: true });
   assert.ok(r0.total.HASTE > 0, "비교하려면 가속이 있어야");
-  assert.equal(r1.total.HASTE, 0);
-  assert.equal(r1.flags.ultHaste, 0, "궁극기 가속도 안 받는다");
-  assert.ok(Math.abs(r1.flags.dmgDealtMult - r0.total.HASTE * 0.0075) < 1e-9, `피해 ${r1.flags.dmgDealtMult} (가속 ${r0.total.HASTE})`);
+  assert.equal(r1.total.HASTE, r0.total.HASTE, "가속 능력치는 그대로");
+  assert.equal(r1.flags.dmgDealtMult, r0.flags.dmgDealtMult, "모든 피해 증폭 없음");
+  assert.equal(r1.conv.HASTEtoDmg, 0.0075);
 });
 
 test("늦게 더하는 주문력(리치 두뇌)도 주문력 % 증가를 받는다 · 순수주의자-마법사는 간지럼 괴물이 바꾼 공속도 가속으로 (2026-10-23 점검)", () => {
@@ -916,4 +918,51 @@ test("점검 10-7: 코그모 W(생체마법 폭격) 적중 시 최대 체력 비
   // 기본 빌드는 묻지 않는다: 아수라장 통계는 적중 시(구인수 56.5%)인데, 라이엇 공식 칼바람 추천이 AP(루덴·리안드리)라 공식 추천을 따른다
   const dps = (list) => St.evaluate(c, 18, list.map(item), [], { aram: true }).m.dps;
   assert.ok(dps(["구인수의 격노검"]) > dps([]));
+});
+
+// ---- 스킬 증강({{SpellName}}): 원본 설명은 '챔피언 스킬 하나'에만 걸린다 (2026-11-12 원 히트 원더·핏빛 코발트 점검)
+const evA = (cid, items, augNames) => {
+  const c = champ(cid);
+  return St.evaluate(c, 18, items.map(item), S.augStatsOf(augNames.map((n) => d.augments.find((a) => a.name === n)), d.rules, c), { aram: true });
+};
+const cdOf = (r, slot) => r.m.spells.find((s) => s.slot === slot).cd;
+
+test("원 히트 원더: 기본 공격 피해는 그대로 (스킬 하나의 피해만 커진다)", () => {
+  const items = ["무한의 대검", "요우무의 유령검", "세릴다의 원한"];
+  const a = evA("Jinx", items, ["되풀이"]).m.autoDps, b = evA("Jinx", items, ["되풀이", "원 히트 원더"]).m.autoDps;
+  assert.ok(Math.abs(a - b) < 1e-6, `평타 초당 피해 ${a} → ${b}`);
+});
+
+test("원 히트 원더: 가속을 잃는 건 스킬 하나 (기대값이라 모든 스킬이 가속을 일부 유지), 궁극기도 대상", () => {
+  const none = evA("Nasus", [], []), full = evA("Nasus", [], ["되풀이"]), ohw = evA("Nasus", [], ["되풀이", "원 히트 원더"]);
+  for (const s of ["Q", "W", "E", "R"]) {
+    assert.ok(cdOf(ohw, s) < cdOf(none, s) - 1e-6, `${s}: 가속이 남아야 ${cdOf(ohw, s)} vs 가속 없음 ${cdOf(none, s)}`);
+    assert.ok(cdOf(ohw, s) > cdOf(full, s) + 1e-6, `${s}: 대상일 수 있으니 가속을 일부 잃는다 ${cdOf(ohw, s)} vs ${cdOf(full, s)}`);
+  }
+});
+
+test("핏빛 코발트: 표식 피해는 지정 스킬 하나로만 (콤보 한 번에 최대 1번), 스킬 피해와 따로 센다", () => {
+  const base = evA("Nasus", [], []), cob = evA("Nasus", [], ["핏빛 코발트"]);
+  const row = cob.m.effects.find((e) => e.src === "핏빛 코발트");
+  assert.ok(row && row.hit > 0);
+  assert.ok(cob.m.augCombo - base.m.augCombo <= row.hit + 1e-6, `콤보 ${cob.m.augCombo - base.m.augCombo} > 한 번 ${row.hit}`);
+  // 이중 계산 없음: 스킬 자체 피해는 그대로
+  for (const s of ["Q", "W", "E", "R"]) assert.ok(Math.abs(cob.m.spells.find((x) => x.slot === s).dmg - base.m.spells.find((x) => x.slot === s).dmg) < 1e-6, s);
+});
+
+test("핏빛 코발트: 재사용 대기시간 감소(65%)도 지정 스킬 하나로만 (모든 기본 스킬이 다 줄지 않는다)", () => {
+  const base = evA("Nasus", [], []), cob = evA("Nasus", [], ["핏빛 코발트"]);
+  for (const s of ["Q", "W", "E"]) {
+    const r = cdOf(cob, s) / cdOf(base, s);
+    assert.ok(r > 0.675 + 1e-3 && r < 1, `${s}: 재사용 대기시간 비율 ${r.toFixed(3)} (예전: 모든 기본 스킬 0.675)`);
+  }
+});
+
+test("핏빛 코발트: 대기시간이 아주 짧은 스킬(렝가 0.25초·야스오 E)도 표식 폭발은 한 스킬당 최대 2초에 1번 ('스킬 사용 시'와 같은 기준)", () => {
+  for (const cid of ["Rengar", "Yasuo"]) {
+    const cob = evA(cid, [], ["핏빛 코발트"]), base = evA(cid, [], []);
+    const row = cob.m.effects.find((e) => e.src === "핏빛 코발트");
+    // 대상 스킬 하나 + 터뜨리는 비율 ≤ 1 이라 초당 최대 0.5번
+    assert.ok(cob.m.augDps - base.m.augDps <= row.hit * 0.5 + 1e-6, `${cid}: 표식 초당 ${(cob.m.augDps - base.m.augDps).toFixed(1)} > ${(row.hit * 0.5).toFixed(1)}`);
+  }
 });

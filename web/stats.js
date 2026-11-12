@@ -241,14 +241,7 @@
       else if (k in flags) flags[k] += v;
       else conv[k] = (conv[k] || 0) + v;
     }
-    // 원 히트 원더(16.22): 스킬 가속 1당 피해량 0.75% (가속 100당 75%), 가속 효과는 궁극기·스킬별까지 더 이상 안 받는다.
-    // 늦게 더한 주문력의 가속 전환까지 다 끝난 뒤에 바꾼다
-    if (conv.HASTEtoDmg) {
-      flags.dmgDealtMult += t.HASTE * conv.HASTEtoDmg;
-      t.HASTE = 0;
-      flags.ultHaste = 0;
-      flags.slotHaste = {};
-    }
+    // 원 히트 원더(conv.HASTEtoDmg)·핏빛 코발트(conv.markCdRefund)는 스킬 하나에만 걸리는 스킬 증강이라 metrics 의 스킬 계산에서 처리한다
     return { total: t, base, flags, aram, effects, conv };
   }
 
@@ -496,12 +489,43 @@
       + ((champ.features || []).includes("dash") ? (cv.dashHaste || 0) / 3 : 0)
       + (cv.ultTriggerHaste || 0) * ultUptime(cv.ultTriggerDur) + refund();
     out.haste = { basic: basicHaste, ult: ultHaste };
+    // 스킬 증강({{SpellName}}): 원본 설명이 '챔피언 스킬 하나'에만 건다. 어느 스킬인지는 게임 카드에만 나와서
+    // 배운 스킬(Q·W·E·R, 재사용 대기시간이 있는 것) 중 하나가 같은 확률로 대상이라고 보고 기대값을 낸다 (가정, 실게임 검증 필요).
+    // 궁극기도 대상이 될 수 있다: 같은 계열 증강 설명에 '궁극기가 대상이면' 규칙이 있다 (위키 Terrain'd·Chain Reaction)
+    //   원 히트 원더: 대상 스킬 피해 × (1 + 스킬 가속 × 0.75%), 대상 스킬은 가속을 받지 않는다
+    //   핏빛 코발트: 대상 스킬로 표식 → 다음 기본 공격이 터뜨리면 대상 스킬의 현재 대기시간을 전체의 65%만큼 줄인다.
+    //                터뜨리는 비율 = 스킬 뒤 평타를 섞는 비율(weaveOf, 주문 검과 같은 기준)
+    // 예전엔 원 히트 원더가 평타·아이템까지 모든 피해를 키우고 모든 스킬의 가속을 없앴고, 핏빛 코발트는 모든 기본 스킬에 가속 48 +
+    // 모든 스킬 사용마다 표식 피해를 셌다 (2026-11-12 점검)
+    const ohwK = cv.HASTEtoDmg || 0, cobalt = cv.markCdRefund || 0, weave = weaveOf(champ);
+    const targetable = champ.spells.filter((sp, i) => ranks[i] > 0 && !(flags.noUlt && sp.slot === "R")
+      && (sp.cooldown[Math.max(0, Math.min(ranks[i], sp.cooldown.length) - 1)] || 0) > 0).length;
+    const qT = targetable ? 1 / targetable : 0;
+    out.boundCastRate = 0;
     champ.spells.forEach((sp, i) => {
       const rank = ranks[i];
       const disabled = rank === 0 || (flags.noUlt && sp.slot === "R");
       const haste = (sp.slot === "R" ? ultHaste : basicHaste) + (flags.slotHaste[sp.slot] || 0);
       const cdBase = sp.cooldown[Math.max(0, Math.min(rank, sp.cooldown.length) - 1)] || 0;
-      const cd = cdBase * 100 / (100 + haste);
+      const cdNormal = cdBase * 100 / (100 + haste);
+      // 대상일 때·아닐 때 4가지 경우(원 히트 원더 대상 × 핏빛 코발트 대상, 서로 따로 정해짐)의 기대값
+      const q = !disabled && cdBase > 0 ? qT : 0;
+      const qO = ohwK ? q : 0, qC = cobalt ? q : 0;
+      const ohwMult = 1 + t.HASTE * ohwK;
+      const cobaltCd = 1 - cobalt * weave;
+      let eMult = 0, eRate = 0, eRateMult = 0, eCobaltRate = 0;
+      for (const [po, o] of [[qO, true], [1 - qO, false]]) for (const [pc, c] of [[qC, true], [1 - qC, false]]) {
+        const p = po * pc;
+        if (!p) continue;
+        const cdCase = (o ? cdBase : cdNormal) * (c ? cobaltCd : 1);
+        const m = o ? ohwMult : 1;
+        eMult += p * m; eRate += p / Math.max(cdCase, 1e-9); eRateMult += p * m / Math.max(cdCase, 1e-9);
+        // 표식 폭발은 '스킬 사용 시' 효과와 같이 한 스킬당 최대 CAST_MIN_CD 초에 1번 (렝가 0.25초·야스오 E 같은 짧은 스킬이 부풀리지 않게)
+        if (c) eCobaltRate += p / Math.max(cdCase, CAST_MIN_CD);
+      }
+      // 한 번 쓸 때 피해 = 기대 배수, 재사용 대기시간 = 피해 기준 기대 발동 빈도에 맞춘 값 (콤보는 한 번, 초당 피해는 빈도)
+      const cd = !cdBase ? cdNormal : (ohwK || cobalt) ? eMult / Math.max(eRateMult, 1e-9) : cdNormal;
+      if (!disabled && cdBase > 0) out.boundCastRate += eCobaltRate * weave;
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
       let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0;
       // 보석 건틀릿: 스킬도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값
@@ -516,7 +540,7 @@
           continue;
         }
         if (DMG_KINDS.includes(v.kind)) {
-          const amp = dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * skillCrit;
+          const amp = dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * skillCrit * ((ohwK || cobalt) && cdBase ? eMult : 1);
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : 1;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
@@ -591,6 +615,8 @@
       }
       else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0));
       else if (tr.type === "cast") { out.augCombo += hit * comboTimes(casts); out.augDps += hit * rate(castRate); }
+      // 지정 스킬 하나로 쌓은 표식을 기본 공격으로 터뜨림 (핏빛 코발트): 콤보 한 번에 대상 스킬 1번 × 터뜨리는 비율, 초당은 대상 스킬 빈도
+      else if (tr.type === "boundCast") { out.augCombo += hit * (targetable ? weave : 0); out.augDps += hit * out.boundCastRate; }
       else out.augCombo += hit;
     }
     // 흡수: 스킬로 준 피해(방어 적용 후)의 일부를 회복, 죽음의 순환: 회복량의 일부를 마법 피해로

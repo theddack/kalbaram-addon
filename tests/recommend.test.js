@@ -69,9 +69,12 @@ test("추천 4: 균형 빌드의 칸 제한은 코어 밖 '반대 유형' 아이
   const v = builds("Viktor", ["궁극의 히드라"]);
   const core = v.legend("base");
   assert.ok(v.legend("balanced").filter((n) => !core.includes(n) && ad(n)).length <= S.offSlots(champ("Viktor")), `${v.legend("balanced")}`);
-  // 오공 + 원 히트 원더(가속 → 피해): 같은 유형(AD) 가속 아이템은 칸 수에 안 세서 균형도 증강을 몰빵만큼 살린다
-  const m = builds("MonkeyKing", ["핏빛 코발트", "원 히트 원더", "되풀이"]);
-  assert.ok(m.u.balanced >= m.u.augment * 0.9, `균형 ${m.u.balanced} vs 몰빵 ${m.u.augment}`);
+  // 같은 유형(AD 챔피언의 AD 아이템)은 코어 밖이어도 칸 수에 안 센다: 다리우스 + 공격 증강 3개면 코어 밖 AD 템이 2칸을 넘을 수 있다.
+  // (2026-11-12 바꿈: 예전 예시 '오공 + 원 히트 원더'는 원 히트 원더가 모든 피해를 키우던 계산 오류에 기대고 있었다)
+  const dar = builds("Darius", ["붐 앤 베이스", "왕관의 무게", "이빨 요정"]);
+  const darCore = dar.legend("base");
+  const sameType = dar.legend("balanced").filter((n) => !darCore.includes(n) && ad(n));
+  assert.ok(sameType.length > S.offSlots(champ("Darius")), `${dar.legend("balanced")} / 코어 ${darCore}`);
 });
 
 test("추천 5: 혼합형(원딜 + 메이지 또는 피해 유형 혼합)은 반대 유형 칸을 하나 더", () => {
