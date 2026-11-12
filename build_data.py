@@ -770,6 +770,43 @@ def resolve_rule_stats(rules, aug_spells):
     return warn
 
 
+FIGHT_SEC = 6  # 한타에서 평타를 이어 치는 시간 (web/stats.js AUTO_FIGHT_SEC 와 같은 가정)
+AS_VALUE = re.compile(r"\s*(?:([\d.]+)~([\d.]+)\(레벨 비례\)|([\d.]+(?:/[\d.]+)*))\s*%")
+
+
+def fight_buffs(c, rc, warn):
+    """rules.json champions.fightBuffs: 자기 공격 속도를 올리는 스킬 (트리스타나 Q·미스 포츈 W 등).
+    수치는 스킬 설명(게임 데이터로 채운 값)에서 최대 랭크·18레벨 값을 읽고, 가동률 = 지속 시간 ÷ 한타 FIGHT_SEC 초 (최대 1),
+    기본 지속 효과는 1. 한타 기준 능력치(fightStats)에 더해 추천 점수에만 쓴다 (2026-11-12 통합 점검 D1: 약 30명이 계산에 없었다)"""
+    out = []
+    fs = dict(c.get("fightStats") or {})
+    for spec in rc["fightBuffs"]:
+        sp = next((x for x in c["spells"] if x["slot"] == spec["slot"]), None)
+        text = re.sub(r"<[^>]+>", "", (sp or {}).get("tooltip", ""))
+        anchor = spec.get("anchor", "공격 속도가")
+        if spec.get("before"):  # 'N%의 공격 속도를 얻습니다' 처럼 수치가 앞에 오는 문장
+            m = re.search(AS_VALUE.pattern + re.escape(spec["before"]), text)
+        else:
+            k = text.find(anchor)
+            m = AS_VALUE.match(text, k + len(anchor)) if k >= 0 else None
+        if not m:
+            warn.append(f"{c['id']}.fightBuffs {spec['slot']}: 설명에서 '{anchor} N%' 를 못 찾음")
+            print("  [규칙] 경고:", warn[-1])  # 패치로 설명 문장이 바뀌면 빌드에서 바로 보이게
+            continue
+        val = float(m.group(2)) if m.group(2) else float(m.group(3).split("/")[-1])
+        val = val if spec.get("unit") == "fraction" else val / 100
+        up = spec.get("uptime", 1 if spec.get("passive") else min(1, spec["dur"] / FIGHT_SEC))
+        fs["AS"] = round(fs.get("AS", 0) + val * up, 4)
+        when = "기본 지속 효과" if spec.get("passive") else f"{spec['dur']:g}초"
+        out.append({"t": "game", "text": f"{spec['slot']} 공격 속도 {val * 100:g}% ({when}) × 한타 가동률 {up:.2f} — 스킬 설명 수치"
+                    + (f" · {spec['why']}" if spec.get("why") else "")})
+    if out:
+        c["fightStats"] = fs
+        out.append({"t": "assume", "text": f"가동률 = 지속 시간 ÷ 한타 {FIGHT_SEC}초 (한타 시작에 쓴다고 봄)",
+                    "why": "구인수 중첩과 같은 한타 시간 가정이에요. 실게임 검증 필요", "noData": True})
+    return out
+
+
 def rule_effects(rules, aug_spells, out_augs, warn):
     """rules.json effects: 설명에서 자동으로 못 뽑은 피해 효과를 게임 계산식 이름으로 붙인다 (패치 수치를 따라감)"""
     by_id = {a["id"]: a for a in out_augs}
@@ -1610,11 +1647,14 @@ def main():
             c["asFixed"] = rc["asFixed"]
         if rc and rc.get("fight"):  # 한타 기준 능력치·스킬 효과 (게임 계산식에 없는 설명 수치): 추천 점수에만
             c["fightStats"] = rc["fight"]
+        buff_basis = fight_buffs(c, rc, stack_warn) if rc and rc.get("fightBuffs") else []
         if rc and rc.get("rangeAt18"):  # 레벨이 오르면 원거리가 되는 챔피언 (케일 6레벨 525 · 16레벨 625)
             c["range"] = rc["rangeAt18"]
             c["melee"] = False
         if rc and (rc.get("fight") or rc.get("rangeAt18")):
             c["fightBasis"] = rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
+        if buff_basis:
+            c["fightBasis"] = (c.get("fightBasis") or []) + buff_basis
         if rc and rc.get("aramOff") and c.get("aram"):  # 실게임 능력치 대조로 증강 모드에 없다고 확인한 일반 칼바람 보정
             c["aramOff"] = {k: c["aram"].pop(k) for k in rc["aramOff"]["keys"] if k in c["aram"]}
             c["aramOffWhy"] = rc["aramOff"]["why"]

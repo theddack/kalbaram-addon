@@ -2766,6 +2766,34 @@
   },
   "_챔피언": "champions: 중첩형 패시브·스킬. stats=게임 중반 평균 중첩일 때 능력치(중첩당 값은 설명 수치), stacks=스킬 피해의 '중첩당' 계산에 넣을 평균 중첩 수. basis 에 평균 중첩을 정한 이유. fight=한타 기준 능력치·스킬 효과(_effects, 게임 계산식에 없는 설명 수치)로 추천 점수에만 넣는다 (지금 능력치 비교 제외). rangeAt18=18레벨 사거리(레벨이 오르면 원거리가 되는 챔피언)",
   "champions": {
+    "Tristana": {"fightBuffs": [{"slot": "Q", "dur": 7}]},
+    "Twitch": {"fightBuffs": [{"slot": "Q", "dur": 6, "why": "위장이 끝난 뒤 6초"}]},
+    "MissFortune": {"fightBuffs": [{"slot": "W", "dur": 4, "why": "사용 시 4초 (기본 지속 효과 이동 속도는 안 셈)"}]},
+    "Draven": {"fightBuffs": [{"slot": "W", "dur": 3, "uptime": 1, "why": "3초지만 회전 도끼를 잡으면 재사용 대기시간이 초기화돼 한타 동안 다시 써요 (설명)"}]},
+    "Xayah": {"fightBuffs": [{"slot": "W", "dur": 4}]},
+    "Sivir": {"fightBuffs": [{"slot": "W", "dur": 4, "before": "의 공격 속도"}]},
+    "Ashe": {"fightBuffs": [{"slot": "Q", "dur": 6, "why": "집중 4중첩 뒤 사용 (평타 4번으로 한타 초반에 쌓임)"}]},
+    "Samira": {"fightBuffs": [{"slot": "E", "dur": 5, "before": "의 공격 속도"}]},
+    "Nilah": {"fightBuffs": [{"slot": "Q", "dur": 4, "before": "의 공격 속도", "why": "적중하면 4초, 레벨 비례 10~60% (18레벨 60%)"}]},
+    "Yunara": {"fightBuffs": [{"slot": "Q", "dur": 5, "anchor": "공격 속도를"}]},
+    "Zeri": {"fightBuffs": [{"slot": "R", "dur": 5, "anchor": "공격 속도", "why": "궁극기가 적 챔피언에게 적중하면 5초"}]},
+    "TwistedFate": {"fightBuffs": [{"slot": "E", "passive": true}]},
+    "Nidalee": {"fightBuffs": [{"slot": "E", "dur": 7, "anchor": "공격 속도를", "why": "인간 형태 E 사용 시 7초"}]},
+    "Gnar": {"fightBuffs": [{"slot": "E", "dur": 6, "why": "미니 나르 E 6초 (메가 나르는 없음)"}]},
+    "Nocturne": {"fightBuffs": [{"slot": "W", "passive": true}]},
+    "MasterYi": {"fightBuffs": [{"slot": "R", "dur": 7, "anchor": "공격 속도"}]},
+    "Vi": {"fightBuffs": [{"slot": "W", "dur": 4, "why": "같은 대상 3타마다 4초 (기본 지속 효과지만 조건부라 지속 시간으로 셈)"}]},
+    "Briar": {"fightBuffs": [{"slot": "W", "dur": 5, "anchor": "핏빛 광분 상태에서 공격 속도가", "why": "핏빛 광분 5초 (도발 5초와 같음)"}]},
+    "Blitzcrank": {"fightBuffs": [{"slot": "W", "dur": 5}]},
+    "Olaf": {"fightBuffs": [{"slot": "W", "dur": 5}]},
+    "Udyr": {"fightBuffs": [{"slot": "Q", "dur": 4}]},
+    "JarvanIV": {"fightBuffs": [{"slot": "E", "passive": true}]},
+    "Camille": {"fightBuffs": [{"slot": "E", "dur": 5, "why": "벽 돌진이 적중하면 5초"}]},
+    "KSante": {"fightBuffs": [{"slot": "R", "dur": 15, "why": "총공세 15초 (체력·방어 감소는 따로 안 셈)"}]},
+    "Kled": {"fightBuffs": [{"slot": "W", "dur": 4, "why": "네 번의 기본 공격 또는 4초"}]},
+    "Qiyana": {"fightBuffs": [{"slot": "W", "passive": true, "why": "원소가 부여된 동안 (거의 늘)"}]},
+    "Trundle": {"fightBuffs": [{"slot": "W", "dur": 8, "why": "얼린 지역 안 8초"}]},
+    "Gwen": {"fightBuffs": [{"slot": "E", "dur": 4, "anchor": "강화된 기본 공격은 공격 속도가"}]},
     "Syndra": {
       "aramOff": {
         "keys": [
@@ -2870,6 +2898,7 @@
       }
     },
     "Kindred": {
+      "fightBuffs": [{"slot": "Q", "dur": 4, "why": "기본 35% (늑대의 표식 중첩당 5%는 안 셈)"}],
       "stats": {
         "AS": 0.1
       },
@@ -3054,6 +3083,7 @@
       }
     },
     "KogMaw": {
+      "fightBuffs": [{"slot": "Q", "passive": true}],
       "fight": {
         "_effects": [
           {
@@ -3091,6 +3121,7 @@
       }
     },
     "Kaisa": {
+      "fightBuffs": [{"slot": "E", "dur": 4, "anchor": "4초 동안 공격 속도가", "unit": "fraction", "why": "설명이 0.4~0.8% 로 표기되지만 비율 값이라 40~80% (위키)"}],
       "fight": {
         "_effects": [
           {

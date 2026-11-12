@@ -1020,3 +1020,18 @@ test("도취: 기본 공격 적중 시 최대 마나 7% 마법 피해, 원거리
   assert.ok(Math.abs(e.ratios.MANA[0] - 0.07) < 1e-6, JSON.stringify(e));
   assert.ok(Math.abs(e.rangedScale - 0.8) < 1e-3, `${e.rangedScale}`);
 });
+
+// 자기 공격 속도 스킬 (2026-11-12 통합 점검 D1): 트리스타나 Q 같은 스킬 공격 속도가 계산에 없었다.
+// 값은 스킬 설명(게임 데이터 수치)에서 읽고, 가동률 = 지속 시간 ÷ 한타 6초(최대 1), 기본 지속 효과는 1
+test("자기 공격 속도 스킬: 트리스타나 Q 120% (7초 → 한타 내내), 미스 포츈 W 100% × 4/6, 카이사 E 80% × 4/6", () => {
+  const as = (id) => ((champ(id).fightStats || {}).AS || 0);
+  const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 0.01, `${msg}: ${a}`);
+  near(as("Tristana"), 1.2, "트리스타나");
+  near(as("MissFortune"), 1.0 * 4 / 6, "미스 포츈");
+  near(as("Kaisa"), 0.8 * 4 / 6, "카이사 (설명이 0.8% 로 표기)");
+  near(as("KogMaw"), 0.25, "코그모 Q 기본 지속 효과");
+  near(as("Jinx"), 1.3, "징크스는 기존 규칙 그대로");
+  const t = St.computeStats(champ("Tristana"), 18, [], []).total.AS;
+  const tNow = St.computeStats(champ("Tristana"), 18, [], [], { now: true }).total.AS;
+  assert.ok(t > tNow * 1.5, `추천 점수에만: 한타 ${t} vs 지금 ${tNow}`);
+});
