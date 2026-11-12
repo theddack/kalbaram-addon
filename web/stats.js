@@ -3,6 +3,7 @@
 (function (root) {
   const AS_CAP = 2.5;  // 소환사의 협곡 공속 상한 (증강 모드는 champ.modeStats.asCap = 5.0)
   const BASE_CRIT_DMG = 1.75;
+  const AUTO_FIGHT_SEC = 6;  // 한타에서 평타를 이어 치는 시간 가정(초): 평타로 쌓는 중첩(구인수의 격노검)의 평균을 낼 때 (실게임 검증 필요)
   const CLEAVE_RANGED = 0.5;  // 원거리 쪼개기 = 근접의 절반 (공격력 20% / 40%)
   const DMG_KINDS = ["magic", "physical", "true"];
 
@@ -182,6 +183,23 @@
       for (let i = 0; i < 8; i++) t.critStacks = Math.min(max, t.CRIT * asOf(bonusAS + conv.critStackAS * t.critStacks) * sec);
       bonusAS += conv.critStackAS * t.critStacks;
     }
+    // 구인수의 격노검: 평타마다 공격 속도 rampAS 씩 rampMax 번 쌓이고, 다 쌓인 뒤로 세 번째 평타마다 적중 효과를 한 번 더 (onhitRepeat).
+    // 한타에서 평타를 이어 치는 시간(AUTO_FIGHT_SEC) 동안 친 평타 수 n 으로 평균을 낸다: 공속 중첩 = Σ min(i, 최대) / n,
+    // 반복 = (n − 최대) / n × onhitRepeat. 예전엔 늘 최대 중첩으로 봐서 공속이 낮은 챔피언·치명타 원딜까지 구인수를 골랐다 (2026-11-12 점검)
+    t.rampStacks = 0;
+    t.onhitRepeat = conv.rampAS ? 0 : conv.onhitRepeat || 0;
+    if (conv.rampAS) {
+      const max = conv.rampMax || 0;
+      let n = 1;
+      for (let i = 0; i < 8; i++) {
+        n = Math.max(1, Math.round(asOf(bonusAS + conv.rampAS * t.rampStacks) * AUTO_FIGHT_SEC));
+        let sum = 0;
+        for (let k = 0; k < n; k++) sum += Math.min(k, max);
+        t.rampStacks = sum / n;
+      }
+      bonusAS += conv.rampAS * t.rampStacks;
+      t.onhitRepeat = (Math.max(0, n - max) / n) * (conv.onhitRepeat || 0);
+    }
     t.AS = asOf(bonusAS);
     t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG + critDmgFromAS;
     // 진처럼 공격 속도가 고정인 챔피언 (champ.asFixed, rules.json champions.asFixed): 공격 속도는 레벨로만 오르고,
@@ -264,6 +282,8 @@
 
   function statFor(key, t) {
     if (key === "TGT_MAXHP") return TARGET.HP;
+    // 최대 체력 × 주문력 (코그모 W: 최대 체력의 4.5% + 주문력 1당 0.01%)
+    if (key === "TGT_MAXHP_AP") return TARGET.HP * (t.AP || 0);
     if (key === "TGT_CURHP") return TARGET.HP * TARGET.CUR;
     if (key === "TGT_MISSINGHP") return TARGET.HP * (1 - TARGET.CUR);
     // 잃은 체력 × 주문력 (카이사 플라즈마 폭발: 잃은 체력의 15% + 주문력 1당 0.06%)
@@ -561,8 +581,12 @@
       const hit = v * mit * dealt * (1 + flags.trueBonus) * (itemOrAug ? 1 + (cv.effectDmgMult || 0) : 1) * effCrit;
       row.hit = hit;
       if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / Math.max(tr.sec, e.cooldown || 0); }
-      else if (tr.type === "attacks") out.augDps += hit * rate(t.AS / tr.n);
-      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (cv.onhitRepeat || 0));
+      else if (tr.type === "attacks") {
+        // 적중 시 중첩으로 세는 효과(베인 은화살·카이사 플라즈마, trigger.onhitStacks)는 구인수의 두 번째 적중도 한 번 더 쌓는다
+        row.stackRepeat = tr.onhitStacks ? t.onhitRepeat || 0 : 0;
+        out.augDps += hit * rate(t.AS * (1 + row.stackRepeat) / tr.n);
+      }
+      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0));
       else if (tr.type === "cast") { out.augCombo += hit * comboTimes(casts); out.augDps += hit * rate(castRate); }
       else out.augCombo += hit;
     }
@@ -576,8 +600,8 @@
     out.combo += out.augCombo;
     const critMul = 1 + (t.critAuto ?? t.CRIT) * (t.CRITDMG - 1);
     // 한 발에 두 놈: 치명타 평타는 적중 효과를 한 번 더 (conv.onhitOnCrit 번) → 적중 효과에 (1 + 치명타 확률 × 횟수)
-    // 구인수의 격노검: 세 번째 평타마다 적중 효과를 한 번 더 (conv.onhitRepeat = 1/3)
-    const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0) + (cv.onhitRepeat || 0);
+    // 구인수의 격노검: 다 쌓인 뒤 세 번째 평타마다 적중 효과를 한 번 더 (t.onhitRepeat = 쌓는 동안까지 평균 낸 값)
+    const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0);
     out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS * onCrit;
     // ---- 버티는 힘: 체력 × 저항 + 무적·피해 감소(그동안 받을 피해) + 생명선 회복 + 아이템 피해 감소
     // 흡혈: 콤보 한 번(COMBO_WINDOW 초) 동안 준 피해로 회복한 만큼 더 버틴다. 생명력 흡수는 기본 공격 피해만, 모든 피해 흡혈은 스킬·효과 피해까지.

@@ -921,7 +921,7 @@ test("점검 9-4: 혼합형(케일·카이사)은 증강용 아이템을 3칸까
 // ---- 적중 시 빌드 (케일·카이사): 평타마다 붙는 추가 피해와 패시브 폭발 (docs/균형빌드_조사.md 케일 추가 조사)
 test("점검 10-1: 구인수의 격노검은 최대 중첩 시 세 번째 평타마다 적중 효과를 두 번 (적중 시 피해 × 4/3)", () => {
   const g = item("구인수의 격노검");
-  assert.ok(g.passiveStats && Math.abs(g.passiveStats.onhitRepeat - 1 / 3) < 1e-3, JSON.stringify(g.passiveStats));
+  assert.ok(g.passiveStats && Math.abs(g.passiveStats.onhitRepeat - 1 / 3) < 1e-3 && g.passiveStats.rampMax === 4, JSON.stringify(g.passiveStats));
   const c = champ("Kaisa");
   const dps = (list) => St.evaluate(c, 18, list.map(item), [], { aram: true }).m.dps;
   // 몰락한 왕의 검(현재 체력 비례 적중 시)이 있으면 구인수가 더 크게 오른다
@@ -948,4 +948,32 @@ test("점검 10-3: 케일 기본 빌드는 적중 시 (구인수의 격노검 + 
 test("점검 10-4: 카이사가 주문력 증강을 고르면 균형 빌드에 AP 템이 섞인다", () => {
   const ap = (n) => { const t = item(n).tags || {}; return (t.AP || 0) >= 0.5; };
   assert.ok(legendOnly("Kaisa", [byName("사악한 정신").id]).filter(ap).length >= 1);
+});
+
+test("점검 10-5: 구인수 중첩은 한타 동안 평타로 쌓으니 늘 최대가 아니고, 공속이 높을수록 오래 켜진다", () => {
+  const g = item("구인수의 격노검");
+  const at = (cid, extra) => St.evaluate(champ(cid), 18, [g, ...extra.map(item)], [], { aram: true }).stats.total;
+  const slow = at("Jayce", []), fast = at("Kaisa", ["광전사의 군화", "스태틱의 단검"]);
+  // 최대(공속 32%·적중 효과 1/3)보다 작다
+  assert.ok(slow.rampStacks < 4 && slow.onhitRepeat < 1 / 3, `${slow.rampStacks} ${slow.onhitRepeat}`);
+  // 공속이 높으면 더 오래 켜진다
+  assert.ok(fast.rampStacks > slow.rampStacks && fast.onhitRepeat > slow.onhitRepeat, `${fast.onhitRepeat} vs ${slow.onhitRepeat}`);
+});
+
+test("점검 10-6: 구인수의 두 번째 적중은 적중 시 중첩(베인 은화살·카이사 플라즈마)도 한 번 더 쌓는다", () => {
+  const g = item("구인수의 격노검");
+  for (const [cid, src] of [["Vayne", "W 은화살"], ["Kaisa", "패시브 플라즈마 폭발"]]) {
+    const r = St.evaluate(champ(cid), 18, [g], [], { aram: true });
+    const row = r.m.effects.find((e) => e.src === src);
+    assert.ok(row && row.stackRepeat > 0, `${cid} ${JSON.stringify(row)}`);
+  }
+});
+
+test("점검 10-7: 코그모 W(생체마법 폭격) 적중 시 최대 체력 비례 피해를 계산에 넣는다", () => {
+  const c = champ("KogMaw");
+  const r = St.evaluate(c, 18, [], [], { aram: true });
+  assert.ok(r.m.effects.some((e) => e.src === "W 생체마법 폭격"), JSON.stringify(r.m.effects.map((e) => e.src)));
+  // 기본 빌드는 묻지 않는다: 아수라장 통계는 적중 시(구인수 56.5%)인데, 라이엇 공식 칼바람 추천이 AP(루덴·리안드리)라 공식 추천을 따른다
+  const dps = (list) => St.evaluate(c, 18, list.map(item), [], { aram: true }).m.dps;
+  assert.ok(dps(["구인수의 격노검"]) > dps([]));
 });
