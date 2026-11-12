@@ -3197,3 +3197,21 @@ class LogJudge(unittest.TestCase):
         self.assertEqual(r["고른 증강 인식 (경기 결과 대조)"]["result"], "재현 확인")
         self.assertIn("마법 명사수", r["고른 증강 인식 (경기 결과 대조)"]["why"])
 
+
+
+class ReleaseCheck(unittest.TestCase):
+    """태그 전 버전 확인 (tools/release_check.py, 2026-11-12 릴리스 PR 통합)"""
+    def test_version_problems(self):
+        sys.path.insert(0, str(ROOT / "tools"))
+        import release_check as rc
+        desk = 'APP_VERSION = "0.1.90"  # 태그와 같아야'
+        md = "# 업데이트 내역\n\n## v0.1.90 — 새 것\n\n## v0.1.89 — 예전\n"
+        self.assertEqual(rc.version_problems("v0.1.90", desk, md, "<h2>v0.1.90</h2>"), [])
+        self.assertEqual(len(rc.version_problems("v0.1.91", desk, md, "<h2>v0.1.90</h2>")), 3)
+        self.assertTrue(rc.version_problems("v0.1.90", desk, md, "<h2>v0.1.89</h2>"), "changelog.html 안 만듦")
+        self.assertTrue(rc.version_problems("0.1.90", desk, md, ""), "태그 형식")
+        # 지금 저장소의 세 곳은 서로 같아야 한다 (태그는 마지막 릴리스)
+        cur = "v" + rc.app_version((ROOT / "desktop.py").read_text(encoding="utf-8"))
+        self.assertEqual(rc.version_problems(cur, (ROOT / "desktop.py").read_text(encoding="utf-8"),
+                                             (ROOT / "업데이트내역.md").read_text(encoding="utf-8"),
+                                             (ROOT / "web" / "changelog.html").read_text(encoding="utf-8")), [])
