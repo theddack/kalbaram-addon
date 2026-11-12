@@ -1665,8 +1665,17 @@ function renderBuild() {
     state.concept = el.dataset.k;
     renderBuild();
   }));
+  // 균형과 증강 몰빵이 같은 빌드면 이유를 짧게 (계산은 그대로: 증강을 살리는 아이템이 몇 개뿐이면 두 목적의 답이 같다, 2026-11-12 증강 중심 재검토)
+  let sameNote = "";
+  if (state.chosen.length && (cur.key === "balanced" || cur.key === "augment")) {
+    const otherKey = cur.key === "balanced" ? "augment" : "balanced";
+    const other = builds.find((b) => b.key === otherKey)
+      || S.buildConcepts(state.data.items, state.weights, state.chosen, state.items, state.data.rules, state.champ, statOpts(), [otherKey])[0];
+    const ids = (b) => b.pick.map((p) => p.item.id).sort().join(",");
+    if (other && ids(other) === ids(cur)) sameNote = " · 이번 증강 조합은 균형과 증강 몰빵 빌드가 같아요. 증강을 살리는 아이템이 이미 다 들어 있어서 그래요.";
+  }
   $("#concept-desc").textContent = cur.twist ? twistNote(cur.twist)
-    : cur.desc + (state.chosen.length ? "" : " — 증강을 고르면 컨셉마다 빌드가 달라져요.");
+    : cur.desc + (state.chosen.length ? sameNote : " — 증강을 고르면 컨셉마다 빌드가 달라져요.");
   // 작게 보기용 한 줄 요약: 컨셉 3개의 빌드 아이콘
   $("#mini-build").innerHTML = !mini ? "" : `<h2>추천 빌드</h2>` + builds.map((b) => `<div class="mini-row"><b style="min-width:52px">${b.label}${b.twist && !b.twist.s ? "🧪" : ""}</b>
     ${b.pick.map((p) => `<img src="${icon("item", p.item.id)}" title="${esc(p.item.name)}" alt="">`).join("")}</div>`).join("");
