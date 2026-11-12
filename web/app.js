@@ -1042,6 +1042,10 @@ function augReason(a, t, sc, g) {
     const madeMelee = state.chosen.some((x) => ((state.data.rules.augments[x.id] || {}).setsFeatures || {}).add?.includes("melee"));
     if (f === "ranged") return `원거리 챔피언만 효과가 있어요. ${madeMelee ? "고른 증강 때문에 근접이 됐어요." : `${josa(state.champ.name, "은", "는")} 근접 챔피언이에요.`}`;
     if (f === "melee") return "근접 챔피언만 효과가 있어요.";
+    if (f === "offTypeQuest") {
+      const need = ((state.data.rules.augments[a.id] || {}).items || []).join("·");
+      return `퀘스트 아이템(${need})이 ${state.champ.name}에게 맞지 않는 유형이라 완료해도 쓸모가 적어요.`;
+    }
     if (f === "eligible") return `${josa(state.champ.name, "은", "는")} 이 증강이 적용되는 스킬이 없어요 (위키 목록 기준).`;
     return `${state.champ.name}에게는 ${josa(feat[f] || f, "이", "가")} 없어서 발동하지 않아요.`;
   }
@@ -1135,7 +1139,7 @@ function renderOfferResult() {
   }
   const d = state.data, o = statOpts();
   const nowBal = S.buildConcepts(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o, ["balanced"])[0];
-  const ranked = S.rankAugments(d.augments, state.weights, state.chosen, state.items, state.champ, d.rules);
+  const ranked = S.rankAugments(d.augments, state.weights, state.chosen, state.items, state.champ, d.rules, d.items);
   const { gains } = S.numericAugmentGains(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o);
   // 적 대응 증강: 이번 판 적(산 아이템) 기준으로 강해지는 정도가 기본 상대 기준보다 확 큰 것 (고정 피해·체력 비례 피해 등)
   const counterAug = new Set();
@@ -1489,7 +1493,7 @@ function renderAugs() {
     return;
   }
   const featLabel = state.data.rules.features;
-  let ranked = S.rankAugments(state.data.augments, state.weights, state.chosen, state.items, state.champ, state.data.rules);
+  let ranked = S.rankAugments(state.data.augments, state.weights, state.chosen, state.items, state.champ, state.data.rules, state.data.items);
   const { gains } = S.numericAugmentGains(state.data.augments, state.data.items, state.weights, state.chosen, state.items, state.data.rules, state.champ, statOpts());
   const tiers = getTiers();
   ranked.sort((x, y) => (TIER_ORDER[(tiers[x.aug.id] || {}).tier] ?? 9) - (TIER_ORDER[(tiers[y.aug.id] || {}).tier] ?? 9)
@@ -1518,7 +1522,7 @@ function renderAugs() {
         ${patchChip(r.aug.patch, r.aug.patchCheck)}${refLinks(r.aug.refs)}
         <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${categoryChip(r)}${r.parts.map((p) =>
           `<span class="chip ${p.synergy ? "syn" : ""}">${label(p.tag)} +${p.value.toFixed(2)}${p.synergy ? " 시너지" : ""}</span>`).join("")}${r.req
-          ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || r.req.feature)} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}</div>
+          ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || (r.req.feature === "offTypeQuest" ? "맞는 퀘스트 아이템" : r.req.feature))} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}</div>
         ${r.note ? `<div class="note">${esc(r.note)}</div>` : ""}
         <div class="desc">${r.aug.desc}</div>
       </div>

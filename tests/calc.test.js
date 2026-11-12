@@ -869,3 +869,51 @@ test("점검 8: 흐르는 물의 지팡이 버프는 피해가 아니라 주문�
   assert.ok(ap("Janna") - St.evaluate(champ("Janna"), 18, [], [], { aram: true }).stats.total.AP >= 75, "잔나: 기본 35 + 버프 40");
   assert.ok(ap("Veigar") - St.evaluate(champ("Veigar"), 18, [], [], { aram: true }).stats.total.AP < 75, "베이가: 버프 없음");
 });
+
+// ---- 9번: 균형 빌드는 챔피언 본래 코어를 지키고 증강용 아이템은 1~2칸까지만 (docs/균형빌드_조사.md)
+const legendOnly = (cid, augIds, key = "balanced") => {
+  const c = champ(cid);
+  return S.buildConcepts(d.items, S.profile(c, d.tags), augIds.map(aug), [], d.rules, c, {}, [key])[0].pick
+    .filter((p) => p.item.kind === "legendary").map((p) => p.item.name);
+};
+const kept = (a, b) => a.filter((x) => b.includes(x)).length;
+
+test("점검 9-1: 균형 빌드는 증강을 골라도 기본 전설 템 5개 중 3개 이상을 지킨다", () => {
+  const augs = ["작은 도움", "검무", "마도사의 주스 상자"].map((n) => byName(n).id);
+  const base = legendOnly("Garen", []);
+  assert.ok(kept(legendOnly("Garen", augs), base) >= 3, `${legendOnly("Garen", augs)} / ${base}`);
+});
+
+test("점검 9-2: 챔피언이 원래 쌓는 능력치로 강해지는 증강(강타자 = 체력)이면 탱커 빌드를 그대로", () => {
+  // 말파이트는 라이엇 칼바람 공식 추천이 AP 라 탱커 예시로 쓰지 않는다
+  const tank = (n) => { const t = item(n).tags || {}; return ["HP", "ARMOR", "MR"].some((k) => (t[k] || 0) >= 0.5); };
+  for (const cid of ["Sion", "Sejuani", "Zac", "Braum"]) {
+    const b = legendOnly(cid, ["ARAM_HeavyHitter"]);
+    assert.ok(kept(b, legendOnly(cid, [])) >= 3, cid);
+    assert.ok(b.every(tank), `${cid}: ${b}`);
+  }
+});
+
+test("점검 9-3: 맞지 않는 유형의 아이템을 모두 요구하는 퀘스트(메이지 + 궁극의 히드라)는 카드 등급을 낮춘다", () => {
+  const vik = champ("Viktor");
+  const r = S.rankAugments([aug("Quest_UltraHydra")], S.profile(vik, d.tags), [], [], vik, d.rules, d.items)[0];
+  assert.equal(r.req && r.req.met, false);
+  const t = S.augmentTiers(d.augments, d.items, S.profile(vik, d.tags), [], [], d.rules, vik, {}, "total");
+  assert.equal(t.Quest_UltraHydra.tier, "D");
+  // 균형 빌드도 히드라로 맞추지 않는다 (몰빵은 퀘스트를 따른다)
+  const hyd = ["굶주린 히드라", "불경한 히드라", "거대한 히드라"];
+  assert.ok(legendOnly("Vladimir", ["Quest_UltraHydra"]).filter((n) => hyd.includes(n)).length <= 1);
+  assert.equal(legendOnly("Vladimir", ["Quest_UltraHydra"], "augment").filter((n) => hyd.includes(n)).length, 3);
+  assert.equal(legendOnly("Darius", ["Quest_UltraHydra"]).filter((n) => hyd.includes(n)).length, 3);
+  // AD 브루저는 그대로
+  const dar = champ("Darius");
+  const rd = S.rankAugments([aug("Quest_UltraHydra")], S.profile(dar, d.tags), [], [], dar, d.rules, d.items)[0];
+  assert.ok(!rd.req || rd.req.met);
+});
+
+test("점검 9-4: 혼합형(케일·카이사)은 증강용 아이템을 3칸까지 허용", () => {
+  assert.equal(S.offSlots(champ("Kayle")), 3);
+  assert.equal(S.offSlots(champ("Kaisa")), 3);
+  assert.equal(S.offSlots(champ("Garen")), 2);
+  assert.equal(S.offSlots(champ("Viktor")), 2);
+});
