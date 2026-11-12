@@ -280,6 +280,28 @@ class Calc:
             total = mul(total, m)
         return total, bool(c.get("mDisplayAsPercent"))
 
+    def ranged_mult(self, name, rank=1, depth=0):
+        """계산식의 원거리 챔피언 배율 (mRangedMultiplier). 없으면 None.
+        배율을 가진 계산식을 바꿔 쓴(GameCalculationModified) 식, 다른 계산식만 더한 식은 그 배율을 물려받는다.
+        (2026-11-12 통합 점검 N1: 붐 앤 베이스 원거리 25~100 을 근접 값 50~200 으로 셌다)"""
+        c = self.calcs.get(hashed_key(self.calcs, name))
+        if c is None or depth > 10:
+            return None
+        if c.get("mRangedMultiplier"):
+            m = self.part(c["mRangedMultiplier"], rank, depth + 1)
+            return m.base if isinstance(m, Expr) and not m.ratios and not m.lvl else None
+        t = c.get("__type")
+        if t == "GameCalculationModified":
+            return self.ranged_mult(c.get("mModifiedGameCalculation", ""), rank, depth + 1)
+        if t == "GameCalculationConditional":
+            return self.ranged_mult(c.get("mDefaultGameCalculation", ""), rank, depth + 1)
+        parts = c.get("mFormulaParts", []) or []
+        refs = [p["mSpellCalculationKey"] for p in parts if isinstance(p, dict) and "mSpellCalculationKey" in p]
+        if not parts or len(refs) != len(parts):  # 자기 몫이 섞인 식은 어느 부분에 배율이 걸리는지 하나로 못 줄인다
+            return None
+        ms = {self.ranged_mult(r, rank, depth + 1) for r in refs}
+        return ms.pop() if len(ms) == 1 else None
+
     def resolve(self, name, rank=1):
         """이름을 값(DataValue)·계산식·구버전 효과값(e1, e2 …)으로 평가. (Expr | None, pct)"""
         v = self.value(name, rank)

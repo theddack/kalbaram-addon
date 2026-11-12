@@ -435,7 +435,20 @@ def item_passive(item_bin, strings):
         if e["name"].lower() in cd_names:
             e["cooldown"] = vals["Cooldown"]  # 발동 횟수 상한
         fix_attack_count(e, spell, vals)
+    apply_ranged_scale(effects, spell)
     return effects, html, mode_used
+
+
+def apply_ranged_scale(effects, spell):
+    """게임 계산식의 원거리 챔피언 배율(mRangedMultiplier)을 효과의 rangedScale 로 (이미 정한 값은 그대로).
+    2026-11-12 통합 점검 N1: 아이템 근접/원거리 문구만 읽어, 붐 앤 베이스·거대한 히드라 적중 피해 등을 원거리도 근접 값으로 셌다"""
+    calc = Calc(spell)
+    for e in effects:
+        if e.get("rangedScale") is not None:
+            continue
+        rm = calc.ranged_mult(e.get("name", ""), 1)
+        if rm is not None and abs(rm - 1) > 1e-9:
+            e["rangedScale"] = round(rm, 4)
 
 
 def fix_attack_count(e, spell, vals):
@@ -743,6 +756,16 @@ def resolve_rule_stats(rules, aug_spells):
                     else:
                         sub[slot] = val
                 out[key] = sub
+        # 원거리 챔피언은 값이 다른 능력치: {능력치 키: 원거리 배율이 붙은 계산식 이름} → {키: 배율} (유리 대포 고정 피해 25% · 원거리 ×0.6)
+        rs = {}
+        for key, name in (r.get("rangedStats") or {}).items():
+            rm = calc.ranged_mult(name, 1)
+            if rm is None:
+                warn.append(f"{aid}.rangedStats.{key}: 계산식 '{name}' 에 원거리 배율 없음")
+            elif key in out:
+                rs[key] = round(rm, 4)
+        if rs:
+            out["rangedScale"] = rs
         r["statsResolved"] = out
     return warn
 
@@ -755,8 +778,8 @@ def rule_effects(rules, aug_spells, out_augs, warn):
             continue
         calc = Calc(aug_spells[aid])
         for spec in r["effects"]:
-            if spec.get("dvBase"):  # 계산식 안이 이름 없는 값이라 못 풀 때: 이름 있는 데이터 값으로 '기본 + 능력치 비례'를 만든다
-                b = calc.value(spec["dvBase"], 1)
+            if spec.get("dvBase") or spec.get("dvRatios"):  # 계산식 안이 이름 없는 값이라 못 풀 때: 이름 있는 데이터 값으로 '기본 + 능력치 비례'를 만든다
+                b = calc.value(spec["dvBase"], 1) if spec.get("dvBase") else 0  # 기본 없이 비례만 (도취: 최대 마나 7%)
                 rs = {k: calc.value(dv, 1) for k, dv in (spec.get("dvRatios") or {}).items()}
                 e = None if b is None or None in rs.values() else Expr(b, None, rs)
             else:
@@ -770,6 +793,8 @@ def rule_effects(rules, aug_spells, out_augs, warn):
             trig["from"] = spec.get("from", "rules.json")
             if spec.get("pctOf"):  # 계산식이 비율(최대 체력의 10% + 주문력 비례)이면 대상 능력치와 곱한다 (폭풍 쇄도 업그레이드)
                 e = Node("*", [e, Expr(0, None, {spec["pctOf"]: 1})])
+            if spec.get("times"):  # 평균 발동 비율·평균 중첩 (전부 다 무너뜨려: 앞선 중첩 평균 2, 5번째마다 폭발 = 1/5) — 이유는 basis
+                e = e.scale(spec["times"])
             fx = {"kind": spec["kind"], "name": spec["calc"], **expr_json([e]), "trigger": trig}
             if spec.get("needsAuto"):  # 스킬 사용 후 다음 기본 공격에 터지는 효과 (장갑 충격 등: 주문 검과 같은 발동)
                 fx["needsAuto"] = True
@@ -777,6 +802,8 @@ def rule_effects(rules, aug_spells, out_augs, warn):
                 fx["needsItem"] = spec["needsItem"]
             if spec.get("rangedScale") is not None:  # 원거리 챔피언은 값이 다른 효과 (해악의 숫자 3: 근접 6% · 원거리 3%, 위키)
                 fx["rangedScale"] = spec["rangedScale"]
+            else:
+                apply_ranged_scale([fx], aug_spells[aid])
             by_id[aid]["effects"].append(fx)
 
 
@@ -1403,6 +1430,7 @@ def main():
           html, plain, names = to_html(text)
           icon = (a.get("AugmentLargeIconPath") or "").replace(".tex", ".png").lower()
           effects = augment_effects(raw, spell, plain)
+          apply_ranged_scale(effects, spell)
           out_augs.append({
               "id": name,
               # 게임 데이터 아이콘이 공용 그림(genericabilityaugmenticon 등)이면 게임 증강 칸엔 다른 그림이 뜬다
