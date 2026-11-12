@@ -64,7 +64,11 @@ function check(d, champIds = REPS, augIds = null) {
       } else if (S.hasNumbers(a, d.rules)) {
         kind = "숫자";
         const mine = S.augContribution(picks, w, [], a, d.rules, c);
-        const usual = S.augContribution(baseItems, w, [], a, d.rules, c);
+        // 평소 빌드 중 이 증강을 고르면 살 수 없는 아이템은 빼고 비교한다 (검을 뽑아라로 근접이 되면 루난의 허리케인 같은 원거리 전용).
+        // 예전엔 못 사는 아이템까지 넣은 '평소'와 비교해 몰빵이 못 살린 것처럼 나왔다 (2026-11-13 루난 탄환 수정 때 확인)
+        const cc = S.withChosenFeatures(c, [a], d.rules);
+        const usable = baseItems.filter((i) => !(i.only === "ranged" && cc.melee) && !(i.only === "melee" && !cc.melee));
+        const usual = S.augContribution(usable, w, [], a, d.rules, c);
         ok = mine >= usual - 0.002;
         if (!ok) why = `몰빵 ${(mine * 100).toFixed(1)} < 평소 ${(usual * 100).toFixed(1)}`;
         if (!ok) gap = (usual - mine) / Math.max(Math.abs(usual), 1e-9);
