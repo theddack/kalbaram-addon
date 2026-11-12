@@ -25,14 +25,19 @@
 
 ## 커밋 메시지
 
-- 한국어 한 줄 제목 `fix: …` / `feat: …` / `perf: …` / `docs: …` / `release: v0.1.x 릴리스 노트·버전` + 빈 줄 + 근거(어느 판 로그에서 무엇이 보였는지).
+- 한국어 한 줄 제목 `fix: …` / `feat: …` / `perf: …` / `docs: …` / (버전만 올리는 커밋이 따로 필요할 때만 `release: v0.1.x 릴리스 노트·버전`) + 빈 줄 + 근거(어느 판 로그에서 무엇이 보였는지).
 
 ## 릴리스 순서 (허락받은 뒤)
 
-1. `desktop.py` 의 `APP_VERSION` 올리기 (태그와 같아야 빌드가 통과).
-2. `업데이트내역.md` 맨 위에 새 버전 항목 (쉬운 말로) → `python tools/changelog.py html` (web/changelog.html 생성).
-3. 커밋 `release: v0.1.x 릴리스 노트·버전` → `git tag v0.1.x` → main 과 태그 푸시.
-4. GitHub Actions `build` 가 윈도우·맥 zip 과 SHA256SUMS 를 릴리스에 올린다. `gh run watch` 로 끝까지 보고 `gh release view v0.1.x` 로 파일 확인.
+릴리스할 수정은 **PR 하나**에 코드·버전·업데이트 내역을 같이 넣는다 (2026-11-12부터, 수정 PR과 릴리스 PR을 따로 만들지 않음).
+일반 개발 PR(릴리스하지 않는 수정)은 버전을 올리지 않는다.
+
+1. 수정 브랜치에서 코드 변경과 함께 `desktop.py` 의 `APP_VERSION` 을 올린다 (태그와 같아야 빌드가 통과).
+2. 같은 브랜치에서 `업데이트내역.md` 맨 위에 새 버전 항목 (쉬운 말로) → `python tools/changelog.py html` (web/changelog.html 생성). 커밋 제목은 수정 내용 그대로 (`fix: …` 등), 본문에 버전을 적는다.
+3. PR 하나를 만들고 **CI(test) 통과를 확인한 뒤** 머지한다. 실패하면 머지·태그하지 않는다.
+4. `git checkout main && git pull` → `python tools/release_check.py v0.1.x` (버전 세 곳이 같고 지금 커밋이 최종 main 인지) → `git tag v0.1.x` → 태그만 푸시.
+5. GitHub Actions `build` 가 (테스트를 다시 돌린 뒤) 윈도우·맥 zip 과 SHA256SUMS 를 릴리스에 올린다. `gh run watch` 로 끝까지 보고 `gh release view v0.1.x` 로 파일 확인.
+6. (2026-11-12 요청) 다음 릴리스에서는 PR 생성부터 첨부 확인까지 실제 대기 시간과 테스트가 돈 횟수(PR·main build·pages·태그 build)를 재서 보고한다. 태그 빌드 테스트 생략·main OS 빌드 제거는 그 결과를 보고 사용자가 정한다.
 
 ## 테스트
 
