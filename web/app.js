@@ -513,7 +513,7 @@ function enemyThreats() {
 }
 const fmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("ko-KR", { minimumFractionDigits: d, maximumFractionDigits: d });
 const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "고정 피해", shield: "보호막", heal: "회복" };
-const TRIGGER_LABEL = { cast: "스킬마다", onhit: "기본 공격마다", attacks: "기본 공격 N회마다", time: "주기적", once: "1회" };
+const TRIGGER_LABEL = { cast: "스킬마다", boundCast: "지정 스킬 + 기본 공격", onhit: "기본 공격마다", attacks: "기본 공격 N회마다", time: "주기적", once: "1회" };
 // 처음 하는 사람도 알 수 있게 쉬운 말로 (정확한 용어는 마우스를 올리면 보임)
 const METRIC_LABEL = { combo: "스킬 한 바퀴 피해", dps: "초당 피해", ehp: "버티는 힘", support: "회복·보호막", mobility: "기동성", control: "제어력" };
 const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력", support: "회복·보호막", mobility: "평균 이동 속도", control: "콤보당 CC 시간(둔화 30%)" };
@@ -946,6 +946,7 @@ const TRIGGER_TIP = {
   onhit: "기본 공격을 자주 넣어야 터져요.",
   attacks: "기본 공격을 여러 번 이어 쳐야 터져요.",
   cast: "스킬을 쓸 때마다 터지니 쉬지 말고 돌리세요.",
+  boundCast: "카드에 나온 스킬로 맞힌 뒤 바로 기본 공격으로 표식을 터뜨리세요.",
   time: "가만히 있어도 주기적으로 터지니 싸움에 오래 붙어 있으세요.",
 };
 // 능력치(규칙 statsResolved) → 쓰는 법. 효과 종류 태그보다 먼저 본다 (태그는 '적 방어력 감소'도 방어력으로 적혀 있다)
@@ -1135,7 +1136,7 @@ function renderOfferResult() {
   }
   const d = state.data, o = statOpts();
   const nowBal = S.buildConcepts(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o, ["balanced"])[0];
-  const ranked = S.rankAugments(d.augments, state.weights, state.chosen, state.items, state.champ, d.rules);
+  const ranked = S.rankAugments(d.augments, state.weights, state.chosen, state.items, state.champ, d.rules, d.items);
   const { gains } = S.numericAugmentGains(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, o);
   // 적 대응 증강: 이번 판 적(산 아이템) 기준으로 강해지는 정도가 기본 상대 기준보다 확 큰 것 (고정 피해·체력 비례 피해 등)
   const counterAug = new Set();
@@ -1489,7 +1490,7 @@ function renderAugs() {
     return;
   }
   const featLabel = state.data.rules.features;
-  let ranked = S.rankAugments(state.data.augments, state.weights, state.chosen, state.items, state.champ, state.data.rules);
+  let ranked = S.rankAugments(state.data.augments, state.weights, state.chosen, state.items, state.champ, state.data.rules, state.data.items);
   const { gains } = S.numericAugmentGains(state.data.augments, state.data.items, state.weights, state.chosen, state.items, state.data.rules, state.champ, statOpts());
   const tiers = getTiers();
   ranked.sort((x, y) => (TIER_ORDER[(tiers[x.aug.id] || {}).tier] ?? 9) - (TIER_ORDER[(tiers[y.aug.id] || {}).tier] ?? 9)
@@ -1518,7 +1519,8 @@ function renderAugs() {
         ${patchChip(r.aug.patch, r.aug.patchCheck)}${refLinks(r.aug.refs)}
         <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${categoryChip(r)}${r.parts.map((p) =>
           `<span class="chip ${p.synergy ? "syn" : ""}">${label(p.tag)} +${p.value.toFixed(2)}${p.synergy ? " 시너지" : ""}</span>`).join("")}${r.req
-          ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || r.req.feature)} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}</div>
+          ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || r.req.feature)} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}${r.hint && r.hint.kind === "offTypeQuest" ? `<span class="chip">변칙 퀘스트</span>` : ""}</div>
+        ${r.hint && r.hint.kind === "offTypeQuest" ? `<div class="note">${esc(`퀘스트 아이템(${r.hint.items.join("·")})이 ${state.champ.name}의 평소 유형과 달라요. 색다르게 해 보고 싶다면 '증강 몰빵' 빌드가 퀘스트 아이템을 모두 넣어 완성을 도와줘요.`)}</div>` : ""}
         ${r.note ? `<div class="note">${esc(r.note)}</div>` : ""}
         <div class="desc">${r.aug.desc}</div>
       </div>
@@ -1625,7 +1627,7 @@ function basisBlock(list, open = false) {
   return `<details class="basis"${open ? " open" : ""}><summary>📐 근거 보기${hasAssume ? " · ⚠️ 가정 포함" : ""}</summary><ul>${rows}</ul></details>`;
 }
 // 게임 데이터에서 뽑은 효과(피해·보호막·회복)의 근거: 발동 빈도를 어떤 문구로 정했는지
-const TRIGGER_WHY = { cast: "스킬을 쓸 때마다", onhit: "기본 공격마다", attacks: "기본 공격 N번마다", time: "일정 시간마다", once: "한 번 (처치·조건부)" };
+const TRIGGER_WHY = { cast: "스킬을 쓸 때마다", boundCast: "지정 스킬로 표식을 남긴 뒤 기본 공격할 때", onhit: "기본 공격마다", attacks: "기본 공격 N번마다", time: "일정 시간마다", once: "한 번 (처치·조건부)" };
 function effectBasis(effects) {
   return (effects || []).map((e) => {
     const tr = e.trigger || { type: "once" };
@@ -1664,8 +1666,17 @@ function renderBuild() {
     state.concept = el.dataset.k;
     renderBuild();
   }));
+  // 균형과 증강 몰빵이 같은 빌드면 이유를 짧게 (계산은 그대로: 증강을 살리는 아이템이 몇 개뿐이면 두 목적의 답이 같다, 2026-11-12 증강 중심 재검토)
+  let sameNote = "";
+  if (state.chosen.length && (cur.key === "balanced" || cur.key === "augment")) {
+    const otherKey = cur.key === "balanced" ? "augment" : "balanced";
+    const other = builds.find((b) => b.key === otherKey)
+      || S.buildConcepts(state.data.items, state.weights, state.chosen, state.items, state.data.rules, state.champ, statOpts(), [otherKey])[0];
+    const ids = (b) => b.pick.map((p) => p.item.id).sort().join(",");
+    if (other && ids(other) === ids(cur)) sameNote = " · 이번 증강 조합은 균형과 증강 몰빵 빌드가 같아요. 증강을 살리는 아이템이 이미 다 들어 있어서 그래요.";
+  }
   $("#concept-desc").textContent = cur.twist ? twistNote(cur.twist)
-    : cur.desc + (state.chosen.length ? "" : " — 증강을 고르면 컨셉마다 빌드가 달라져요.");
+    : cur.desc + (state.chosen.length ? sameNote : " — 증강을 고르면 컨셉마다 빌드가 달라져요.");
   // 작게 보기용 한 줄 요약: 컨셉 3개의 빌드 아이콘
   $("#mini-build").innerHTML = !mini ? "" : `<h2>추천 빌드</h2>` + builds.map((b) => `<div class="mini-row"><b style="min-width:52px">${b.label}${b.twist && !b.twist.s ? "🧪" : ""}</b>
     ${b.pick.map((p) => `<img src="${icon("item", p.item.id)}" title="${esc(p.item.name)}" alt="">`).join("")}</div>`).join("");

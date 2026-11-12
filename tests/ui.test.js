@@ -1452,3 +1452,26 @@ test("능력치가 어긋나도 맞는 선택지가 없거나 둘 이상이면 �
   live(140, 120);
   assert.match(p.text("#chosen"), /죽음의 춤/);
 });
+
+test("빌드 탭: 균형과 증강 몰빵이 같은 빌드면 이유를 안내 (계산 결과는 그대로)", async () => {
+  const p = await loadPage();
+  p.pickChamp("Jinx");
+  const tab = (k) => { p.click(p.qa("#concept-tabs button").find((b) => b.dataset.k === k)); return p.text("#concept-desc"); };
+  // 증강 없음: 안내 없음
+  assert.doesNotMatch(tab("balanced"), /빌드가 같아요/);
+  // 사악한 정신(고정 능력치라 아이템으로 안 커짐): 두 빌드가 같다
+  p.click(p.augRow("ARAM_WitchfulThinking"));
+  assert.match(tab("balanced"), /균형과 증강 몰빵 빌드가 같아요/);
+  assert.match(tab("augment"), /균형과 증강 몰빵 빌드가 같아요/);
+  assert.doesNotMatch(tab("twist"), /빌드가 같아요/);
+  assert.deepEqual(p.errors, []);
+});
+
+test("빌드 탭: 균형과 증강 몰빵이 다르면 안내하지 않는다", async () => {
+  const p = await loadPage();
+  p.pickChamp("Jinx");
+  p.click(p.augRow("ARAM_Marksmage"));
+  p.click(p.qa("#concept-tabs button").find((b) => b.dataset.k === "balanced"));
+  assert.doesNotMatch(p.text("#concept-desc"), /빌드가 같아요/);
+  assert.deepEqual(p.errors, []);
+});

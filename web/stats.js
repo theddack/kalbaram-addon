@@ -3,6 +3,9 @@
 (function (root) {
   const AS_CAP = 2.5;  // 소환사의 협곡 공속 상한 (증강 모드는 champ.modeStats.asCap = 5.0)
   const BASE_CRIT_DMG = 1.75;
+  // 한타에서 평타를 이어 치는 시간 가정(초): 평타로 쌓는 중첩(구인수의 격노검)의 평균을 낼 때 (실게임 검증 필요).
+  // 사람이 정한 값이에요. 4·8초로 바꾸면 결과가 바뀌는 챔피언은 docs/균형빌드_조사.md (통계 채용률에 맞추려고 조정하지 않는다)
+  const AUTO_FIGHT_SEC = 6;
   const CLEAVE_RANGED = 0.5;  // 원거리 쪼개기 = 근접의 절반 (공격력 20% / 40%)
   const DMG_KINDS = ["magic", "physical", "true"];
 
@@ -182,6 +185,23 @@
       for (let i = 0; i < 8; i++) t.critStacks = Math.min(max, t.CRIT * asOf(bonusAS + conv.critStackAS * t.critStacks) * sec);
       bonusAS += conv.critStackAS * t.critStacks;
     }
+    // 구인수의 격노검: 평타마다 공격 속도 rampAS 씩 rampMax 번 쌓이고, 다 쌓인 뒤로 세 번째 평타마다 적중 효과를 한 번 더 (onhitRepeat).
+    // 한타에서 평타를 이어 치는 시간(AUTO_FIGHT_SEC) 동안 친 평타 수 n 으로 평균을 낸다: 공속 중첩 = Σ min(i, 최대) / n,
+    // 반복 = (n − 최대) / n × onhitRepeat. 예전엔 늘 최대 중첩으로 봐서 공속이 낮은 챔피언·치명타 원딜까지 구인수를 골랐다 (2026-11-12 점검)
+    t.rampStacks = 0;
+    t.onhitRepeat = conv.rampAS ? 0 : conv.onhitRepeat || 0;
+    if (conv.rampAS) {
+      const max = conv.rampMax || 0;
+      let n = 1;
+      for (let i = 0; i < 8; i++) {
+        n = Math.max(1, Math.round(asOf(bonusAS + conv.rampAS * t.rampStacks) * AUTO_FIGHT_SEC));
+        let sum = 0;
+        for (let k = 0; k < n; k++) sum += Math.min(k, max);
+        t.rampStacks = sum / n;
+      }
+      bonusAS += conv.rampAS * t.rampStacks;
+      t.onhitRepeat = (Math.max(0, n - max) / n) * (conv.onhitRepeat || 0);
+    }
     t.AS = asOf(bonusAS);
     t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG + critDmgFromAS;
     // 진처럼 공격 속도가 고정인 챔피언 (champ.asFixed, rules.json champions.asFixed): 공격 속도는 레벨로만 오르고,
@@ -221,14 +241,7 @@
       else if (k in flags) flags[k] += v;
       else conv[k] = (conv[k] || 0) + v;
     }
-    // 원 히트 원더(16.22): 스킬 가속 1당 피해량 0.75% (가속 100당 75%), 가속 효과는 궁극기·스킬별까지 더 이상 안 받는다.
-    // 늦게 더한 주문력의 가속 전환까지 다 끝난 뒤에 바꾼다
-    if (conv.HASTEtoDmg) {
-      flags.dmgDealtMult += t.HASTE * conv.HASTEtoDmg;
-      t.HASTE = 0;
-      flags.ultHaste = 0;
-      flags.slotHaste = {};
-    }
+    // 원 히트 원더(conv.HASTEtoDmg)·핏빛 코발트(conv.markCdRefund)는 스킬 하나에만 걸리는 스킬 증강이라 metrics 의 스킬 계산에서 처리한다
     return { total: t, base, flags, aram, effects, conv };
   }
 
@@ -264,8 +277,12 @@
 
   function statFor(key, t) {
     if (key === "TGT_MAXHP") return TARGET.HP;
+    // 최대 체력 × 주문력 (코그모 W: 최대 체력의 4.5% + 주문력 1당 0.01%)
+    if (key === "TGT_MAXHP_AP") return TARGET.HP * (t.AP || 0);
     if (key === "TGT_CURHP") return TARGET.HP * TARGET.CUR;
     if (key === "TGT_MISSINGHP") return TARGET.HP * (1 - TARGET.CUR);
+    // 잃은 체력 × 주문력 (카이사 플라즈마 폭발: 잃은 체력의 15% + 주문력 1당 0.06%)
+    if (key === "TGT_MISSINGHP_AP") return TARGET.HP * (1 - TARGET.CUR) * (t.AP || 0);
     if (key in t) return t[key];
     if (key.startsWith("base")) return t[key] ?? 0;
     return 0;
@@ -429,6 +446,7 @@
     { what: "평가 기준: 18레벨 · 아이템 6칸 완성", src: "assume", why: "증강·아이템을 같은 조건에서 비교하려고 풀템 시점으로 맞췄어요. 능력치 패널 레벨 슬라이더로 다른 레벨도 볼 수 있어요." },
     { what: "스킬 레벨: 궁극기 6·11·16, 나머지는 Q→W→E 순서로 고르게", src: "assume", why: "챔피언마다 선마가 다르지만 18레벨에는 결국 다 마스터라 차이가 작아요." },
     { what: "충전 공격(스태틱의 단검 등)은 기본 공격 8번에 1번", src: "assume", why: "충전 속도가 이동 거리에 따라 달라서 정확한 숫자가 없어요." },
+    { what: "평타로 쌓는 중첩(구인수의 격노검)은 한타 6초 동안 친 평타 수로 평균", src: "assume", why: "매 한타 중첩 0부터 쌓는다고 봐요. 공격 속도가 높을수록 빨리 쌓여 오래 켜져요. 4초·8초로 바꾸면 구인수를 고르는 챔피언 수가 바뀌어서 비교 결과를 문서에 남겼어요." },
     { what: "치명타 확률로 발동하는 효과는 치명타 확률만큼 기대값", src: "data", why: "설명의 '치명타 확률과 같은 확률'을 그대로 계산해요." },
     { what: "재사용 대기시간은 가속을 받아도 최소 0.5초로 셈", src: "assume", why: "징크스 Q처럼 전환형 스킬이 초당 피해를 부풀리지 않게 했어요." },
     { what: "'스킬 사용 시' 효과는 한 스킬당 최대 2초에 1번", src: "assume", why: "재사용 대기시간이 2초보다 짧은 스킬은 대부분 무기 바꾸기·충전형(징크스 Q 0.9초, 티모 R 0.25초)이라 그대로 세면 발동이 부풀어요. 카시오페아 E처럼 실제로 자주 쓰는 스킬은 조금 적게 셀 수 있어요." },
@@ -471,12 +489,43 @@
       + ((champ.features || []).includes("dash") ? (cv.dashHaste || 0) / 3 : 0)
       + (cv.ultTriggerHaste || 0) * ultUptime(cv.ultTriggerDur) + refund();
     out.haste = { basic: basicHaste, ult: ultHaste };
+    // 스킬 증강({{SpellName}}): 원본 설명이 '챔피언 스킬 하나'에만 건다. 어느 스킬인지는 게임 카드에만 나와서
+    // 배운 스킬(Q·W·E·R, 재사용 대기시간이 있는 것) 중 하나가 같은 확률로 대상이라고 보고 기대값을 낸다 (가정, 실게임 검증 필요).
+    // 궁극기도 대상이 될 수 있다: 같은 계열 증강 설명에 '궁극기가 대상이면' 규칙이 있다 (위키 Terrain'd·Chain Reaction)
+    //   원 히트 원더: 대상 스킬 피해 × (1 + 스킬 가속 × 0.75%), 대상 스킬은 가속을 받지 않는다
+    //   핏빛 코발트: 대상 스킬로 표식 → 다음 기본 공격이 터뜨리면 대상 스킬의 현재 대기시간을 전체의 65%만큼 줄인다.
+    //                터뜨리는 비율 = 스킬 뒤 평타를 섞는 비율(weaveOf, 주문 검과 같은 기준)
+    // 예전엔 원 히트 원더가 평타·아이템까지 모든 피해를 키우고 모든 스킬의 가속을 없앴고, 핏빛 코발트는 모든 기본 스킬에 가속 48 +
+    // 모든 스킬 사용마다 표식 피해를 셌다 (2026-11-12 점검)
+    const ohwK = cv.HASTEtoDmg || 0, cobalt = cv.markCdRefund || 0, weave = weaveOf(champ);
+    const targetable = champ.spells.filter((sp, i) => ranks[i] > 0 && !(flags.noUlt && sp.slot === "R")
+      && (sp.cooldown[Math.max(0, Math.min(ranks[i], sp.cooldown.length) - 1)] || 0) > 0).length;
+    const qT = targetable ? 1 / targetable : 0;
+    out.boundCastRate = 0;
     champ.spells.forEach((sp, i) => {
       const rank = ranks[i];
       const disabled = rank === 0 || (flags.noUlt && sp.slot === "R");
       const haste = (sp.slot === "R" ? ultHaste : basicHaste) + (flags.slotHaste[sp.slot] || 0);
       const cdBase = sp.cooldown[Math.max(0, Math.min(rank, sp.cooldown.length) - 1)] || 0;
-      const cd = cdBase * 100 / (100 + haste);
+      const cdNormal = cdBase * 100 / (100 + haste);
+      // 대상일 때·아닐 때 4가지 경우(원 히트 원더 대상 × 핏빛 코발트 대상, 서로 따로 정해짐)의 기대값
+      const q = !disabled && cdBase > 0 ? qT : 0;
+      const qO = ohwK ? q : 0, qC = cobalt ? q : 0;
+      const ohwMult = 1 + t.HASTE * ohwK;
+      const cobaltCd = 1 - cobalt * weave;
+      let eMult = 0, eRate = 0, eRateMult = 0, eCobaltRate = 0;
+      for (const [po, o] of [[qO, true], [1 - qO, false]]) for (const [pc, c] of [[qC, true], [1 - qC, false]]) {
+        const p = po * pc;
+        if (!p) continue;
+        const cdCase = (o ? cdBase : cdNormal) * (c ? cobaltCd : 1);
+        const m = o ? ohwMult : 1;
+        eMult += p * m; eRate += p / Math.max(cdCase, 1e-9); eRateMult += p * m / Math.max(cdCase, 1e-9);
+        // 표식 폭발은 '스킬 사용 시' 효과와 같이 한 스킬당 최대 CAST_MIN_CD 초에 1번 (렝가 0.25초·야스오 E 같은 짧은 스킬이 부풀리지 않게)
+        if (c) eCobaltRate += p / Math.max(cdCase, CAST_MIN_CD);
+      }
+      // 한 번 쓸 때 피해 = 기대 배수, 재사용 대기시간 = 피해 기준 기대 발동 빈도에 맞춘 값 (콤보는 한 번, 초당 피해는 빈도)
+      const cd = !cdBase ? cdNormal : (ohwK || cobalt) ? eMult / Math.max(eRateMult, 1e-9) : cdNormal;
+      if (!disabled && cdBase > 0) out.boundCastRate += eCobaltRate * weave;
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
       let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0;
       // 보석 건틀릿: 스킬도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값
@@ -491,7 +540,7 @@
           continue;
         }
         if (DMG_KINDS.includes(v.kind)) {
-          const amp = dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * skillCrit;
+          const amp = dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * skillCrit * ((ohwK || cobalt) && cdBase ? eMult : 1);
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : 1;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
@@ -559,9 +608,15 @@
       const hit = v * mit * dealt * (1 + flags.trueBonus) * (itemOrAug ? 1 + (cv.effectDmgMult || 0) : 1) * effCrit;
       row.hit = hit;
       if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / Math.max(tr.sec, e.cooldown || 0); }
-      else if (tr.type === "attacks") out.augDps += hit * rate(t.AS / tr.n);
-      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0));
+      else if (tr.type === "attacks") {
+        // 적중 시 중첩으로 세는 효과(베인 은화살·카이사 플라즈마, trigger.onhitStacks)는 구인수의 두 번째 적중도 한 번 더 쌓는다
+        row.stackRepeat = tr.onhitStacks ? t.onhitRepeat || 0 : 0;
+        out.augDps += hit * rate(t.AS * (1 + row.stackRepeat) / tr.n);
+      }
+      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0));
       else if (tr.type === "cast") { out.augCombo += hit * comboTimes(casts); out.augDps += hit * rate(castRate); }
+      // 지정 스킬 하나로 쌓은 표식을 기본 공격으로 터뜨림 (핏빛 코발트): 콤보 한 번에 대상 스킬 1번 × 터뜨리는 비율, 초당은 대상 스킬 빈도
+      else if (tr.type === "boundCast") { out.augCombo += hit * (targetable ? weave : 0); out.augDps += hit * out.boundCastRate; }
       else out.augCombo += hit;
     }
     // 흡수: 스킬로 준 피해(방어 적용 후)의 일부를 회복, 죽음의 순환: 회복량의 일부를 마법 피해로
@@ -574,7 +629,8 @@
     out.combo += out.augCombo;
     const critMul = 1 + (t.critAuto ?? t.CRIT) * (t.CRITDMG - 1);
     // 한 발에 두 놈: 치명타 평타는 적중 효과를 한 번 더 (conv.onhitOnCrit 번) → 적중 효과에 (1 + 치명타 확률 × 횟수)
-    const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0);
+    // 구인수의 격노검: 다 쌓인 뒤 세 번째 평타마다 적중 효과를 한 번 더 (t.onhitRepeat = 쌓는 동안까지 평균 낸 값)
+    const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0);
     out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS * onCrit;
     // ---- 버티는 힘: 체력 × 저항 + 무적·피해 감소(그동안 받을 피해) + 생명선 회복 + 아이템 피해 감소
     // 흡혈: 콤보 한 번(COMBO_WINDOW 초) 동안 준 피해로 회복한 만큼 더 버틴다. 생명력 흡수는 기본 공격 피해만, 모든 피해 흡혈은 스킬·효과 피해까지.
