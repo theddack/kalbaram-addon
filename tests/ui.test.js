@@ -2,6 +2,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { loadPage } = require("./page");
+// 나눠 계산(warmThenRender)이 끝나 조건이 맞을 때까지 기다린다. 고정 1.5초는 CI 머신이 느리면 모자랐다 (2026-11-12 릴리스 PR #124)
+const until = async (cond, ms = 20000) => { const t = Date.now(); while (!cond() && Date.now() - t < ms) await new Promise((r) => setTimeout(r, 100)); };
 
 test("처음 화면: 챔피언 목록과 데이터 요약", async () => {
   const p = await loadPage();
@@ -423,7 +425,7 @@ test("적 대응: 적이 산 아이템 때문에 순위가 크게 오른 아이�
   assert.doesNotMatch(p.text("#next-buy"), /적 대응/, "적이 아무것도 안 샀으면 표시 안 함");
   live({ enemyBuilds });
   // 상대 능력치만 바뀌면 나눠 계산한 뒤 다시 그린다 (warmThenRender) → 조각 계산이 끝날 때까지
-  await new Promise((r) => setTimeout(r, 1500));
+  await until(() => /🛡️ 적 대응/.test(p.text("#next-buy")));
   assert.match(p.text("#next-buy"), /🛡️ 적 대응/);
   const box = sent.at(-1).hud.join("\n");
   assert.match(box, /적 (가시 갑옷|강철심장) 2·(가시 갑옷|강철심장) 2 \(체력·방어력 높음\) → 적 대응: 리안드리의 고통/, "상자에 무엇 때문에 무엇을 사라는지");
@@ -796,7 +798,7 @@ test("적 구성 비율: 완성 아이템 2개 이상 산 적은 산 아이템�
   const before = p.w.enemyInfo().magic;
   assert.match(p.text("#next-buy"), /적 구성 추정: 마법/);
   live([id("리치베인"), id("루덴의 메아리")]);
-  await new Promise((r) => setTimeout(r, 1500));  // 나눠 계산한 뒤 다시 그린다 (warmThenRender)
+  await until(() => /산 아이템 반영\): 마법 100%/.test(p.text("#next-buy")));  // 나눠 계산한 뒤 다시 그린다 (warmThenRender)
   assert.ok(p.w.enemyInfo().magic > before + 0.3, `${before} → ${p.w.enemyInfo().magic}`);
   assert.match(p.text("#next-buy"), /적 구성 \(산 아이템 반영\): 마법 100%/);
   assert.deepEqual(p.errors, []);
@@ -1321,7 +1323,7 @@ test("상대 아이템 변화: 예상 상대 능력치가 5% 미만이면 기준
   live([[], [id("라바돈의 죽음모자")], [id("가시 갑옷"), id("태양불꽃 방패")]]);  // 방어력 크게
   assert.ok(performance.now() - t1 < 150, "바로 돌아온다 (계산은 나눠서)");
   assert.notEqual(T(), t0, "큰 변화는 반영");
-  await new Promise((r) => setTimeout(r, 1500));
+  await until(() => /다음에 살 아이템/.test(p.text("#next-buy")));
   assert.match(p.text("#next-buy"), /다음에 살 아이템/);
   assert.deepEqual(p.errors, []);
   p.w.close();
