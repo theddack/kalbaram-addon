@@ -1042,10 +1042,6 @@ function augReason(a, t, sc, g) {
     const madeMelee = state.chosen.some((x) => ((state.data.rules.augments[x.id] || {}).setsFeatures || {}).add?.includes("melee"));
     if (f === "ranged") return `원거리 챔피언만 효과가 있어요. ${madeMelee ? "고른 증강 때문에 근접이 됐어요." : `${josa(state.champ.name, "은", "는")} 근접 챔피언이에요.`}`;
     if (f === "melee") return "근접 챔피언만 효과가 있어요.";
-    if (f === "offTypeQuest") {
-      const need = ((state.data.rules.augments[a.id] || {}).items || []).join("·");
-      return `퀘스트 아이템(${need})이 ${state.champ.name}에게 맞지 않는 유형이라 완료해도 쓸모가 적어요.`;
-    }
     if (f === "eligible") return `${josa(state.champ.name, "은", "는")} 이 증강이 적용되는 스킬이 없어요 (위키 목록 기준).`;
     return `${state.champ.name}에게는 ${josa(feat[f] || f, "이", "가")} 없어서 발동하지 않아요.`;
   }
@@ -1522,7 +1518,8 @@ function renderAugs() {
         ${patchChip(r.aug.patch, r.aug.patchCheck)}${refLinks(r.aug.refs)}
         <div class="tags">${r.generic ? `<span class="chip">범용 (챔피언 무관)</span>` : ""}${categoryChip(r)}${r.parts.map((p) =>
           `<span class="chip ${p.synergy ? "syn" : ""}">${label(p.tag)} +${p.value.toFixed(2)}${p.synergy ? " 시너지" : ""}</span>`).join("")}${r.req
-          ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || (r.req.feature === "offTypeQuest" ? "맞는 퀘스트 아이템" : r.req.feature))} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}</div>
+          ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || r.req.feature)} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}${r.hint && r.hint.kind === "offTypeQuest" ? `<span class="chip">변칙 퀘스트</span>` : ""}</div>
+        ${r.hint && r.hint.kind === "offTypeQuest" ? `<div class="note">${esc(`퀘스트 아이템(${r.hint.items.join("·")})이 ${state.champ.name}의 평소 유형과 달라요. 색다르게 해 보고 싶다면 '증강 몰빵' 빌드가 퀘스트 아이템을 모두 넣어 완성을 도와줘요.`)}</div>` : ""}
         ${r.note ? `<div class="note">${esc(r.note)}</div>` : ""}
         <div class="desc">${r.aug.desc}</div>
       </div>

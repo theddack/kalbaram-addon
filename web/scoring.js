@@ -63,7 +63,8 @@
 
   const round = (v) => Math.round(v * 20) / 20;
 
-  // 균형 빌드: 증강을 골라도 챔피언 본래 코어(증강 없는 균형 빌드의 전설 아이템)를 지키고, 증강에 맞춘 아이템은 OFF_SLOTS 칸까지만.
+  // 균형 빌드: 증강을 골라도 챔피언 본래 코어(증강 없는 균형 빌드의 전설 아이템)를 지키고, 코어 밖 '반대 유형' 아이템은 OFF_SLOTS 칸까지만
+  // (같은 유형의 증강용 아이템은 제한 없음, 2026-11-12 증강 중심 재검토).
   // 통째로 바꾸는 건 증강 몰빵의 몫. 혼합형(케일·카이사처럼 원딜+메이지, 피해 유형 혼합)은 섞는 빌드가 실제로 통계 상위라 한 칸 더.
   // 근거: docs/균형빌드_조사.md (2026-11-12, 반대 성향 증강을 골라도 본래 코어를 유지하는 게 일반적)
   const OFF_SLOTS = 2;
@@ -161,15 +162,13 @@
       info.req = { feature: aug.eligible ? "eligible" : rule.requires, met };
       score = met ? score + REQ_BONUS : score * REQ_PENALTY;
     }
-    // 맞지 않는 유형의 아이템을 모두 요구하는 퀘스트(메이지 + 궁극의 히드라): 빌드를 맞추기보다 카드를 낮게 본다.
-    // 이 증강을 고르는 건 AD 브루저뿐이고 메이지는 사실상 고르지 않는다 (docs/균형빌드_조사.md). 혼합형은 막지 않는다
+    // 평소 쓰는 유형과 다른 아이템을 모두 요구하는 퀘스트(메이지 + 궁극의 히드라): 완료할 수 있는 증강이라 등급·점수는 그대로 두고
+    // '변칙 퀘스트' 안내만 붙인다. 발동 불가(req)와 활용이 어려움(hint)을 구분한다 (2026-11-12 증강 중심 원칙 2·3).
+    // 예전엔 조건 없음으로 D 를 강제해서 126개 조합(원래 S~C)이 역할만 보고 D 가 됐다. 혼합형은 안내도 붙이지 않는다
     if (champ && itemPool && !info.req && rule.itemsAll && rule.items && !isHybrid(champ)) {
       const off = offTypeFilter(champ, augContext(chosen, rules, champ), CONCEPTS[1], null, chosenItems);
       const need = itemPool.filter((i) => rule.items.includes(i.name));
-      if (off && need.length && need.filter(off).length * 2 > need.length) {
-        info.req = { feature: "offTypeQuest", met: false };
-        score *= REQ_PENALTY;
-      }
+      if (off && need.length && need.filter(off).length * 2 > need.length) info.hint = { kind: "offTypeQuest", items: rule.items };
     }
     if (rule.items && chosenItems.some((i) => rule.items.includes(i.name))) {
       score += RULE_ITEM_SYNERGY;
@@ -566,8 +565,11 @@
     };
     let beams = [{ items: [], covered: {}, m: num ? evalM([]) : null, bare: focus ? evalBare([]) : null, total: 0, picks: [] }];
     for (const item of fixed) beams = [step(beams[0], item, true)];
-    // 코어 밖 아이템 수 (고정 아이템 = 이미 산 것은 세지 않는다)
-    const offCount = (st) => (opts.core ? st.picks.filter((p) => !p.fixed && p.item.kind === "legendary" && !opts.core.has(p.item.name)).length : 0);
+    // 코어 밖의 '반대 유형' 아이템 수 (고정 아이템 = 이미 산 것은 세지 않는다).
+    // 같은 유형이면 증강에 맞춘 아이템(원 히트 원더 + 스킬 가속 템 등)은 칸 수에 세지 않는다: 예전엔 코어 밖이면 다 세서
+    // 오공·일라오이처럼 증강 활용도가 절반 이하로 떨어졌다 (2026-11-12 증강 중심 원칙 5)
+    const isOffCore = (i) => opts.core && !opts.core.has(i.name) && (!opts.offType || opts.offType(i));
+    const offCount = (st) => st.picks.filter((p) => !p.fixed && p.item.kind === "legendary" && isOffCore(p.item)).length;
     const expand = (pool, perBeam, anyLimit = false, capped = false) => {
       const next = [];
       const seen = new Set();
@@ -577,10 +579,10 @@
         // 같은 계열 고유 효과(주문 검·히드라·치명 …)는 하나만 적용되니 같이 고르지 않는다
         // anyLimit: 퀘스트가 같은 계열을 모두 요구 (궁극의 히드라 = 히드라 3종을 다 가져야 한다)
         let cand = pool.filter((i) => !names.has(i.name) && (anyLimit || !(i.limit && limits.has(i.limit))));
-        // 균형: 코어 밖 아이템을 다 썼으면 코어에서만. 코어를 살 수 없으면(이미 다 샀거나 막힘) 제한 없이
+        // 균형: 코어 밖 반대 유형 칸을 다 썼으면 그런 아이템은 더 넣지 않는다. 넣을 게 없으면(이미 다 샀거나 막힘) 제한 없이
         if (capped && opts.core && offCount(st) >= opts.maxOff) {
-          const inCore = cand.filter((i) => opts.core.has(i.name));
-          if (inCore.length) cand = inCore;
+          const ok = cand.filter((i) => i.kind !== "legendary" || !isOffCore(i));
+          if (ok.length) cand = ok;
         }
         cand
           .map((i) => step(st, i, false))
@@ -699,7 +701,9 @@
       const core = c.key === "balanced" && chosen.length && champ0
         ? new Set(buildConcepts(items, w, [], fixed, rules, champ0, statOpts, ["balanced"])[0].pick.filter((p) => !p.fixed && p.item.kind === "legendary").map((p) => p.item.name))
         : null;
-      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: null, focus: c.focus, off, core, maxOff: offSlots(champ) }) };
+      // 반대 유형 = 증강이 키우는 방향(lift)을 뺀 챔피언 본래 유형 기준
+      const offType = core && champ ? offTypeFilter(champ, { ...ctx, lift: {}, tags: {} }, c, items, fixed) : null;
+      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: null, focus: c.focus, off, core, offType, maxOff: offSlots(champ) }) };
       const twist = twistSupport(w, ctx);
       const k = twistK(twist);
       const mw = k >= 1 ? inv : lerp(metricWeights(iw), inv, k);

@@ -870,55 +870,7 @@ test("점검 8: 흐르는 물의 지팡이 버프는 피해가 아니라 주문�
   assert.ok(ap("Veigar") - St.evaluate(champ("Veigar"), 18, [], [], { aram: true }).stats.total.AP < 75, "베이가: 버프 없음");
 });
 
-// ---- 9번: 균형 빌드는 챔피언 본래 코어를 지키고 증강용 아이템은 1~2칸까지만 (docs/균형빌드_조사.md)
-const legendOnly = (cid, augIds, key = "balanced") => {
-  const c = champ(cid);
-  return S.buildConcepts(d.items, S.profile(c, d.tags), augIds.map(aug), [], d.rules, c, {}, [key])[0].pick
-    .filter((p) => p.item.kind === "legendary").map((p) => p.item.name);
-};
-const kept = (a, b) => a.filter((x) => b.includes(x)).length;
-
-test("점검 9-1: 균형 빌드는 증강을 골라도 기본 전설 템 5개 중 3개 이상을 지킨다", () => {
-  const augs = ["작은 도움", "검무", "마도사의 주스 상자"].map((n) => byName(n).id);
-  const base = legendOnly("Garen", []);
-  assert.ok(kept(legendOnly("Garen", augs), base) >= 3, `${legendOnly("Garen", augs)} / ${base}`);
-});
-
-test("점검 9-2: 챔피언이 원래 쌓는 능력치로 강해지는 증강(강타자 = 체력)이면 탱커 빌드를 그대로", () => {
-  // 말파이트는 라이엇 칼바람 공식 추천이 AP 라 탱커 예시로 쓰지 않는다
-  const tank = (n) => { const t = item(n).tags || {}; return ["HP", "ARMOR", "MR"].some((k) => (t[k] || 0) >= 0.5); };
-  for (const cid of ["Sion", "Sejuani", "Zac", "Braum"]) {
-    const b = legendOnly(cid, ["ARAM_HeavyHitter"]);
-    assert.ok(kept(b, legendOnly(cid, [])) >= 3, cid);
-    assert.ok(b.every(tank), `${cid}: ${b}`);
-  }
-});
-
-test("점검 9-3: 맞지 않는 유형의 아이템을 모두 요구하는 퀘스트(메이지 + 궁극의 히드라)는 카드 등급을 낮춘다", () => {
-  const vik = champ("Viktor");
-  const r = S.rankAugments([aug("Quest_UltraHydra")], S.profile(vik, d.tags), [], [], vik, d.rules, d.items)[0];
-  assert.equal(r.req && r.req.met, false);
-  const t = S.augmentTiers(d.augments, d.items, S.profile(vik, d.tags), [], [], d.rules, vik, {}, "total");
-  assert.equal(t.Quest_UltraHydra.tier, "D");
-  // 균형 빌드도 히드라로 맞추지 않는다 (몰빵은 퀘스트를 따른다)
-  const hyd = ["굶주린 히드라", "불경한 히드라", "거대한 히드라"];
-  assert.ok(legendOnly("Vladimir", ["Quest_UltraHydra"]).filter((n) => hyd.includes(n)).length <= 1);
-  assert.equal(legendOnly("Vladimir", ["Quest_UltraHydra"], "augment").filter((n) => hyd.includes(n)).length, 3);
-  assert.equal(legendOnly("Darius", ["Quest_UltraHydra"]).filter((n) => hyd.includes(n)).length, 3);
-  // AD 브루저는 그대로
-  const dar = champ("Darius");
-  const rd = S.rankAugments([aug("Quest_UltraHydra")], S.profile(dar, d.tags), [], [], dar, d.rules, d.items)[0];
-  assert.ok(!rd.req || rd.req.met);
-});
-
-test("점검 9-4: 혼합형(케일·카이사)은 증강용 아이템을 3칸까지 허용", () => {
-  assert.equal(S.offSlots(champ("Kayle")), 3);
-  assert.equal(S.offSlots(champ("Kaisa")), 3);
-  assert.equal(S.offSlots(champ("Garen")), 2);
-  assert.equal(S.offSlots(champ("Viktor")), 2);
-});
-
-// ---- 적중 시 빌드 (케일·카이사): 평타마다 붙는 추가 피해와 패시브 폭발 (docs/균형빌드_조사.md 케일 추가 조사)
+// ---- 적중 시 계산식 (케일·카이사·베인·코그모): 평타마다 붙는 추가 피해와 중첩. 추천 결과 검사는 tests/recommend.test.js
 test("점검 10-1: 구인수의 격노검은 최대 중첩 시 세 번째 평타마다 적중 효과를 두 번 (적중 시 피해 × 4/3)", () => {
   const g = item("구인수의 격노검");
   assert.ok(g.passiveStats && Math.abs(g.passiveStats.onhitRepeat - 1 / 3) < 1e-3 && g.passiveStats.rampMax === 4, JSON.stringify(g.passiveStats));
@@ -936,18 +888,6 @@ test("점검 10-2: 카이사 패시브 플라즈마 폭발(잃은 체력 15% + �
   const dps = (list) => St.evaluate(c, 18, list.map(item), [], { aram: true }).m.dps;
   assert.ok(dps(["라바돈의 죽음모자"]) > dps([]));
   assert.ok(e);
-});
-
-test("점검 10-3: 케일 기본 빌드는 적중 시 (구인수의 격노검 + 적중 시 템 하나 이상)", () => {
-  // 통계 상위 코어는 둘: 몰락한 왕의 검·구인수(아수라장 사이트들), 내셔의 이빨·구인수·균열 생성기(op.gg 칼바람). 둘 다 구인수가 들어간다
-  const onhit = ["몰락한 왕의 검", "내셔의 이빨", "마법사의 최후", "크라켄 학살자"];
-  const b = legendOnly("Kayle", []);
-  assert.ok(b.includes("구인수의 격노검") && b.some((n) => onhit.includes(n)), `${b}`);
-});
-
-test("점검 10-4: 카이사가 주문력 증강을 고르면 균형 빌드에 AP 템이 섞인다", () => {
-  const ap = (n) => { const t = item(n).tags || {}; return (t.AP || 0) >= 0.5; };
-  assert.ok(legendOnly("Kaisa", [byName("사악한 정신").id]).filter(ap).length >= 1);
 });
 
 test("점검 10-5: 구인수 중첩은 한타 동안 평타로 쌓으니 늘 최대가 아니고, 공속이 높을수록 오래 켜진다", () => {
