@@ -917,3 +917,35 @@ test("점검 9-4: 혼합형(케일·카이사)은 증강용 아이템을 3칸까
   assert.equal(S.offSlots(champ("Garen")), 2);
   assert.equal(S.offSlots(champ("Viktor")), 2);
 });
+
+// ---- 적중 시 빌드 (케일·카이사): 평타마다 붙는 추가 피해와 패시브 폭발 (docs/균형빌드_조사.md 케일 추가 조사)
+test("점검 10-1: 구인수의 격노검은 최대 중첩 시 세 번째 평타마다 적중 효과를 두 번 (적중 시 피해 × 4/3)", () => {
+  const g = item("구인수의 격노검");
+  assert.ok(g.passiveStats && Math.abs(g.passiveStats.onhitRepeat - 1 / 3) < 1e-3, JSON.stringify(g.passiveStats));
+  const c = champ("Kaisa");
+  const dps = (list) => St.evaluate(c, 18, list.map(item), [], { aram: true }).m.dps;
+  // 몰락한 왕의 검(현재 체력 비례 적중 시)이 있으면 구인수가 더 크게 오른다
+  assert.ok(dps(["몰락한 왕의 검", "구인수의 격노검"]) - dps(["몰락한 왕의 검"]) > dps(["무한의 대검", "구인수의 격노검"]) - dps(["무한의 대검"]));
+});
+
+test("점검 10-2: 카이사 패시브 플라즈마 폭발(잃은 체력 15% + 주문력 100당 6%)을 계산에 넣는다", () => {
+  const c = champ("Kaisa");
+  const e = St.evaluate(c, 18, [], [], { aram: true }).stats;
+  assert.ok(JSON.stringify(c.fightStats || {}).includes("TGT_MISSINGHP"));
+  // 주문력이 오르면 폭발도 커진다
+  const dps = (list) => St.evaluate(c, 18, list.map(item), [], { aram: true }).m.dps;
+  assert.ok(dps(["라바돈의 죽음모자"]) > dps([]));
+  assert.ok(e);
+});
+
+test("점검 10-3: 케일 기본 빌드는 적중 시 (구인수의 격노검 + 적중 시 템 하나 이상)", () => {
+  // 통계 상위 코어는 둘: 몰락한 왕의 검·구인수(아수라장 사이트들), 내셔의 이빨·구인수·균열 생성기(op.gg 칼바람). 둘 다 구인수가 들어간다
+  const onhit = ["몰락한 왕의 검", "내셔의 이빨", "마법사의 최후", "크라켄 학살자"];
+  const b = legendOnly("Kayle", []);
+  assert.ok(b.includes("구인수의 격노검") && b.some((n) => onhit.includes(n)), `${b}`);
+});
+
+test("점검 10-4: 카이사가 주문력 증강을 고르면 균형 빌드에 AP 템이 섞인다", () => {
+  const ap = (n) => { const t = item(n).tags || {}; return (t.AP || 0) >= 0.5; };
+  assert.ok(legendOnly("Kaisa", [byName("사악한 정신").id]).filter(ap).length >= 1);
+});

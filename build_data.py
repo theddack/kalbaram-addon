@@ -914,7 +914,7 @@ STAT_LABEL = {
     "healToDamage": "회복 → 피해", "ehpMult": "받는 피해 감소", "shieldMult": "스킬 보호막 강화", "ARPEN": "방어구 관통력", "AStoHASTE": "공격 속도 → 스킬 가속 전환", "HASTEtoDmg": "스킬 가속 1당 피해량", "critToHaste": "치명타 → 스킬 가속",
     "ultRefundEvery": "궁극기 추가 사용 주기(초)", "ultTriggerHaste": "궁극기 후 가속", "ultTriggerDur": "궁극기 후 지속(초)",
     "ultTriggerMs": "궁극기 후 이동 속도", "dashHaste": "돌진 스킬 가속", "fearCdDiv": "공포 시간 계산 나눗수",
-    "APtoCRIT": "주문력 → 치명타 확률", "skillCritDmg": "스킬 치명타 피해", "onhitOnCrit": "치명타 시 적중 효과 추가",
+    "APtoCRIT": "주문력 → 치명타 확률", "skillCritDmg": "스킬 치명타 피해", "onhitOnCrit": "치명타 시 적중 효과 추가", "onhitRepeat": "적중 효과 반복",
     "effectCritDmg": "아이템·지속 피해 치명타 피해",
     "allyHealMult": "다른 아군 연쇄 회복", "allyShieldMult": "다른 아군 연쇄 보호막", "dmgToAllyHeal": "피해 → 아군 회복 충전", "allyHealCap": "아군 회복 최대",
 }

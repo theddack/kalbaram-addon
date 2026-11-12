@@ -266,6 +266,8 @@
     if (key === "TGT_MAXHP") return TARGET.HP;
     if (key === "TGT_CURHP") return TARGET.HP * TARGET.CUR;
     if (key === "TGT_MISSINGHP") return TARGET.HP * (1 - TARGET.CUR);
+    // 잃은 체력 × 주문력 (카이사 플라즈마 폭발: 잃은 체력의 15% + 주문력 1당 0.06%)
+    if (key === "TGT_MISSINGHP_AP") return TARGET.HP * (1 - TARGET.CUR) * (t.AP || 0);
     if (key in t) return t[key];
     if (key.startsWith("base")) return t[key] ?? 0;
     return 0;
@@ -560,7 +562,7 @@
       row.hit = hit;
       if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / Math.max(tr.sec, e.cooldown || 0); }
       else if (tr.type === "attacks") out.augDps += hit * rate(t.AS / tr.n);
-      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0));
+      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (cv.onhitRepeat || 0));
       else if (tr.type === "cast") { out.augCombo += hit * comboTimes(casts); out.augDps += hit * rate(castRate); }
       else out.augCombo += hit;
     }
@@ -574,7 +576,8 @@
     out.combo += out.augCombo;
     const critMul = 1 + (t.critAuto ?? t.CRIT) * (t.CRITDMG - 1);
     // 한 발에 두 놈: 치명타 평타는 적중 효과를 한 번 더 (conv.onhitOnCrit 번) → 적중 효과에 (1 + 치명타 확률 × 횟수)
-    const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0);
+    // 구인수의 격노검: 세 번째 평타마다 적중 효과를 한 번 더 (conv.onhitRepeat = 1/3)
+    const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0) + (cv.onhitRepeat || 0);
     out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS * onCrit;
     // ---- 버티는 힘: 체력 × 저항 + 무적·피해 감소(그동안 받을 피해) + 생명선 회복 + 아이템 피해 감소
     // 흡혈: 콤보 한 번(COMBO_WINDOW 초) 동안 준 피해로 회복한 만큼 더 버틴다. 생명력 흡수는 기본 공격 피해만, 모든 피해 흡혈은 스킬·효과 피해까지.
