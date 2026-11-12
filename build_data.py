@@ -1748,6 +1748,13 @@ def main():
             item["effects"] = [e for e in item["effects"] if e.get("name") not in ir["dropEffects"]]
             for n in set(ir["dropEffects"]) - before:
                 rule_warn.append(f"아이템 {item['name']}: dropEffects '{n}' 에 해당하는 효과가 없음")
+        for e in item["effects"]:  # 발동 방식 바로잡기 (루난의 허리케인 탄환: '적중 시'가 아니라 '기본 공격 시', 위키)
+            if e.get("name") in (ir.get("effectTrigger") or {}):
+                e["trigger"] = dict(ir["effectTrigger"][e["name"]])
+        for n in set(ir.get("effectTrigger") or {}) - {e.get("name") for e in item["effects"]}:
+            rule_warn.append(f"아이템 {item['name']}: effectTrigger '{n}' 에 해당하는 효과가 없음")
+        if not ir.get("stats"):
+            continue
         plain = re.sub(r"<[^>]+>", "", item["desc"])
         if ir.get("check") and ir["check"] not in plain:
             rule_warn.append(f"아이템 {item['name']}: 설명에 '{ir['check']}' 없음 (패치로 수치 변경?) → 미적용")

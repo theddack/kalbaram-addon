@@ -1035,3 +1035,20 @@ test("자기 공격 속도 스킬: 트리스타나 Q 120% (7초 → 한타 내�
   const tNow = St.computeStats(champ("Tristana"), 18, [], [], { now: true }).total.AS;
   assert.ok(t > tNow * 1.5, `추천 점수에만: 한타 ${t} vs 지금 ${tNow}`);
 });
+
+// 루난의 허리케인 탄환은 '기본 공격 시'(on-attack) 효과 (위키 "Basic attacks on-attack fire additional bolts … affected by critical strike modifiers").
+// 예전엔 '적중 시'로 읽어 구인수(적중 효과 두 번)·한 발에 두 놈(치명타 때 적중 효과 한 번 더)이 탄환 피해까지 불렸다 (2026-11-12 스몰더 판: 치명타 빌드에 구인수 1순위)
+test("루난 탄환: 기본 공격마다 1번·치명타 적용, 구인수·한 발에 두 놈으로 늘지 않음", () => {
+  const c = champ("Smolder"), run = item("루난의 허리케인"), gu = item("구인수의 격노검");
+  const bolt = run.effects.find((e) => e.name === "BoltDamage");
+  assert.equal(bolt.trigger.type, "onattack");
+  const dpsOf = (items, aug) => {
+    const st = St.computeStats(c, 18, items, aug), m = St.metrics(c, 18, st);
+    const row = m.effects.find((e) => e.src === "루난의 허리케인");
+    return { row, t: st.total };
+  };
+  const twin = [{ CRIT: 1, onhitOnCrit: 1 }];  // 한 발에 두 놈 + 치명타 100%
+  const a = dpsOf([run], twin), b = dpsOf([run, gu], twin);
+  const crit = (t) => 1 + Math.min(1, t.CRIT) * (t.CRITDMG - 1);
+  for (const x of [a, b]) assert.ok(Math.abs(x.row.dps - x.row.hit * x.t.AS * crit(x.t)) < 1e-6, JSON.stringify(x.row));
+});
