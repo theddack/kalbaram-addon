@@ -98,7 +98,11 @@
     const late = [];
     for (const s of mods) {
       if (s && s.refundPct) conv.refunds.push({ pct: s.refundPct, ranged: s.refundChanceRanged ?? 1, melee: s.refundChanceMelee ?? 1, all: !!s.refundAll });
-      for (const [k, raw] of Object.entries(s || {})) {
+      // 원거리 챔피언은 값이 다른 능력치 (rules rangedStats → statsResolved.rangedScale: 유리 대포 고정 피해 ×0.6)
+      const rScale = (!champ.melee && s && s.rangedScale) || {};
+      for (const [k, raw0] of Object.entries(s || {})) {
+        if (k === "rangedScale") continue;
+        const raw = typeof raw0 === "number" && rScale[k] != null ? raw0 * rScale[k] : raw0;
         // needsItem: 그 아이템을 가졌을 때만 터지는 증강 효과 (폭풍 쇄도 업그레이드: 폭풍 쇄도의 질풍이 폭발)
         if (k === "_effects") { effects.push(...raw.filter((e) => !e.needsItem || items.some((it) => it.name === e.needsItem))); continue; }
         if (REFUND_KEYS.includes(k)) continue;

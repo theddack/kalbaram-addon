@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS HASTEtoDmg(가속 → 피해량, 가속은 0) bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, dropEffects=[설명에서 잘못 뽑힌 자동 효과 이름](능력치를 피해로 읽은 것), effects[].rangedScale=원거리 챔피언 배수,effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
+  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS HASTEtoDmg(가속 → 피해량, 가속은 0) bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, dropEffects=[설명에서 잘못 뽑힌 자동 효과 이름](능력치를 피해로 읽은 것), effects[].rangedScale=원거리 챔피언 배수(없으면 게임 계산식의 원거리 배율을 자동으로), effects[].times=평균 배수(평균 중첩·발동 비율, 이유는 basis), rangedStats={능력치 키: 원거리 배율이 붙은 계산식 이름}(원거리 챔피언은 그 능력치에 배율),effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -105,7 +105,11 @@
       "stats": {
         "HPmult": "-HPReductionPerc",
         "trueBonus": "TrueDamagePerc"
-      }
+      },
+      "rangedStats": {
+        "trueBonus": "TrueDamagePercSplit"
+      },
+      "_why": "2026-11-12 통합 점검 N1: 원거리 챔피언 고정 피해는 25% × 0.6 = 15% (게임 데이터 TrueDamagePercSplit, 위키 근접 25% · 원거리 15%)"
     },
     "ARAM_BacktoBasics": {
       "tags": {
@@ -2196,21 +2200,49 @@
         ]
       }
     },
+    "ARAM_Juiced": {
+      "effects": [
+        {"calc": "Calc_Damage", "dvRatios": {"MANA": "ManaPercentDamagePercent"}, "kind": "magic", "trigger": {"type": "onhit"}, "from": "적 챔피언 기본 공격 적중 시"}
+      ],
+      "basis": {
+        "calc": "적 챔피언에게 기본 공격 적중 시 최대 마나의 7% 마법 피해 (게임 데이터 ManaPercentDamagePercent, 위키 'equal to 7% of your maximum mana'). 원거리는 ×0.8 (게임 데이터 원거리 배율). 계산식 부품이 이름 없는 값이라 설명에 '?'로 나와 예전엔 태그로만 셌다 (2026-11-12 통합 점검)",
+        "assume": [
+          {"what": "치명타 추가 피해는 계산에 없음", "why": "설명의 '치명타 적용'(위키: 치명타 시 100% 추가)을 넣지 않아 치명타 챔피언에게 조금 낮게 잡혀요"},
+          {"what": "마나를 300 쓸 때마다 커지는 피해(10%)는 계산에 없음", "why": "게임 중 쓴 마나에 따라 쌓여 평균을 정할 수 없어요", "noData": true}
+        ]
+      }
+    },
+    "TakeemDownDownDown": {
+      "dropEffects": ["Calc_Damage_Hit", "Calc_Damage_Per_Previous_Stack"],
+      "effects": [
+        {"calc": "Calc_Damage_Hit", "kind": "magic", "trigger": {"type": "onhit"}, "from": "기본 공격 적중마다"},
+        {"calc": "Calc_Damage_Hit", "kind": "magic", "trigger": {"type": "cast"}, "from": "스킬 적중마다"},
+        {"calc": "Calc_Damage_Per_Previous_Stack", "kind": "magic", "times": 2, "trigger": {"type": "onhit"}, "from": "기본 공격 적중마다 (앞선 중첩 평균 2)"},
+        {"calc": "Calc_Damage_Per_Previous_Stack", "kind": "magic", "times": 2, "trigger": {"type": "cast"}, "from": "스킬 적중마다 (앞선 중첩 평균 2)"},
+        {"calc": "Calc_Damage_Consume", "pctOf": "TGT_MISSINGHP", "kind": "magic", "times": 0.2, "trigger": {"type": "onhit"}, "from": "5중첩 폭발 (적중 5번에 1번)"},
+        {"calc": "Calc_Damage_Consume", "pctOf": "TGT_MISSINGHP", "kind": "magic", "times": 0.2, "trigger": {"type": "cast"}, "from": "5중첩 폭발 (적중 5번에 1번)"}
+      ],
+      "basis": {
+        "calc": "기본 공격 적중과 스킬 적중이 모두 중첩을 쌓고 5~30 + 추가 공격력 35% + 주문력 15% + 중첩당 1~6 + 추가 공격력 7% + 주문력 3% 마법 피해, 5번째 적중에 잃은 체력 17% 마법 피해 (영어 원문 'Attacks and Abilities', 위키 'Basic attacks on-hit and ability hits'). 원거리는 모두 절반 (게임 데이터 원거리 배율 0.5). 예전엔 '스킬 뒤 평타'로 읽어 스킬을 쓴 만큼만 셌다 (2026-11-12 통합 점검 N3)",
+        "assume": [
+          {"what": "앞선 중첩 평균 2개", "why": "5초 안에 계속 맞히면 중첩이 0·1·2·3·4 다음 폭발로 돌아서 평균 2예요. 대상을 바꾸거나 5초를 넘기면 더 적어요", "noData": true},
+          {"what": "폭발 회복(입힌 피해의 67%)은 계산에 없음", "why": "폭발 피해에서 나오는 회복이라 버티는 힘에 넣지 않았어요 (조금 낮게 잡힘)"}
+        ]
+      }
+    },
     "ThirdTimesTheHarm": {
       "effects": [
         {
           "calc": "Calc_Damage",
           "pctOf": "TGT_MAXHP",
           "kind": "true",
-          "rangedScale": 0.5,
           "trigger": {"type": "attacks", "n": 3},
           "from": "같은 적에게 기본 공격 3번마다 (4초 안)"
         }
       ],
       "basis": {
-        "calc": "기본 공격 3번마다 대상 최대 체력 6% 고정 피해 (게임 데이터 Calc_Damage) + 중첩당 10. 원거리 챔피언은 3% (위키 Module:MayhemAugmentData). 예전엔 중첩당 10만 세었다. 26.21 새 증강 (이슈 #42)",
+        "calc": "기본 공격 3번마다 대상 최대 체력 6% 고정 피해 (게임 데이터 Calc_Damage) + 중첩당 10. 원거리 챔피언은 둘 다 절반 (게임 데이터 원거리 배율 0.5, 위키 Module:MayhemAugmentData). 예전엔 중첩당 10만 세었다. 26.21 새 증강 (이슈 #42)",
         "assume": [
-          {"what": "원거리는 근접 값의 절반 (3%)", "why": "게임 데이터엔 6% 하나뿐이고 원거리 값은 위키 설명에만 있어요"},
           {"what": "중첩 피해는 1중첩(10)으로 셈", "why": "중첩이 판 내내 쌓이지만 몇 개일지 정할 수 없어 낮게 잡았어요", "noData": true}
         ]
       }

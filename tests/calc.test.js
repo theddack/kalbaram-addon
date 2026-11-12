@@ -966,3 +966,57 @@ test("핏빛 코발트: 대기시간이 아주 짧은 스킬(렝가 0.25초·야
     assert.ok(cob.m.augDps - base.m.augDps <= row.hit * 0.5 + 1e-6, `${cid}: 표식 초당 ${(cob.m.augDps - base.m.augDps).toFixed(1)} > ${(row.hit * 0.5).toFixed(1)}`);
   }
 });
+
+// 원거리 배율 (2026-11-12 추천 엔진 통합 점검 N1): 게임 데이터 계산식의 mRangedMultiplier 를 효과에 옮긴다.
+// 예전엔 아이템의 근접/원거리 문구(Item_Melee_Ranged_Split)만 읽어, 붐 앤 베이스(원거리 25~100) 같은 값을 원거리도 근접 값으로 셌다.
+test("원거리 배율: 증강·아이템 계산식의 원거리 배율이 효과에 붙는다 (게임 데이터 mRangedMultiplier)", () => {
+  const scaleOf = (list, name) => (list.find((e) => e.name === name) || {}).rangedScale;
+  const close = (a, b, msg) => assert.ok(a != null && Math.abs(a - b) < 0.002, `${msg}: ${a}`);
+  close(scaleOf(aug("TheBoomAndTheBass").effects, "Calc_Damage"), 0.5, "붐 앤 베이스");
+  close(scaleOf(aug("TakeemDownDownDown").effects, "Calc_Damage_Hit"), 0.5, "전부 다 무너뜨려 피해");
+  close(scaleOf(aug("TakeemDownDownDown").effects, "Calc_Damage_Per_Previous_Stack"), 0.5, "전부 다 무너뜨려 중첩당");
+  close(scaleOf(aug("ThirdTimesTheHarm").effects, "Calc_Damage_Per_Stack"), 0.5, "해악의 숫자 3 중첩당");
+  close(scaleOf(item("거대한 히드라").effects, "OnHitDamageCalc"), 0.5, "거대한 히드라 적중");
+  close(scaleOf(item("선체파괴자").effects, "MaxStackDamage"), 0.7, "선체파괴자");
+  close(scaleOf(item("불멸의 철갑궁").effects, "ShieldAmount"), 0.8, "불멸의 철갑궁 보호막");
+  close(scaleOf(item("그림자 검").effects, "TotalWardDamage"), 0.667, "그림자 검 와드 피해");
+  // 크라켄 학살자: 원거리 배율 값(RangedDamageMultiplier)이 칼바람·증강 모드에서 1 → 줄이지 않는다
+  const kr = scaleOf(item("크라켄 학살자").effects, "DamageAmount");
+  assert.ok(kr == null || Math.abs(kr - 1) < 1e-9, `크라켄 ${kr}`);
+});
+
+test("원거리 배율: 붐 앤 베이스 한 번 피해는 원거리 챔피언이 근접의 절반", () => {
+  const a = aug("TheBoomAndTheBass");
+  const hit = (c) => St.evaluate(c, 18, [], [{ _effects: a.effects.map((e) => ({ ...e, src: a.name })) }]).m.effects.find((e) => e.src === a.name).value;
+  const jinx = champ("Jinx");
+  const asMelee = { ...jinx, melee: true };
+  const r = hit(jinx) / hit(asMelee);
+  assert.ok(Math.abs(r - 0.5) < 1e-6, `원거리/근접 ${r}`);
+});
+
+test("원거리 배율: 유리 대포 추가 고정 피해는 근접 25% · 원거리 15% (게임 데이터 TrueDamagePercSplit ×0.6)", () => {
+  const st = (d.rules.augments.GlassCannon || {}).statsResolved;
+  const tb = (c) => St.computeStats(champ(c), 18, [], [st]).flags.trueBonus;
+  assert.ok(Math.abs(tb("Garen") - 0.25) < 1e-6, `가렌 ${tb("Garen")}`);
+  assert.ok(Math.abs(tb("Jinx") - 0.15) < 1e-6, `징크스 ${tb("Jinx")}`);
+});
+
+test("전부 다 무너뜨려: 기본 공격 적중과 스킬 적중 모두에 발동 (영어 원문 'Attacks and Abilities', 통합 점검 N3)", () => {
+  const fx = aug("TakeemDownDownDown").effects;
+  const hit = fx.filter((e) => e.name === "Calc_Damage_Hit");
+  assert.ok(hit.some((e) => e.trigger.type === "onhit"), "기본 공격 적중마다");
+  assert.ok(hit.some((e) => e.trigger.type === "cast" && !e.needsAuto), "스킬 적중마다 (평타 없이)");
+  assert.ok(fx.some((e) => e.name === "Calc_Damage_Consume"), "5중첩 폭발");
+  // 평타로 싸우는 근접 챔피언(트린다미어)은 예전('스킬 뒤 평타'만)보다 초당 피해가 커야 한다
+  const a = aug("TakeemDownDownDown");
+  const dps = (effects) => St.evaluate(champ("Tryndamere"), 18, [], [{ _effects: effects.map((e) => ({ ...e, src: a.name })) }]).m.augDps;
+  const old = [{ kind: "magic", name: "Calc_Damage_Hit", ...hit[0], trigger: { type: "cast" }, needsAuto: true }];
+  assert.ok(dps(fx) > dps(old) * 1.5, `${dps(fx)} vs ${dps(old)}`);
+});
+
+test("도취: 기본 공격 적중 시 최대 마나 7% 마법 피해, 원거리 ×0.8 (게임 데이터 ManaPercentDamagePercent)", () => {
+  const e = aug("ARAM_Juiced").effects.find((x) => x.trigger && x.trigger.type === "onhit");
+  assert.ok(e, "적중 효과");
+  assert.ok(Math.abs(e.ratios.MANA[0] - 0.07) < 1e-6, JSON.stringify(e));
+  assert.ok(Math.abs(e.rangedScale - 0.8) < 1e-3, `${e.rangedScale}`);
+});

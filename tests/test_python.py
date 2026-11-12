@@ -789,6 +789,27 @@ class CalcNames(unittest.TestCase):
         self.assertEqual(e.ratios, {"HSP": 750})
         self.assertEqual(fmt_expr_ranks([e]), "회복·보호막 효과 1%당 7.5")  # '75000% 회복·보호막 효과' 로 나왔다
 
+    def test_ranged_mult(self):
+        """원거리 배율 (2026-11-12 통합 점검 N1): 숫자·값 이름, 바꿔 쓴 식·참조만 더한 식은 물려받고, 자기 몫이 섞이면 None"""
+        from lol_calc import Calc
+        num = lambda n: {"__type": "NumberCalculationPart", "mNumber": n}
+        sp = {"DataValues": [{"name": "RangedMod", "values": [0.7, 0.7]}],
+              "mSpellCalculations": {
+                  "Dmg": {"mFormulaParts": [num(100)], "mRangedMultiplier": num(0.5)},
+                  "ByDv": {"mFormulaParts": [num(10)], "mRangedMultiplier": {"__type": "NamedDataValueCalculationPart", "mDataValue": "RangedMod"}},
+                  "Mod": {"__type": "GameCalculationModified", "mModifiedGameCalculation": "Dmg", "mMultiplier": num(0.2)},
+                  "Ref": {"mFormulaParts": [{"mSpellCalculationKey": "Dmg"}]},
+                  "Mixed": {"mFormulaParts": [{"mSpellCalculationKey": "Dmg"}, num(5)]},
+                  "Plain": {"mFormulaParts": [num(1)]},
+              }}
+        c = Calc(sp)
+        self.assertEqual(c.ranged_mult("Dmg"), 0.5)
+        self.assertAlmostEqual(c.ranged_mult("ByDv"), 0.7)
+        self.assertEqual(c.ranged_mult("Mod"), 0.5)
+        self.assertEqual(c.ranged_mult("Ref"), 0.5)
+        self.assertIsNone(c.ranged_mult("Mixed"))
+        self.assertIsNone(c.ranged_mult("Plain"))
+
 
 class Measure(unittest.TestCase):
     EOG = {"mucJwtDto": {"jwt": "eyJsecret.abc"}, "multiUserChatPassword": "eyJsecret.abc", "gameId": 123, "gameLength": 900, "gameMode": "KIWI",
