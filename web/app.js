@@ -856,6 +856,19 @@ function transform(a) {
   return st && !own.has(st) ? st : null;
 }
 
+// 증강 활용 안내 (P7): 미구현(수치 계산 없음)·효과 없음·아이템과 무관한 효과를 구분해서 알려 준다
+const USAGE_TEXT = {
+  noNumbers: ["수치 계산 없음", "이 증강은 숫자로 계산하지 않고 효과 종류로만 평가해요. 효과가 0이라는 뜻은 아니에요."],
+  noEffect: ["이 챔피언에겐 효과 없음", "기본 빌드에서 이 증강이 늘려 주는 능력이 없어요 (스킬·평타가 이 능력치를 쓰지 않아요). 반대 성향 아이템을 모아야 쓸모가 생겨요."],
+  allDamage: ["아이템과 무관", "모든 피해를 같은 비율로 키우는 효과라 특정 아이템과 연결되지 않아요. 평소 빌드 그대로 좋아요."],
+  fixed: ["고정 효과", "고정 능력치·고정 피해라 아이템으로 커지지 않아요. 평소 빌드 그대로 좋아요."],
+};
+function usageNote(aug) {
+  if (!state.champ) return "";
+  const u = S.augmentUsage(aug, state.data.items, state.weights, state.data.rules, state.champ, statOpts());
+  const t = u && USAGE_TEXT[u.kind];
+  return t ? `<div class="note"><span class="chip">${esc(t[0])}</span> ${esc(t[1])}</div>` : "";
+}
 function tierBadge(t) {
   if (!t) return "";
   const [icon, name] = noEffect(t) ? ["⛔", "효과 없음"] : TIER_LABEL[t.tier];
@@ -1521,6 +1534,7 @@ function renderAugs() {
           `<span class="chip ${p.synergy ? "syn" : ""}">${label(p.tag)} +${p.value.toFixed(2)}${p.synergy ? " 시너지" : ""}</span>`).join("")}${r.req
           ? `<span class="chip ${r.req.met ? "syn" : "bad"}">조건: ${esc(featLabel[r.req.feature] || r.req.feature)} ${r.req.met ? "충족" : "없음"}</span>` : ""}${r.itemMatch ? `<span class="chip syn">고른 아이템과 연계</span>` : ""}${r.hint && r.hint.kind === "offTypeQuest" ? `<span class="chip">변칙 퀘스트</span>` : ""}</div>
         ${r.hint && r.hint.kind === "offTypeQuest" ? `<div class="note">${esc(`퀘스트 아이템(${r.hint.items.join("·")})이 ${state.champ.name}의 평소 유형과 달라요. 색다르게 해 보고 싶다면 '증강 몰빵' 빌드가 퀘스트 아이템을 모두 넣어 완성을 도와줘요.`)}</div>` : ""}
+        ${usageNote(r.aug)}
         ${r.note ? `<div class="note">${esc(r.note)}</div>` : ""}
         <div class="desc">${r.aug.desc}</div>
       </div>

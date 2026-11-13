@@ -520,6 +520,40 @@
     return mw;
   }
 
+  // 증강 활용 안내 (2026-11-14 P7): 계산이 안 된 것(미구현)과 계산했더니 0인 것(효과 없음)을 섞지 않는다.
+  //   noNumbers  수치 계산 없음 — 효과 종류(태그)로만 평가 (0이라는 뜻이 아님)
+  //   noEffect   계산했는데 이 챔피언의 기본 빌드에서 늘어나는 지표가 없음 (예: 가렌 + 사악한 정신: 주문력 계수 없음)
+  //   allDamage  모든 피해·스킬을 같은 비율로 키움 — 특정 아이템과 연결되지 않음
+  //   fixed      고정 능력치·고정 피해 — 아이템으로 커지지 않음
+  const ALL_DAMAGE_KEYS = ["dmgDealtMult", "trueBonus", "skillDmgMult", "slotDmgMult", "slotHealMult", "effectDmgMult"];
+  const USAGE = new Map();
+  function augmentUsage(aug, itemPool, w, rules, champ, statOpts = {}) {
+    if (!hasNumbers(aug, rules)) return { kind: "noNumbers" };
+    if (!champ || !champ.spells) return null;
+    const key = [champ.id, aug.id, JSON.stringify(statOpts), objId(rules), objId(itemPool)].join("|");
+    if (USAGE.has(key)) return USAGE.get(key);
+    const rule = ruleOf(rules, aug);
+    let res = null;
+    const c = withChosenFeatures(champ, [aug], rules);
+    const unmet = aug.eligible ? !aug.eligible.includes(c.id) : rule.requires && !(c.features || []).includes(rule.requires);
+    if (!unmet) {
+      const base = buildConcepts(itemPool, w, [], [], rules, champ, statOpts, ["balanced"])[0].pick.map((p) => p.item);
+      const m0 = Stats.evaluate(c, 18, base, [], statOpts).m, m1 = Stats.evaluate(c, 18, base, augStatsOf([aug], rules, c), statOpts).m;
+      const up = Object.keys(METRIC_FLOOR).some((k) => (m1[k] || 0) - (m0[k] || 0) > 1e-6 * Math.max(1, Math.abs(m0[k] || 0)));
+      const lift = augContext([aug], rules, c).lift;
+      if (!up) res = { kind: "noEffect" };
+      else if (!Object.keys(lift).length) {
+        // 모든 피해를 키우는 배수만 있는 증강(속전속결 등)과 고정 능력치·피해(천상의 신체 체력 +1500 등)를 나눈다
+        const st = Object.entries(rule.statsResolved || {}).filter(([k]) => k !== "goldValue" && k !== "rangedScale");
+        const allDmg = st.length && st.every(([k, v]) => ALL_DAMAGE_KEYS.includes(k) && (typeof v !== "number" || v > 0));
+        res = { kind: allDmg ? "allDamage" : "fixed" };
+      }
+    }
+    if (USAGE.size > 20000) USAGE.clear();
+    USAGE.set(key, res);
+    return res;
+  }
+
   // 전체 전투 가치의 지표 가중치 = 챔피언 성향 그대로 (증강 태그는 섞지 않는다).
   // 예전엔 증강 태그(입력 능력치)를 섞어 강타자(최대 체력 비례 '피해')의 체력 태그가 버티는 힘 가중치로 갔다 (2026-11-14 E3).
   // 증강 효과 자체는 계산(증강 능력치·효과를 넣은 지표)에 이미 들어 있다
@@ -1093,13 +1127,13 @@
       remember(memoKey("build", items, w, chosen, fixed, champ, statOpts, c.key, rules),
         () => buildConceptsRaw(items, w, chosen, fixed, rules, champ, statOpts, [c.key])[0]));
   }
-  const clearMemo = () => { memo.clear(); AOW.clear(); };
+  const clearMemo = () => { memo.clear(); AOW.clear(); USAGE.clear(); };
   const setMemoMax = (n) => { MEMO_MAX = n; while (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value); };
 
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, conceptMetricWeights, augOutputWeights, setAugmentOfficial, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

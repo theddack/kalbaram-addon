@@ -1479,3 +1479,13 @@ test("빌드 탭: 균형과 증강 몰빵이 다르면 안내하지 않는다", 
   assert.doesNotMatch(p.text("#concept-desc"), /빌드가 같아요/);
   assert.deepEqual(p.errors, []);
 });
+
+test("증강 목록: 이 챔피언에게 효과가 없는 증강은 '효과 없음'을, 수치 계산이 없는 증강은 '수치 계산 없음'을 알려 준다 (P7)", async () => {
+  const p = await loadPage();
+  p.pickChamp("Garen");
+  const row = p.augRow(p.data.augments.find((a) => a.name === "사악한 정신").id);
+  assert.match(row.textContent, /이 챔피언에겐 효과 없음/);
+  const tagOnly = p.data.augments.find((a) => !a.category && !(a.effects || []).length && !((p.data.rules.augments[a.id] || {}).statsResolved));
+  assert.match(p.augRow(tagOnly.id).textContent, /수치 계산 없음/);
+  assert.deepEqual(p.errors, []);
+});

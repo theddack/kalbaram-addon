@@ -155,3 +155,15 @@ test("P3: δ 를 정하면 몰빵 빌드의 전투 가치는 균형 빌드의 (1
   const again = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, ["augment"])[0];
   assert.deepEqual(again.pick.map((p) => p.item.name), off.pick.map((p) => p.item.name), "끄면 원래대로");
 });
+
+// P7 (2026-11-14): 미구현(수치 계산 없음)과 효과 없음·아이템 무관을 구분해 안내한다
+test("P7: 증강 활용 안내는 수치 없음 · 효과 없음 · 모든 피해 배수 · 고정 효과를 구분한다", () => {
+  const use = (cid, n) => { const c = champ(cid); return (S.augmentUsage(byName(n), d.items, S.profile(c, d.tags), d.rules, c, {}) || {}).kind || null; };
+  assert.equal(use("Garen", "사악한 정신"), "noEffect", "가렌은 주문력 계수가 없다");
+  assert.equal(use("Lux", "사악한 정신"), "fixed", "럭스에겐 효과가 있지만 아이템으로 안 커진다");
+  assert.equal(use("Jinx", "속전속결"), "allDamage");
+  assert.equal(use("Jinx", "천상의 신체"), "fixed");
+  assert.equal(use("Jinx", "강타자"), null, "아이템(체력)으로 커지는 증강은 안내 없음");
+  const tagOnly = d.augments.find((a) => !a.category && !S.hasNumbers(a, d.rules));
+  assert.equal(use("Jinx", tagOnly.name), "noNumbers");
+});
