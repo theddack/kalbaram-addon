@@ -419,7 +419,9 @@ test("적 대응: 적이 산 아이템 때문에 순위가 크게 오른 아이�
     { champion: "Kalista", level: 16, items: ["3006", "3153", "3302", "6672"] }];
   // 내 아이템은 신발만: 2026-11-11 부터 이미 산 전설 아이템이 내 유형뿐이면(리치베인·내셔의 이빨) 반대 유형(AD)을 뒤로 미뤄
   // 리안드리의 순위가 크게 오르지 않는다 (카이사 판 수정). 여기선 적 대응 표시만 본다
-  const live = (x) => p.w.applyLive({ enabled: true, inGame: true, champion: "Kayle", level: 11, items: ["3006"],
+  // 2026-11-14 E1(스킬에 딸린 효과는 실제로 쓰여 맞는 스킬 빈도로)로 케일의 리안드리 화상 가치가 줄어 적 대응 문턱(8위 안·3계단)에
+  // 걸리지 않게 됐다. 같은 적 아이템으로 리안드리가 적 대응으로 오르는 카사딘으로 기능을 본다 (적 아이템·기대 문장은 그대로)
+  const live = (x) => p.w.applyLive({ enabled: true, inGame: true, champion: "Kassadin", level: 11, items: ["3006"],
     enemies: enemyBuilds.map((e) => e.champion), ...x });
   live({ enemyBuilds: enemyBuilds.map((e) => ({ ...e, items: [] })) });
   assert.doesNotMatch(p.text("#next-buy"), /적 대응/, "적이 아무것도 안 샀으면 표시 안 함");

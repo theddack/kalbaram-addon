@@ -1076,3 +1076,27 @@ test("챔피언 패시브: 싸울 때만 켜지는 공격 속도는 한타 능�
   const t0 = St.computeStats({ ...champ("Belveth"), stackStats: null }, 14, [], [], { now: true }).total;
   assert.ok(t.AS > t0.AS + 0.4, `벨베스 14레벨 ${t0.AS} → ${t.AS}`);
 });
+
+// P1 E1 (2026-11-14 엔진 개선): 스킬을 써야 터지는 효과(스킬 사용 시·지정 스킬)는 스킬 피해와 같은 비율로 초당 피해에 넣는다.
+// 스킬 피해는 '재사용 대기시간마다 계속 맞히지 못한다'는 이유로 30%만 넣는데, 그 스킬에 딸린 효과는 100%로 넣어
+// 가렌 + 전부 다 무너뜨려에서 증강의 스킬분(50)이 가렌 자기 스킬(23)보다 크게 들어갔다
+test("E1: 스킬 사용 시 효과는 초당 피해에서 스킬 피해와 같은 비율 (평타 효과는 100%)", () => {
+  const c = champ("Garen");
+  const castFx = { kind: "magic", name: "t", base: [100], trigger: { type: "cast" }, src: "시험" };
+  const hitFx = { kind: "magic", name: "t2", base: [100], trigger: { type: "onhit" }, src: "시험2" };
+  const m0 = St.evaluate(c, 18, [], []).m;
+  const mc = St.evaluate(c, 18, [], [{ _effects: [castFx] }]).m;
+  const mh = St.evaluate(c, 18, [], [{ _effects: [hitFx] }]).m;
+  const castRaw = mc.augDps - m0.augDps, hitRaw = mh.augDps - m0.augDps;
+  assert.ok(Math.abs((mc.dps - m0.dps) - St.SKILL_DPS_SHARE * castRaw) < 1e-6, `스킬 효과 ${mc.dps - m0.dps} vs ${castRaw}`);
+  assert.ok(Math.abs((mh.dps - m0.dps) - hitRaw) < 1e-6, "평타 효과는 그대로");
+});
+
+test("E1: 갱신·재사용 대기시간 상한이 있는 스킬 효과는 상한까지 그대로 (리안드리 3초 화상)", () => {
+  const c = champ("Kayle");
+  const capped = { kind: "magic", name: "t", base: [100], trigger: { type: "cast" }, cooldown: 3, src: "시험" };
+  const m0 = St.evaluate(c, 18, [item("광전사의 군화")], []).m, m = St.evaluate(c, 18, [item("광전사의 군화")], [{ _effects: [capped] }]).m;
+  const raw = m.augDps - m0.augDps, used = m.dps - m0.dps;
+  // 시전 빈도 × 0.3 이 1/3초보다 크면 상한(1/3)에 걸려 그대로, 작으면 줄어든다 — 어느 쪽이든 30% 아래로는 안 내려간다
+  assert.ok(used >= St.SKILL_DPS_SHARE * raw - 1e-6 && used <= raw + 1e-6, `${used} / ${raw}`);
+});

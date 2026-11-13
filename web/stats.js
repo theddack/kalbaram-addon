@@ -435,6 +435,11 @@
   function setTarget(t) {
     Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP } : {});
   }
+  // 초당 피해에 스킬을 써야 나오는 피해를 넣는 비율 (스킬을 재사용 대기시간마다 계속 맞히는 일은 드물다, ASSUMPTIONS).
+  // 스킬에 딸린 효과(스킬 사용 시·지정 스킬 표식)는 '실제로 쓰여 맞는 스킬 빈도' = 시전 빈도 × 이 비율로 보고, 그다음 효과 자체의
+  // 재사용 대기시간·갱신 상한을 건다 (리안드리 화상처럼 3초마다 한 번이면 되는 효과는 상한까지 그대로).
+  // 2026-11-14 E1: 효과는 시전 빈도 100%로 세서 가렌 + 전부 다 무너뜨려의 증강 스킬분(50)이 가렌 자기 스킬(23)보다 컸다
+  const SKILL_DPS_SHARE = 0.3;
   const CAST_MIN_CD = 2; // '스킬 사용 시' 효과: 한 스킬은 최대 2초에 1번 (토글·충전형 스킬이 발동을 부풀리지 않게)
   const COMBO_WINDOW = 4; // 콤보 한 번(스킬 4개)에 걸리는 시간 가정(초): 쿨다운 있는 효과의 발동 횟수 상한
   // 주문 검(리치베인·삼위일체 …)처럼 '스킬 뒤 기본 공격'에 터지는 효과를 실제로 섞어 치는 비율.
@@ -456,7 +461,7 @@
     { what: "상대 현재 체력 70% (잃은 체력 30%)", src: "assume", why: "한타가 한창일 때를 기준으로 했어요. 현재·잃은 체력 비례 피해에만 쓰여요." },
     { what: "받는 피해 초당 600", src: "assume", why: "무적·피해 감소 시간을 '버티는 힘'으로 바꿀 때만 써요. 18레벨 한타에서 집중을 받을 때 정도로 잡았어요." },
     { what: "콤보 = Q·W·E·R 각 1번, 4초", src: "assume", why: "스킬 4개를 한 번씩 쓰는 데 걸리는 시간이에요. 재사용 대기시간이 있는 효과는 4초 안에 발동하는 횟수만 세요." },
-    { what: "초당 피해에 스킬 피해는 30%만", src: "assume", why: "스킬을 재사용 대기시간마다 계속 맞히는 일은 드물어서, 다 넣으면 너무 커져요." },
+    { what: "초당 피해에 스킬 피해는 30%만 (스킬을 써야 터지는 증강·아이템 효과도 같이)", src: "assume", why: "스킬을 재사용 대기시간마다 계속 맞히는 일은 드물어서, 다 넣으면 너무 커져요. 스킬에 딸린 효과(주문 검·붐 앤 베이스 등)도 그 스킬을 써야 나오니 같은 비율이에요." },
     { what: "제어력: 기절·속박은 그대로, 둔화는 30%만", src: "assume", why: "둔화는 움직일 수는 있어서 기절보다 약하게 셌어요. 5초 넘는 지속 효과(장판 등)는 CC로 안 셌어요." },
     { what: "골드 → 능력치: 주 공격 50% · 체력 30% · 방어력·마법 저항력 20%", src: "assume", why: "능력치 1당 골드 가치는 위키 '골드 효율'(공격력 35·주문력 20·체력 2.67·방어 20골드) 그대로이고, 나눠 사는 비율만 정한 값이에요." },
     { what: "평가 기준: 18레벨 · 아이템 6칸 완성", src: "assume", why: "증강·아이템을 같은 조건에서 비교하려고 풀템 시점으로 맞췄어요. 능력치 패널 레벨 슬라이더로 다른 레벨도 볼 수 있어요." },
@@ -580,6 +585,8 @@
     const castRate = out.spells.reduce((a, s) => a + (!s.disabled && s.cd > 0 ? 1 / Math.max(s.cd, CAST_MIN_CD) : 0), 0);
     out.augCombo = 0;
     out.augDps = 0;
+    out.castDps = 0;  // augDps 중 스킬을 써야 나오는 몫 (시전 빈도 100% 기준)
+    out.castDpsUsed = 0;  // 같은 몫을 '실제로 쓰여 맞는 스킬 빈도'(× SKILL_DPS_SHARE, 효과 상한 적용)로 센 값 — 초당 피해에 쓴다
     out.effects = [];
     for (const e of stats.effects || []) {
       // 한 번에 여러 발 (rules effectCount: 탄환 세례 5발 · 마법 미사일 3발 · 쌍둥이 불꽃 1 + 치명타 확률 × 3)
@@ -633,9 +640,9 @@
       else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0));
       // '기본 공격 시'(on-attack) 효과 (루난의 허리케인 탄환): 공격마다 1번, 치명타 적용. 적중 효과 반복(구인수·한 발에 두 놈)은 안 받는다
       else if (tr.type === "onattack") { row.dps = hit * rate(t.AS) * (1 + Math.min(1, t.critAuto ?? t.CRIT) * (t.CRITDMG - 1)); out.augDps += row.dps; }
-      else if (tr.type === "cast") { out.augCombo += hit * comboTimes(casts); out.augDps += hit * rate(castRate); }
+      else if (tr.type === "cast") { const v = hit * rate(castRate); out.augCombo += hit * comboTimes(casts); out.augDps += v; out.castDps += v; out.castDpsUsed += hit * rate(castRate * SKILL_DPS_SHARE); }
       // 지정 스킬 하나로 쌓은 표식을 기본 공격으로 터뜨림 (핏빛 코발트): 콤보 한 번에 대상 스킬 1번 × 터뜨리는 비율, 초당은 대상 스킬 빈도
-      else if (tr.type === "boundCast") { out.augCombo += hit * (targetable ? weave : 0); out.augDps += hit * out.boundCastRate; }
+      else if (tr.type === "boundCast") { const v = hit * out.boundCastRate; out.augCombo += hit * (targetable ? weave : 0); out.augDps += v; out.castDps += v; out.castDpsUsed += v * SKILL_DPS_SHARE; }
       else out.augCombo += hit;
     }
     // 흡수: 스킬로 준 피해(방어 적용 후)의 일부를 회복, 죽음의 순환: 회복량의 일부를 마법 피해로
@@ -671,7 +678,8 @@
     control += (cv.controlSec || 0) + (cv.controlPerCast || 0) * casts;
     if (cv.fearPerCast) for (const sp of out.spells) if (!sp.disabled) control += Math.min(cv.fearPerCast, sp.cd / (cv.fearCdDiv || 20));
     out.control = control;
-    out.dps = out.autoDps + 0.3 * out.skillDps + out.augDps;  // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 30%만
+    // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 스킬 피해와 스킬에 딸린 효과는 SKILL_DPS_SHARE 만
+    out.dps = out.autoDps + SKILL_DPS_SHARE * out.skillDps + (out.augDps - out.castDps) + out.castDpsUsed;
     out.support = out.shield + out.heal;
     // 서포터 아이템: 아군을 돕는 챔피언(allysupport)이면 그 도움을 다른 아군에게 더 준다 (rules.json items).
     // 월석 재생기 연쇄(회복 30%·보호막 35%), 헬리아의 메아리(감소 전 피해 30% 충전 → 아군 회복, 최대 80~250).
@@ -691,7 +699,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { ROWS, TARGET, DEFAULT_TARGET, ASSUMPTIONS, setTarget, baseStats, computeStats, metrics, evaluate, ranksAt };
+  const api = { SKILL_DPS_SHARE, ROWS, TARGET, DEFAULT_TARGET, ASSUMPTIONS, setTarget, baseStats, computeStats, metrics, evaluate, ranksAt };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);
