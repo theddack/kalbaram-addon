@@ -821,6 +821,26 @@ def fight_buffs(c, rc, warn):
     return out
 
 
+OWN_HP_KEYS = {"HP", "bonusHP"}
+
+
+def prune_target_hp_tags(rules, out_augs):
+    """설명의 '최대 체력'이 대상 체력이면 자기 체력 태그(HP)를 뺀다: 계산 효과가 대상 체력(TGT_*)만 쓰고 자기 체력 계수·능력치가 없을 때.
+    (2026-11-14 P1 E4: 화염 낙인 '최대 체력의 0.4% 화상'은 대상 체력인데 HP 태그가 붙어 체력 아이템과 연계로 잡혔다)
+    규칙에서 tags 를 직접 정한 증강은 건드리지 않는다"""
+    for a in out_augs:
+        r = rules["augments"].get(a["id"]) or {}
+        if "HP" not in (a.get("tags") or {}) or r.get("tags"):
+            continue
+        keys = set()
+        for e in a.get("effects") or []:
+            keys |= set((e.get("ratios") or {}).keys())
+            keys |= set(re.findall(r"TGT_\w+|bonusHP|HP", json.dumps(e.get("tree") or "")))
+        own = keys & OWN_HP_KEYS or any("HP" in k for k in (r.get("statsResolved") or {}))
+        if not own and any(k.startswith("TGT_") for k in keys):
+            del a["tags"]["HP"]
+
+
 def rule_effects(rules, aug_spells, out_augs, warn):
     """rules.json effects: 설명에서 자동으로 못 뽑은 피해 효과를 게임 계산식 이름으로 붙인다 (패치 수치를 따라감)"""
     by_id = {a["id"]: a for a in out_augs}
@@ -1732,6 +1752,7 @@ def main():
     rule_effects(rules, aug_spells, out_augs, rule_warn)
     rule_effect_cooldowns(rules, aug_spells, out_augs, rule_warn)
     rule_effect_counts(rules, aug_spells, out_augs, rule_warn)
+    prune_target_hp_tags(rules, out_augs)
     # rules effectUptime: 조건이 맞을 때만 터지는 효과의 가동률 (아티스트 보호: 최대 사거리 75% 밖에서 쏜 공격만). 근거는 basis assume
     for aid, r in rules["augments"].items():
         if r.get("effectUptime") is not None:

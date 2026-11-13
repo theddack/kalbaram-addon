@@ -1100,3 +1100,10 @@ test("E1: 갱신·재사용 대기시간 상한이 있는 스킬 효과는 상�
   // 시전 빈도 × 0.3 이 1/3초보다 크면 상한(1/3)에 걸려 그대로, 작으면 줄어든다 — 어느 쪽이든 30% 아래로는 안 내려간다
   assert.ok(used >= St.SKILL_DPS_SHARE * raw - 1e-6 && used <= raw + 1e-6, `${used} / ${raw}`);
 });
+
+// P1 E4: '대상' 최대 체력에 비례하는 증강(화염 낙인: 대상 최대 체력 0.4% 화상)에 자기 체력 태그(HP)가 붙어
+// 체력 아이템을 따라가게 될 수 있었다. 계산 효과가 대상 체력만 쓰면 HP 태그를 뺀다 (강타자처럼 자기 체력 비례는 유지)
+test("E4: 대상 체력 비례만 있는 증강은 자기 체력 태그가 없다", () => {
+  for (const id of ["ARAM_Firebrand", "ThirdTimesTheHarm", "ARAM_MagicMissile"]) assert.ok(!(aug(id).tags || {}).HP, `${id} ${JSON.stringify(aug(id).tags)}`);
+  assert.ok((aug("ARAM_HeavyHitter").tags || {}).HP > 0, "강타자는 자기 체력 비례");
+});
