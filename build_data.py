@@ -835,7 +835,7 @@ def prune_target_hp_tags(rules, out_augs):
         keys = set()
         for e in a.get("effects") or []:
             keys |= set((e.get("ratios") or {}).keys())
-            keys |= set(re.findall(r"TGT_\w+|bonusHP|HP", json.dumps(e.get("tree") or "")))
+            keys |= {k.strip('"') for k in re.findall(r'TGT_\w+|"bonusHP"|"HP"', json.dumps(e.get("tree") or ""))}
         own = keys & OWN_HP_KEYS or any("HP" in k for k in (r.get("statsResolved") or {}))
         if not own and any(k.startswith("TGT_") for k in keys):
             del a["tags"]["HP"]
