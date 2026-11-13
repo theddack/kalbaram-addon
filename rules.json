@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS HASTEtoDmg(가속 → 피해량, 가속은 0) bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, dropEffects=[설명에서 잘못 뽑힌 자동 효과 이름](능력치를 피해로 읽은 것), effects[].rangedScale=원거리 챔피언 배수(없으면 게임 계산식의 원거리 배율을 자동으로), effects[].times=평균 배수(평균 중첩·발동 비율, 이유는 basis), rangedStats={능력치 키: 원거리 배율이 붙은 계산식 이름}(원거리 챔피언은 그 능력치에 배율),effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
+  "_설명": "증강별 특수 규칙. stats.itemStats={아이템 이름: {능력치: 값|{calc18}}}=그 아이템을 가졌을 때만 붙는 능력치. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS HASTEtoDmg(가속 → 피해량, 가속은 0) bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, dropEffects=[설명에서 잘못 뽑힌 자동 효과 이름](능력치를 피해로 읽은 것), effects[].rangedScale=원거리 챔피언 배수(없으면 게임 계산식의 원거리 배율을 자동으로), effects[].times=평균 배수(평균 중첩·발동 비율, 이유는 basis), rangedStats={능력치 키: 원거리 배율이 붙은 계산식 이름}(원거리 챔피언은 그 능력치에 배율),effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -671,8 +671,10 @@
         "VAMP": 0.8
       },
       "stats": {
-        "goldValue": "Gold"
-      }
+        "goldValue": "Gold",
+        "itemStats": {"굶주린 히드라": {"LS": {"calc18": "{6496b454}"}}}
+      },
+      "basis": {"calc": "굶주린 히드라의 생명력 흡수가 20%로 증가 (설명) = 굶주린 히드라 12% + 8% (게임 데이터 계산식 0.08). 2026-11-13 제이스 판 실측: 계산 12% · 실제 20%", "assume": []}
     },
     "Upgrade_DeathDance": {
       "items": [

@@ -115,6 +115,8 @@
         else if (k === "slotDmgMult") for (const [slot, m] of Object.entries(v)) flags.slotDmg[slot] = (flags.slotDmg[slot] || 0) + m;
         else if (k === "slotHealMult") for (const [slot, m] of Object.entries(v)) flags.slotHeal[slot] = (flags.slotHeal[slot] || 0) + m;
         else if (k === "noUlt") flags.noUlt = flags.noUlt || v;
+        // 그 아이템을 가졌을 때만 붙는 능력치 (굶주린 히드라 업그레이드: 굶주린 히드라 생명력 흡수 +8%)
+        else if (k === "itemStats") { for (const [nm, st] of Object.entries(v)) if (items.some((it) => it.name === nm)) for (const [sk, sv] of Object.entries(st)) if (sk in add) addTo(sk, sv); }
         else if (k in flags) flags[k] += v;
         else conv[k] = (conv[k] || 0) + v;
       }

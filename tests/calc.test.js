@@ -1107,3 +1107,12 @@ test("E4: 대상 체력 비례만 있는 증강은 자기 체력 태그가 없�
   for (const id of ["ARAM_Firebrand", "ThirdTimesTheHarm", "ARAM_MagicMissile"]) assert.ok(!(aug(id).tags || {}).HP, `${id} ${JSON.stringify(aug(id).tags)}`);
   assert.ok((aug("ARAM_HeavyHitter").tags || {}).HP > 0, "강타자는 자기 체력 비례");
 });
+
+// P1 E8 (2026-11-13 제이스 판 실측). 증강 모드 기본 체력 −200 은 형태(해머·캐논)에 따른 것으로 보여 바꾸지 않는다 (케일 실측은 근접 값이 맞음).
+// 굶주린 히드라 업그레이드: 굶주린 히드라의 생명력 흡수 +8% (게임 데이터 계산식 0.08, 설명 '20%로 증가') — 계산 12% · 실제 20%
+test("E8: 굶주린 히드라 업그레이드는 굶주린 히드라를 가졌을 때만 그 아이템의 흡혈을 올린다", () => {
+  const up = aug("Upgrade_Ravenous"), st = (d.rules.augments.Upgrade_Ravenous || {}).statsResolved;
+  const ls = (items) => St.computeStats(champ("Jayce"), 13, items.map(item), [st]).total.LS;
+  assert.ok(up && Math.abs(ls(["굶주린 히드라"]) - 0.2) < 1e-6, `히드라 보유 ${ls(["굶주린 히드라"])}`);
+  assert.equal(ls([]), 0, "히드라가 없으면 그대로");
+});

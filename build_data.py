@@ -744,6 +744,21 @@ def resolve_rule_stats(rules, aug_spells):
                 out[key] = {"base": [round(e.base, 8)], **({"lvl": [round(x, 8) for x in e.lvl]} if e.lvl else {}),
                             **({"ratios": {k2: [round(c, 8)] for k2, c in e.ratios.items()}} if e.ratios else {})} \
                     if hasattr(e, "ratios") else expr_json([e])
+            elif key == "itemStats":  # 그 아이템을 가졌을 때만 붙는 능력치 {아이템 이름: {능력치: 값 | {calc18: 계산식}}} (업그레이드 증강)
+                sub = {}
+                for item_name, st in v.items():
+                    vals = {}
+                    for sk, sv in st.items():
+                        if isinstance(sv, dict) and "calc18" in sv:
+                            e, _ = calc.calc(sv["calc18"], 1)
+                            if e is None or not hasattr(e, "ratios"):
+                                warn.append(f"{aid}.itemStats.{item_name}.{sk}: 계산식 '{sv['calc18']}' 해석 실패")
+                                continue
+                            vals[sk] = round(e.base + (e.lvl[1] if e.lvl else 0), 6)
+                        else:
+                            vals[sk] = sv
+                    sub[item_name] = vals
+                out[key] = sub
             elif isinstance(v, dict):  # 스킬별 가속 {"Q": "QAbilityHaste"}
                 sub = {}
                 for slot, name in v.items():
@@ -1635,6 +1650,8 @@ def main():
             "aramSource": aram_source,
             # 모드 공통 능력치: 근접·원거리별 기본 체력 [1레벨, 18레벨], 공속 상한, 치명타 초과분 → 적응형
             "modeStats": {k: v for k, v in {
+                # 제이스는 2026-11-13 판에서 원거리 값(−200)으로 나왔지만 케일(같은 원거리 정체성)은 근접 값이 맞았다(tests/replay).
+                # 제이스는 형태(해머·캐논)에 따라 달라지는 것으로 보여 바꾸지 않는다 (실게임 확인 필요, docs/추천엔진_개선_결과.md)
                 "hp": (mode_global.get("hp") or {}).get("melee" if c["stats"]["attackrange"] <= 250 else "ranged"),
                 "asCap": mode_global.get("asCap"), "critAdaptive": mode_global.get("critAdaptive")}.items() if v} or None,
             "patch": patch_lines.get(c["name"]),
