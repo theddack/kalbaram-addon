@@ -92,3 +92,26 @@ test("추천 6: 적중 시 아이템(구인수)의 이득은 평타로 싸우는
   };
   assert.ok(gain("Kayle") > gain("Lux"), `케일 ${gain("Kayle")} 럭스 ${gain("Lux")}`);
 });
+
+// P2 (2026-11-14 엔진 개선): 증강이 빌드에서 따라갈 입력 능력치(lift)를 효과 계수·발동 방식·변환 키에서 읽는다.
+// 예전엔 수치 증강 180개 중 128개가 비어, 몰빵 가중치가 챔피언 가중치와 같아졌다 (화염 낙인·치명적 리듬·유레카 …)
+test("P2-1: 변환·발동 방식에서 입력 능력치를 읽는다 (고정 능력치만 있는 증강은 비워 둔다)", () => {
+  const jinx = champ("Jinx");
+  const lift = (n) => S.augContext([byName(n)], d.rules, jinx).lift;
+  assert.ok(lift("유레카").AP > 0, "유레카: 주문력 → 가속");
+  assert.ok(lift("치명적 리듬").CRIT > 0, "치명적 리듬: 치명타마다 공속");
+  assert.ok(lift("간지럼 괴물").AD > 0, "간지럼 괴물: 아이템 공격력 → 공속");
+  assert.ok(lift("화염 낙인").AS > 0, "화염 낙인: 평타마다 화상");
+  assert.ok(!lift("화염 낙인").HP, "대상 체력 비례는 자기 체력과 연결 안 함");
+  assert.ok(lift("강타자").HP > 0, "강타자: 자기 최대 체력 비례");
+  assert.deepEqual(lift("사악한 정신"), {}, "주문력 +80 은 아이템으로 안 커짐");
+});
+
+// P2-2: 빌드 지표 가중치는 증강의 출력(실제로 늘어나는 지표)으로 정한다. 강타자(체력 비례 '피해')의 체력 태그가 버티는 힘 가중치로 가지 않는다
+test("P2-2: 피해 증강의 입력이 체력이어도 몰빵 지표 가중치는 피해 쪽으로", () => {
+  const sion = champ("Sion"), w = S.profile(sion, d.tags), hh = byName("강타자");
+  const mw = S.conceptMetricWeights(w, [hh], d.rules, sion, S.CONCEPTS[0]);
+  const base = S.conceptMetricWeights(w, [], d.rules, sion, S.CONCEPTS[0]);
+  assert.ok(mw.dps + mw.combo > base.dps + base.combo, JSON.stringify({ mw, base }));
+  assert.ok(mw.ehp < base.ehp + 1e-9, "버티는 힘 비중이 늘지 않는다");
+});

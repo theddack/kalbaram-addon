@@ -51,6 +51,7 @@
   // 수치: 최종 능력치로 계산한 스킬 콤보·DPS·유효 체력·회복/보호막의 상대 증가율 (18레벨, 칼바람 보정 포함)
   // 태그: 고유 효과·증강 연계처럼 수치로 안 잡히는 부분
   const NUM_K = 4;
+  const LIFT_FROM_CALC = 0.6;  // 계산(계수·발동·변환)으로만 찾은 입력 능력치의 lift 세기 = 설명 키워드 태그 세기 (build_data tag_text)
   const TAG_K = 0.4;
   const METRIC_FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };
 
@@ -209,7 +210,11 @@
       const up = (t, v) => { lift[t] = Math.max(lift[t] || 0, v); (liftSrc[t] = liftSrc[t] || []).push(a.name); mine[t] = Math.max(mine[t] || 0, v); };
       // rule.lift: 빌드가 따라갈 태그를 직접 정한 증강 ({}면 아이템으로 안 커짐: 티아라 매혹, 눈덩이 가속 …)
       if (rule.lift) for (const [t, v] of Object.entries(rule.lift)) up(t, v);
-      else for (const [t, v] of Object.entries(et)) if (scales === null || scales.has(t)) up(t, v);
+      else {
+        for (const [t, v] of Object.entries(et)) if (scales === null || scales.has(t)) up(t, v);
+        // 효과 태그엔 없지만 계산상 증강을 키우는 입력 능력치는 설명 키워드 태그와 같은 세기(0.6)로 (2026-11-14 P2)
+        if (scales) for (const t of scales) if (!(t in et)) up(t, LIFT_FROM_CALC);
+      }
       for (const to of Object.values(rule.convert || {})) up(to, 1);
       Object.assign(convert, rule.convert || {});
       for (const t of rule.zero || []) zero.add(t);
@@ -224,13 +229,31 @@
   }
   // 증강이 '키우는' 능력치: 효과 계수(주문력 300% 보호막 → 주문력)·배율(체력 +35% → 체력). 고정 수치(주문력 +80)는 아이템 가치를 안 올린다
   // 숫자가 하나도 없는 증강은 null (효과 종류만 믿는다)
-  const RATIO_TAG = { AP: ["AP"], AD: ["AD"], bonusAD: ["AD"], HP: ["HP"], bonusHP: ["HP"], bonusARMOR: ["ARMOR"], bonusMR: ["MR"] };
-  const MULT_TAG = { APmult: ["AP"], ADmult: ["AD"], HPmult: ["HP"], ASmult: ["AS"], adaptiveMult: ["AD", "AP"], ehpMult: ["HP", "ARMOR", "MR"], shieldMult: ["HEALSHIELD"], HSP: ["HEALSHIELD"] };
+  // 효과 계수(자기 능력치) → 그 능력치 아이템. 대상 체력 비례(TGT_*)는 자기 아이템과 연결하지 않는다
+  const RATIO_TAG = { AP: ["AP"], AD: ["AD"], bonusAD: ["AD"], HP: ["HP"], bonusHP: ["HP"], ARMOR: ["ARMOR"], bonusARMOR: ["ARMOR"], MR: ["MR"], bonusMR: ["MR"],
+    MANA: ["MANA"], bonusMANA: ["MANA"], AS: ["AS"], bonusAS: ["AS"], CRIT: ["CRIT"], MS: ["MS"], bonusMS: ["MS"], LETHALITY: ["LETHAL"], HSP: ["HEALSHIELD"] };
+  const MULT_TAG = { APmult: ["AP"], ADmult: ["AD"], HPmult: ["HP"], ASmult: ["AS"], adaptiveMult: ["AD", "AP"], ehpMult: ["HP", "ARMOR", "MR"], shieldMult: ["HEALSHIELD"], HSP: ["HEALSHIELD"],
+    // 변환·배수 키의 입력 능력치 (2026-11-14 P2: 유레카·치명적 리듬·간지럼 괴물 등 lift 가 비어 몰빵이 증강을 못 따라갔다)
+    APtoHASTE: ["AP"], APtoCRIT: ["AP"], APtoBonusAD: ["AP"], bonusADtoAP: ["AD"], bonusADmult: ["AD"], bonusHPtoAP: ["HP"], bonusHPtoLETHALITY: ["HP"],
+    HASTEtoMS: ["HASTE"], HASTEtoDmg: ["HASTE"], itemADtoAS: ["AD"], itemMANAtoAP: ["MANA"], bonusMANAtoAP: ["MANA"], manaToHP: ["MANA"],
+    AStoCRITDMG: ["AS"], AStoHASTE: ["AS"], critStackAS: ["CRIT"], onhitOnCrit: ["CRIT", "ONHIT"], effectCritDmg: ["CRIT"], skillCritDmg: ["CRIT"], ultCritDmg: ["CRIT"] };
+  // 발동 방식 → 발동을 늘리는 능력치: 평타 발동은 공격 속도·적중, 스킬 발동은 스킬 가속, 치명타 확률 발동은 치명타
+  const TRIGGER_TAG = { onhit: ["AS", "ONHIT"], attacks: ["AS", "ONHIT"], onattack: ["AS"], cast: ["HASTE"], boundCast: ["HASTE"] };
+  const treeKeys = (n, out = new Set()) => {
+    if (Array.isArray(n)) { for (const x of n) treeKeys(x, out); return out; }
+    if (n && typeof n === "object") { for (const k of Object.keys(n.r || {})) out.add(k); for (const x of n.a || []) treeKeys(x, out); }
+    return out;
+  };
   function scaleTags(a, rule) {
     const st = rule.statsResolved;
     if (!(a.effects && a.effects.length) && !st) return null;
     const out = new Set();
-    for (const e of a.effects || []) for (const k of Object.keys(e.ratios || {})) for (const t of RATIO_TAG[k] || []) out.add(t);
+    for (const e of a.effects || []) {
+      for (const k of [...Object.keys(e.ratios || {}), ...treeKeys(e.tree || [])]) for (const t of RATIO_TAG[k] || []) out.add(t);
+      if (e.kind !== "heal" && e.kind !== "shield") for (const t of TRIGGER_TAG[(e.trigger || {}).type] || []) out.add(t);
+      else out.add("HEALSHIELD");  // 회복·보호막 효과는 회복·보호막 효과(%) 아이템으로 커진다
+      if (e.chance === "CRIT" || e.countCrit) out.add("CRIT");
+    }
     for (const k of Object.keys(st || {})) for (const t of MULT_TAG[k] || []) out.add(t);
     return out;
   }
@@ -490,6 +513,34 @@
     return mw;
   }
 
+  // 컨셉의 지표 가중치 = 챔피언 성향 지표 × 컨셉 챔피언 비중 + 증강 '출력' 지표 × 컨셉 증강 비중 (합 1).
+  // 증강 출력 = 맨몸 챔피언에 고른 증강을 넣었을 때 실제로 늘어나는 지표(맨몸 대비 비율). 태그(입력 능력치)로 정하지 않는다:
+  // 강타자(최대 체력 비례 '피해')의 체력 태그가 버티는 힘 가중치로 가서 공격 증강을 골라도 탱킹 쪽으로 갔다 (2026-11-14 P2-2·E3)
+  const CMW = new Map();
+  function conceptMetricWeights(w, chosen, rules, champ, concept, statOpts = {}) {
+    const ctx = augContext(chosen, rules, champ);
+    const champW = metricWeights(conceptWeights(w, { ...ctx, lift: {}, tags: {} }, { champ: 1, aug: 0 }));
+    if (!chosen.length || !champ || !champ.spells) return champW;
+    const key = [champ.id, ids(chosen).join(","), concept.key, JSON.stringify(statOpts), objId(w), objId(rules)].join("|");
+    if (CMW.has(key)) return CMW.get(key);
+    const c = withChosenFeatures(champ, chosen, rules);
+    const m0 = Stats.evaluate(c, 18, [], [], statOpts).m, m1 = Stats.evaluate(c, 18, [], augStatsOf(chosen, rules, c), statOpts).m;
+    const out = {};
+    let sum = 0;
+    for (const k of Object.keys(METRIC_FLOOR)) { out[k] = Math.max(0, (m1[k] || 0) - (m0[k] || 0)) / Math.max(m0[k] || 0, METRIC_FLOOR[k]); sum += out[k]; }
+    let mw = champW;
+    if (sum > 1e-9) {
+      const kc = concept.champ, ka = concept.aug;
+      mw = {};
+      for (const k of Object.keys(champW)) mw[k] = kc * champW[k] + ka * (out[k] || 0) / sum;
+      const t = Object.values(mw).reduce((a, b) => a + b, 0) || 1;
+      for (const k of Object.keys(mw)) mw[k] /= t;
+    }
+    if (CMW.size > 5000) CMW.clear();
+    CMW.set(key, mw);
+    return mw;
+  }
+
   function addCovered(covered, tags) {
     for (const [t, s] of Object.entries(tags)) if (s >= 0.5) covered[t] = (covered[t] || 0) + 1;
   }
@@ -504,8 +555,7 @@
   // 이 빌드(아이템 목록)에서 증강 하나가 보태는 가치: 증강을 더한 뒤 − 더하기 전 (지표 가중치는 증강을 고른 균형 기준으로 고정)
   // 추천 품질 점검(tools/augment_quality.js)에서 '몰빵 빌드가 증강을 더 살리나'를 잴 때 쓴다
   function augContribution(items, w, chosen, aug, rules, champ, statOpts = {}) {
-    const ctx = augContext([...chosen, aug], rules, champ);
-    const num = { mw: metricWeights(conceptWeights(w, ctx, CONCEPTS[1])), norm: {} };
+    const num = { mw: conceptMetricWeights(w, [...chosen, aug], rules, champ, CONCEPTS[1], statOpts), norm: {} };
     const c = withChosenFeatures(champ, [...chosen, aug], rules);
     const base = augStatsOf(chosen, rules, c);
     const empty = Stats.evaluate(c, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
@@ -636,11 +686,9 @@
   // weightsFrom: 지표 가중치를 정할 증강 목록 (기본 = chosen). 궁합(같이 − 따로)은 양쪽을 같은 가중치로 재야 한다
   function numericAugmentGainsRaw(augs, itemPool, w, chosen, fixed, rules, champ, statOpts = {}, weightsFrom = null) {
     champ = withChosenFeatures(champ, chosen, rules);
-    const ctx = augContext(weightsFrom || chosen, rules, champ);
-    const iw = conceptWeights(w, ctx, CONCEPTS[1]);
     const bal = buildConcepts(itemPool, w, chosen, fixed, rules, champ, statOpts, ["balanced"])[0];
     const items = bal.pick.map((p) => p.item);
-    const num = { mw: metricWeights(iw), norm: {} };
+    const num = { mw: conceptMetricWeights(w, weightsFrom || chosen, rules, champ, CONCEPTS[1], statOpts), norm: {} };
     const base = augStatsOf(chosen, rules, champ);
     const empty = Stats.evaluate(champ, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
     for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
@@ -680,7 +728,7 @@
     const ctx = augContext(chosen, rules, champ);
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts } : null;
     // 변칙: 균형 빌드가 중시하는 지표를 뒤집어서, 챔피언이 원래 약한 쪽(럭스면 탱킹·평타)을 키운다
-    const normal = metricWeights(conceptWeights(w, ctx, CONCEPTS[1]));
+    const normal = conceptMetricWeights(w, chosen, rules, champ0 || champ, CONCEPTS[1], statOpts);
     const inv = {};
     for (const k of Object.keys(normal)) inv[k] = Math.max(0.05, 1 - normal[k] * 2);
     const invSum = Object.values(inv).reduce((a, b) => a + b, 0);
@@ -703,7 +751,8 @@
         : null;
       // 반대 유형 = 증강이 키우는 방향(lift)을 뺀 챔피언 본래 유형 기준
       const offType = core && champ ? offTypeFilter(champ, { ...ctx, lift: {}, tags: {} }, c, items, fixed) : null;
-      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: null, focus: c.focus, off, core, offType, maxOff: offSlots(champ) }) };
+      const cmw = num ? conceptMetricWeights(w, chosen, rules, champ0, c, statOpts) : null;
+      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: cmw, focus: c.focus, off, core, offType, maxOff: offSlots(champ) }) };
       const twist = twistSupport(w, ctx);
       const k = twistK(twist);
       const mw = k >= 1 ? inv : lerp(metricWeights(iw), inv, k);
@@ -959,13 +1008,13 @@
       remember(memoKey("build", items, w, chosen, fixed, champ, statOpts, c.key, rules),
         () => buildConceptsRaw(items, w, chosen, fixed, rules, champ, statOpts, [c.key])[0]));
   }
-  const clearMemo = () => memo.clear();
+  const clearMemo = () => { memo.clear(); CMW.clear(); };
   const setMemoMax = (n) => { MEMO_MAX = n; while (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value); };
 
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, buildConcepts, rankItems, offSlots, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, buildConcepts, rankItems, offSlots, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;
