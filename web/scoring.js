@@ -40,7 +40,12 @@
   // 세기 3: 공식 핵심을 담는 챔피언 24 → 76 / 108, 겹치는 칸 평균 2.4 → 3.9 / 6 (5 면 4.7 칸으로 거의 목록 복사) — tools/official_check.js.
   // 균형에만 넣으면 몰빵 점검이 98.4 → 94.0% (몰빵이 공식 아이템을 놓쳐 균형보다 증강을 덜 살림) → 몰빵에도 같게 넣어 98.4% 유지
   const OFFICIAL_BOOST = 3;
-  const officialK = (c) => (c.flip ? 0 : 1);
+  // 공식 추천 가산 비중: 변칙은 0. 증강 몰빵은 실험 설정 (2026-11-14 P3: 공식 추천은 증강 없는 기준이라 몰빵이 증강을 따라가는 걸 막았다
+  // — 증강 효과와 전투 가치가 둘 다 나은 빌드 912장면 중 907장면을 이 가산이 밀어냄). 결정 전까지 기본은 예전처럼 1
+  let AUG_OFFICIAL = true;
+  const officialK = (c) => (c.flip || (c.focus && !AUG_OFFICIAL) ? 0 : 1);
+  // 증강 몰빵의 전투 가치 하한: 전체 전투 가치가 균형 빌드의 (1 − δ)보다 낮은 조합은 받지 않는다. null = 제한 없음 (δ 결정 전 기본)
+  let AUG_DELTA = null;
   const OFFICIAL_RANGE_W = { first: 1, middle: 0.7, last: 0.4 };
   // 공식 칼바람 추천이 없는 챔피언(54명, 원딜 다수): 성향이 비슷한 챔피언 SIMILAR_N 명의 공식 추천을 빌려 SIMILAR_K 배로.
   // 성향 = 역할 · 주 피해 유형 · 평타 비중(18레벨 맨몸, 평타 4초 ÷ (평타 4초 + 스킬 한 바퀴)) · 사거리 · 근접 여부.
@@ -493,6 +498,8 @@
     return champs;
   }
   const setSimilarK = (k) => { SIMILAR_K = k; memo.clear(); };
+  const setAugmentOfficial = (on) => { AUG_OFFICIAL = !!on; memo.clear(); };
+  const setAugmentDelta = (dl) => { AUG_DELTA = dl == null ? null : +dl; memo.clear(); };
   function withOfficial(ctx, champ, k) {
     const official = officialWeights(champ, k);
     return official ? { ...ctx, official, officialLabel: officialLabel(champ) } : ctx;
@@ -513,32 +520,30 @@
     return mw;
   }
 
-  // 컨셉의 지표 가중치 = 챔피언 성향 지표 × 컨셉 챔피언 비중 + 증강 '출력' 지표 × 컨셉 증강 비중 (합 1).
-  // 증강 출력 = 맨몸 챔피언에 고른 증강을 넣었을 때 실제로 늘어나는 지표(맨몸 대비 비율). 태그(입력 능력치)로 정하지 않는다:
-  // 강타자(최대 체력 비례 '피해')의 체력 태그가 버티는 힘 가중치로 가서 공격 증강을 골라도 탱킹 쪽으로 갔다 (2026-11-14 P2-2·E3)
-  const CMW = new Map();
+  // 전체 전투 가치의 지표 가중치 = 챔피언 성향 그대로 (증강 태그는 섞지 않는다).
+  // 예전엔 증강 태그(입력 능력치)를 섞어 강타자(최대 체력 비례 '피해')의 체력 태그가 버티는 힘 가중치로 갔다 (2026-11-14 E3).
+  // 증강 효과 자체는 계산(증강 능력치·효과를 넣은 지표)에 이미 들어 있다
   function conceptMetricWeights(w, chosen, rules, champ, concept, statOpts = {}) {
     const ctx = augContext(chosen, rules, champ);
-    const champW = metricWeights(conceptWeights(w, { ...ctx, lift: {}, tags: {} }, { champ: 1, aug: 0 }));
-    if (!chosen.length || !champ || !champ.spells) return champW;
-    const key = [champ.id, ids(chosen).join(","), concept.key, JSON.stringify(statOpts), objId(w), objId(rules)].join("|");
-    if (CMW.has(key)) return CMW.get(key);
+    return metricWeights(conceptWeights(w, { ...ctx, lift: {}, tags: {} }, { champ: 1, aug: 0 }));
+  }
+  // 증강 '출력' 지표 가중치: 맨몸 챔피언에 고른 증강을 넣었을 때 실제로 늘어나는 지표(맨몸 대비 비율, 합 1). 늘어나는 지표가 없으면 null.
+  // 증강 몰빵의 '증강 몫'을 이 가중치로 잰다: 챔피언 성향으로 재면 탱커가 고른 피해 증강의 가치가 0에 가까웠다 (2026-11-14 E5: 사이온 + 강타자 0.03)
+  const AOW = new Map();
+  function augOutputWeights(chosen, rules, champ, statOpts = {}) {
+    if (!chosen.length || !champ || !champ.spells) return null;
+    const key = [champ.id, ids(chosen).join(","), JSON.stringify(statOpts), objId(rules)].join("|");
+    if (AOW.has(key)) return AOW.get(key);
     const c = withChosenFeatures(champ, chosen, rules);
     const m0 = Stats.evaluate(c, 18, [], [], statOpts).m, m1 = Stats.evaluate(c, 18, [], augStatsOf(chosen, rules, c), statOpts).m;
     const out = {};
     let sum = 0;
     for (const k of Object.keys(METRIC_FLOOR)) { out[k] = Math.max(0, (m1[k] || 0) - (m0[k] || 0)) / Math.max(m0[k] || 0, METRIC_FLOOR[k]); sum += out[k]; }
-    let mw = champW;
-    if (sum > 1e-9) {
-      const kc = concept.champ, ka = concept.aug;
-      mw = {};
-      for (const k of Object.keys(champW)) mw[k] = kc * champW[k] + ka * (out[k] || 0) / sum;
-      const t = Object.values(mw).reduce((a, b) => a + b, 0) || 1;
-      for (const k of Object.keys(mw)) mw[k] /= t;
-    }
-    if (CMW.size > 5000) CMW.clear();
-    CMW.set(key, mw);
-    return mw;
+    let res = null;
+    if (sum > 1e-9) { res = {}; for (const k of Object.keys(out)) res[k] = out[k] / sum; }
+    if (AOW.size > 5000) AOW.clear();
+    AOW.set(key, res);
+    return res;
   }
 
   function addCovered(covered, tags) {
@@ -579,6 +584,7 @@
   }
 
   const BEAM = 6; // 동시에 키우는 후보 빌드 수
+  const LOCAL_ROUNDS = 3; // 빔 뒤 한 칸 교체 탐색을 되풀이하는 최대 횟수 (더 오르지 않으면 멈춘다)
   const PER_BEAM = 5; // 후보 빌드마다 다음 아이템 후보 수
 
   // 6칸. 고정(fixed) 아이템은 그대로 두고 빈 칸만 채운다. 신발은 최대 1개(게임 규칙).
@@ -586,7 +592,7 @@
   // 빔 탐색: 후보 빌드 BEAM 개를 같이 키워서, 2~3개가 모여야 강해지는 조합(치명타 등)도 찾는다.
   // 이미 많이 확보한 태그는 감쇠시켜 한쪽으로 쏠리지 않게 한다.
   function buildWith(items, iw, fixed, opts) {
-    const num = opts.num ? { ...opts.num, mw: opts.mw || metricWeights(iw) } : null;
+    const num = opts.num ? { ...opts.num, mw: opts.mw || metricWeights(iw), augMw: opts.augMw || null } : null;
     const evalM = (list) => Stats.evaluate(num.champ, num.level, list, num.augStats, num.statOpts).m;
     // 증강 몰빵: 빌드 전체 가치에 더해 '증강이 보태는 가치'(증강 있음 − 없음)도 키운다 = 증강 효과 극대화
     const focus = num && opts.focus && num.augStats.length ? opts.focus : 0;
@@ -603,7 +609,8 @@
       const list = [...state.items, item];
       const m = num ? evalM(list) : null;
       const bare = focus ? evalBare(list) : null;
-      const augPart = focus ? (valueOf(m, num) - valueOf(bare, num)) - (valueOf(state.m, num) - valueOf(state.bare, num)) : 0;
+      const aw = num && num.augMw ? { ...num, mw: num.augMw } : num;  // 증강 몫은 증강 출력 가중치로 (없으면 빌드 가중치)
+      const augPart = focus ? (valueOf(m, aw) - valueOf(bare, aw)) - (valueOf(state.m, aw) - valueOf(state.bare, aw)) : 0;
       const numGain = num ? (valueOf(m, num) - valueOf(state.m, num) + focus * augPart) * NUM_K : 0;
       const score = num ? numGain + tag.score * TAG_K : tag.score;
       const covered = { ...state.covered };
@@ -663,8 +670,83 @@
     while (beams[0].items.length < SLOTS) {
       if (!expand(legendary, PER_BEAM, false, true)) break;
     }
-    const best = beams[0];
-    return { pick: best.picks, final: best.m };
+    // ---- 최종 점수(순서 무관)와 교체 탐색 (2026-11-14 P4)
+    // 빔은 '다음 한 칸 점수'로 후보를 5개만 남겨, 다른 아이템과 함께여야 커지는 아이템(체력 × 저항)이나 상한 있는 효과(헬리아)에서
+    // 더 좋은 조합을 놓쳤다 (못 따라감 2,209장면 중 탐색 실패 275). 같은 목표 함수·같은 제약으로 한 칸씩 바꿔 오르면 받아들인다.
+    // 태그 감쇠는 고른 순서에 따라 총점이 달라져, 최종 점수는 태그 점수가 큰 순서로 정해 계산한다 (같은 구성 = 같은 점수)
+    const tagSet = (list) => {
+      const order = list.map((i) => [i, scoreItem(i, iw, {}, opts).score]).sort((a, b) => b[1] - a[1]).map((x) => x[0]);
+      const cov = {};
+      let t = 0;
+      for (const i of order) { t += scoreItem(i, iw, cov, opts).score; addCovered(cov, convertTags(i.tags, opts.ctx.convert)); }
+      return t;
+    };
+    const e0 = num ? evalM([]) : null, b0 = focus ? evalBare([]) : null;
+    const valueV = (list) => valueOf(evalM(list), num) - valueOf(e0, num);  // 전체 전투 가치 (챔피언 성향 가중치)
+    const minV = num && opts.delta != null && opts.fallback ? (1 - opts.delta) * valueV(opts.fallback) : null;
+    // 증강 몫: 이 빌드에서 고른 증강이 보태는 가치 (증강 출력 가중치, 맨몸 대비)
+    const augValue = (list, m = evalM(list)) => {
+      if (!num || !num.augStats.length) return 0;
+      const aw = num.augMw ? { ...num, mw: num.augMw } : num;
+      const bare = evalBare(list), eb = b0 || evalBare([]);
+      return (valueOf(m, aw) - valueOf(bare, aw)) - (valueOf(e0, aw) - valueOf(eb, aw));
+    };
+    const finalScore = (list) => {
+      if (!num) return tagSet(list);
+      const m = evalM(list);
+      let v = valueOf(m, num) - valueOf(e0, num);
+      const augV = () => augValue(list, m);
+      // δ 를 정하면 몰빵 목표 = 증강 몫 최대 (전체 전투 가치 ≥ (1 − δ) × 균형 빌드), 같으면 전투 가치가 큰 쪽 (P3-3)
+      if (minV != null) return v < minV - 1e-9 ? -1e9 : augV() * NUM_K + v * 1e-3;
+      if (focus) v += focus * augV();
+      return v * NUM_K + tagSet(list) * TAG_K;
+    };
+    let best = beams[0];
+    const scoredBeams = beams.map((b) => [b, finalScore(b.items)]).sort((a, b) => b[1] - a[1]);
+    best = scoredBeams[0][0];
+    let cur = best.items.slice(), curScore = scoredBeams[0][1];
+    // 하한을 넘는 빔이 없으면 균형 빌드에서 시작한다 (균형 빌드는 하한을 늘 넘는다)
+    if (minV != null && curScore <= -1e9 && opts.fallback && opts.fallback.length === cur.length) { cur = opts.fallback.slice(); curScore = finalScore(cur); }
+    const mustNames = new Set(((opts.ctx && opts.ctx.must) || []).flat());
+    const locked = (i) => fixed.includes(i) || mustNames.has(i.name);
+    const legal = (list) => {
+      const names = new Set(), lim = new Set();
+      let boots = 0;
+      for (const i of list) {
+        if (names.has(i.name)) return false;
+        names.add(i.name);
+        if (i.kind === "boots" && ++boots > 1) return false;
+        if (i.limit && !mustNames.has(i.name)) { if (lim.has(i.limit)) return false; lim.add(i.limit); }
+      }
+      if (opts.core && list.filter((i) => !fixed.includes(i) && i.kind === "legendary" && isOffCore(i)).length > opts.maxOff) return false;
+      return true;
+    };
+    const candPool = { legendary: items.filter((i) => i.kind === "legendary"), boots: items.filter((i) => i.kind === "boots") };
+    if (num) {
+      for (let round = 0; round < LOCAL_ROUNDS; round++) {
+        let improved = false;
+        for (let k = 0; k < cur.length; k++) {
+          const old = cur[k];
+          if (locked(old) || !(old.kind in candPool)) continue;
+          for (const it of candPool[old.kind]) {
+            if (it === old) continue;
+            const cand = cur.slice(); cand[k] = it;
+            if (!legal(cand)) continue;
+            const v = finalScore(cand);
+            if (v > curScore + 1e-9) { cur = cand; curScore = v; improved = true; }
+          }
+        }
+        if (!improved) break;
+      }
+      if (cur.some((i, k) => i !== best.items[k])) {
+        // 바뀐 구성으로 단계 정보(점수·이유·지표 이득)를 다시 만든다 (화면은 picks 를 쓴다)
+        let st = { items: [], covered: {}, m: evalM([]), bare: focus ? evalBare([]) : null, total: 0, picks: [] };
+        for (const i of cur) st = step(st, i, fixed.includes(i));
+        best = st;
+      }
+    }
+    // scoreOf·valueOf·augOf: 같은 목표 함수로 다른 구성을 재는 점검 도구용 (tools/augment_classify.js)
+    return { pick: best.picks, final: best.m, score: num ? curScore : null, scoreOf: finalScore, valueOf: num ? valueV : null, augOf: num ? (l) => augValue(l) : null, minV };
   }
 
   // 능력치 계산에 넘길 증강 데이터: 능력치(rules stats) + 피해·보호막 효과(게임 데이터)
@@ -752,7 +834,10 @@
       // 반대 유형 = 증강이 키우는 방향(lift)을 뺀 챔피언 본래 유형 기준
       const offType = core && champ ? offTypeFilter(champ, { ...ctx, lift: {}, tags: {} }, c, items, fixed) : null;
       const cmw = num ? conceptMetricWeights(w, chosen, rules, champ0, c, statOpts) : null;
-      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: cmw, focus: c.focus, off, core, offType, maxOff: offSlots(champ) }) };
+      const amw = num && c.focus ? augOutputWeights(chosen, rules, champ0, statOpts) : null;
+      const fallback = c.focus && AUG_DELTA != null && num && chosen.length
+        ? buildConcepts(items, w, chosen, fixed, rules, champ0, statOpts, ["balanced"])[0].pick.map((p) => p.item) : null;
+      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: cmw, augMw: amw, focus: c.focus, off, core, offType, maxOff: offSlots(champ), fallback, delta: fallback ? AUG_DELTA : null }) };
       const twist = twistSupport(w, ctx);
       const k = twistK(twist);
       const mw = k >= 1 ? inv : lerp(metricWeights(iw), inv, k);
@@ -1008,13 +1093,13 @@
       remember(memoKey("build", items, w, chosen, fixed, champ, statOpts, c.key, rules),
         () => buildConceptsRaw(items, w, chosen, fixed, rules, champ, statOpts, [c.key])[0]));
   }
-  const clearMemo = () => { memo.clear(); CMW.clear(); };
+  const clearMemo = () => { memo.clear(); AOW.clear(); };
   const setMemoMax = (n) => { MEMO_MAX = n; while (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value); };
 
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, conceptMetricWeights, buildConcepts, rankItems, offSlots, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, augOutputWeights, setAugmentOfficial, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

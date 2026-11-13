@@ -69,12 +69,15 @@ test("추천 4: 균형 빌드의 칸 제한은 코어 밖 '반대 유형' 아이
   const v = builds("Viktor", ["궁극의 히드라"]);
   const core = v.legend("base");
   assert.ok(v.legend("balanced").filter((n) => !core.includes(n) && ad(n)).length <= S.offSlots(champ("Viktor")), `${v.legend("balanced")}`);
-  // 같은 유형(AD 챔피언의 AD 아이템)은 코어 밖이어도 칸 수에 안 센다: 다리우스 + 공격 증강 3개면 코어 밖 AD 템이 2칸을 넘을 수 있다.
-  // (2026-11-12 바꿈: 예전 예시 '오공 + 원 히트 원더'는 원 히트 원더가 모든 피해를 키우던 계산 오류에 기대고 있었다)
-  const dar = builds("Darius", ["붐 앤 베이스", "왕관의 무게", "이빨 요정"]);
-  const darCore = dar.legend("base");
-  const sameType = dar.legend("balanced").filter((n) => !darCore.includes(n) && ad(n));
-  assert.ok(sameType.length > S.offSlots(champ("Darius")), `${dar.legend("balanced")} / 코어 ${darCore}`);
+  // 같은 유형(AD 챔피언의 AD 아이템)은 코어 밖이어도 칸 수에 안 센다: 코어 아이템을 후보에서 빼면 코어 밖 AD 템이 2칸을 넘어 들어가야 한다.
+  // (2026-11-14 바꿈: 예전 예시 '다리우스 + 붐 앤 베이스 + 왕관의 무게 + 이빨 요정'은 증강 태그가 지표 가중치에 섞이던 것(E3)에 기대고 있었다)
+  const darC = champ("Darius"), darW = S.profile(darC, d.tags);
+  const darCore = S.buildConcepts(d.items, darW, [], [], d.rules, darC, {}, ["balanced"])[0].pick.filter((p) => p.item.kind === "legendary").map((p) => p.item.name);
+  const augs = ["붐 앤 베이스", "왕관의 무게"].map(byName);
+  const pool = d.items.filter((i) => !darCore.includes(i.name));
+  const bal = S.buildConcepts(pool, darW, augs, [], d.rules, darC, {}, ["balanced"])[0].pick.filter((p) => p.item.kind === "legendary").map((p) => p.item.name);
+  const sameType = bal.filter((n) => ad(n));
+  assert.ok(sameType.length > S.offSlots(darC), `${bal} / 코어 ${darCore}`);
 });
 
 test("추천 5: 혼합형(원딜 + 메이지 또는 피해 유형 혼합)은 반대 유형 칸을 하나 더", () => {
@@ -107,11 +110,48 @@ test("P2-1: 변환·발동 방식에서 입력 능력치를 읽는다 (고정 �
   assert.deepEqual(lift("사악한 정신"), {}, "주문력 +80 은 아이템으로 안 커짐");
 });
 
-// P2-2: 빌드 지표 가중치는 증강의 출력(실제로 늘어나는 지표)으로 정한다. 강타자(체력 비례 '피해')의 체력 태그가 버티는 힘 가중치로 가지 않는다
-test("P2-2: 피해 증강의 입력이 체력이어도 몰빵 지표 가중치는 피해 쪽으로", () => {
+// P2-2: 전체 전투 가치는 챔피언 성향 가중치 그대로(증강 태그를 섞지 않음), 몰빵의 증강 몫은 증강 출력 가중치로.
+// 강타자(최대 체력 비례 '피해')의 체력 태그가 버티는 힘 가중치로 새지 않고, 증강 출력은 피해 쪽이다
+test("P2-2: 증강 태그는 지표 가중치에 섞지 않고, 증강 몫은 증강 출력(강타자 = 피해)으로 잰다", () => {
   const sion = champ("Sion"), w = S.profile(sion, d.tags), hh = byName("강타자");
-  const mw = S.conceptMetricWeights(w, [hh], d.rules, sion, S.CONCEPTS[0]);
-  const base = S.conceptMetricWeights(w, [], d.rules, sion, S.CONCEPTS[0]);
-  assert.ok(mw.dps + mw.combo > base.dps + base.combo, JSON.stringify({ mw, base }));
-  assert.ok(mw.ehp < base.ehp + 1e-9, "버티는 힘 비중이 늘지 않는다");
+  assert.deepEqual(S.conceptMetricWeights(w, [hh], d.rules, sion, S.CONCEPTS[0]), S.conceptMetricWeights(w, [], d.rules, sion, S.CONCEPTS[0]));
+  const out = S.augOutputWeights([hh], d.rules, sion);
+  assert.ok(out.dps + out.combo > 0.9 && out.ehp < 0.05, JSON.stringify(out));
+  assert.equal(S.augOutputWeights([], d.rules, sion), null);
+});
+
+// P4 (2026-11-14): 최종 점수는 순서와 무관하고, 빔 뒤 교체 탐색으로 한 칸 교체로는 더 오르지 않는다
+test("P4: 같은 구성은 순서와 무관하게 같은 점수, 엔진 빌드는 한 칸 교체로 더 오르지 않는다", () => {
+  for (const [cid, names, key] of [["Leona", ["핀볼"], "augment"], ["Nami", ["흡수"], "balanced"], ["Jinx", ["강타자"], "augment"]]) {
+    const c = champ(cid), w = S.profile(c, d.tags), ch = names.map(byName);
+    const b = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, [key])[0];
+    const list = b.pick.map((p) => p.item);
+    assert.ok(Math.abs(b.scoreOf(list) - b.scoreOf(list.slice().reverse())) < 1e-9, `${cid} 순서`);
+    // 교체 후보: 이 챔피언의 다른 빌드에 나온 아이템 (엔진 제약을 지키는 아이템들)
+    const pool = new Set(S.buildConcepts(d.items, w, ch, [], d.rules, c, {}).flatMap((x) => x.pick.map((p) => p.item)));
+    const base = b.scoreOf(list);
+    for (let k = 0; k < list.length; k++) for (const it of pool) {
+      if (it.kind !== list[k].kind || list.includes(it)) continue;
+      const cand = list.slice(); cand[k] = it;
+      const lim = cand.map((i) => i.limit).filter(Boolean);
+      if (new Set(lim).size !== lim.length) continue;
+      assert.ok(b.scoreOf(cand) <= base + 1e-9, `${cid} ${key}: ${list[k].name} → ${it.name} 이 더 높다`);
+    }
+  }
+});
+
+// P3: 몰빵의 공식 추천 가산 실험 설정과 δ(전투 가치 하한)
+test("P3: δ 를 정하면 몰빵 빌드의 전투 가치는 균형 빌드의 (1 − δ) 이상, 끄면 예전 목표 그대로", () => {
+  const c = champ("Jinx"), w = S.profile(c, d.tags), ch = [byName("강타자")];
+  const off = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, ["augment"])[0];
+  try {
+    S.setAugmentDelta(0.2);
+    const b = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, ["augment"])[0];
+    const bal = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, ["balanced"])[0].pick.map((p) => p.item);
+    const list = b.pick.map((p) => p.item);
+    assert.ok(b.valueOf(list) >= 0.8 * b.valueOf(bal) - 1e-9, `${b.valueOf(list)} vs ${b.valueOf(bal)}`);
+    assert.ok(b.augOf(list) >= off.augOf(off.pick.map((p) => p.item)) - 1e-9, "증강 몫은 줄지 않는다");
+  } finally { S.setAugmentDelta(null); }
+  const again = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, ["augment"])[0];
+  assert.deepEqual(again.pick.map((p) => p.item.name), off.pick.map((p) => p.item.name), "끄면 원래대로");
 });
