@@ -1,5 +1,5 @@
 // '못 따라감' 장면 4분류: 계산 누락 · 탐색 실패 · 목표 함수 왜곡 · 정상 유지 (분석용, 엔진은 안 바꿈)
-//   탐색 실패: 엔진과 같은 목표 함수(J)·같은 제약으로 한 칸 교체를 반복해 J 가 0.5% 넘게 오르는 조합이 있음
+//   탐색 실패: 엔진과 같은 목표 함수(J = 엔진 buildWith 의 scoreOf)·같은 제약(근사)으로 한 칸 교체를 반복해 J 가 0.5% 넘게 오르는 조합이 있음
 //   목표 함수 왜곡: 증강 자체 효과(A, 성향 중립)와 전체 전투 가치(V, 균형 가중치)가 둘 다 나아지는 빌드가 있는데 J 는 그걸 더 낮게 봄
 //   계산 누락: 그 증강의 직접 전투 수치가 계산에 없음 (원본 대조 미구현 P0 중 태그만·실게임 확인 필요)
 //   정상 유지: 위에 해당 없음 = 증강을 더 살리려면 전투 가치를 내줘야 하는 맞바꿈
@@ -9,41 +9,36 @@ const path = require("path");
 const R = path.join(__dirname, "..");
 global.Stats = require(R + "/web/stats.js");
 const S = require(R + "/web/scoring.js");
+if (process.env.AUG_OFFICIAL === "0") S.setAugmentOfficial(false);
+if (process.env.AUG_DELTA) S.setAugmentDelta(+process.env.AUG_DELTA);
 const d = require(R + "/web/data.json");
 const fs = require("fs");
 S.attachSimilar(d.champions, null, d.items);
-const [fitPath, missPath, rolesArg, outPath] = process.argv.slice(2);
+const [fitPath, rolesArg, outPath] = process.argv.slice(2);
 const roles = rolesArg.split(",");
-const missing = new Set(fs.readFileSync(missPath, "utf8").split("\n").map((l) => l.split("\t")[0].trim()).filter(Boolean));
+const p0 = (fs.readFileSync(path.join(R, "docs", "미구현_분류.md"), "utf8").split("## P0")[1] || "").split("## P1")[0];
+const missing = new Set(p0.split("\n").filter((l) => /^\| /.test(l) && /(태그 기반 간접 반영|실제 게임 확인 필요)/.test(l))
+  .map((l) => l.split("|")[1].replace(/\(.*\)/, "").trim()));
 const rows = JSON.parse(fs.readFileSync(fitPath, "utf8")).filter((r) => roles.includes(r.role) && r.reach != null && r.reach >= 0 && r.reach < 0.3);
-const NUM_K = 4, TAG_K = 0.4, FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };
-const conv = (tags, c) => { const o = { ...tags }; for (const [f, t] of Object.entries(c || {})) if (o[f]) { o[t] = Math.max(o[t] || 0, o[f]); delete o[f]; } return o; };
+const FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };
 const legal = (list) => { const lim = list.map((i) => i.limit).filter(Boolean); return new Set(lim).size === lim.length && new Set(list.map((i) => i.name)).size === list.length; };
 const out = [];
 const t0 = Date.now();
 for (const r of rows) {
   const c0 = d.champions.find((x) => x.id === r.champ), w = S.profile(c0, d.tags), aug = d.augments.find((a) => a.name === r.aug);
   const c = S.withChosenFeatures(c0, [aug], d.rules), ctx = S.augContext([aug], d.rules, c);
-  const iwA = S.conceptWeights(w, ctx, S.CONCEPTS[0]), iwB = S.conceptWeights(w, ctx, S.CONCEPTS[1]);
-  const mwA = S.metricWeights(iwA), mwB = S.metricWeights(iwB);
-  const official = S.officialWeights(c, 1), octx = official ? { ...ctx, official, officialLabel: "" } : ctx;
   const A = S.augStatsOf([aug], d.rules, c);
   const cache = new Map();
   const ev = (list, withAug) => { const k = (withAug ? "A" : "B") + list.map((i) => i.id).join(","); if (!cache.has(k)) cache.set(k, Stats.evaluate(c, 18, list, withAug ? A : [], {}).m); return cache.get(k); };
   const e0 = ev([], false), norm = Object.fromEntries(Object.keys(FLOOR).map((k) => [k, Math.max(e0[k], FLOOR[k])]));
-  const val = (mw, m) => Object.keys(mw).reduce((v, k) => v + mw[k] * m[k] / norm[k], 0);
-  const eA = ev([], true);
+  const eng = S.buildConcepts(d.items, w, [aug], [], d.rules, c0, {}, ["augment"])[0];
+  const balB = S.buildConcepts(d.items, w, [aug], [], d.rules, c0, {}, ["balanced"])[0];
   const measure = (list) => {
     const mA = ev(list, true), mB = ev(list, false);
-    let covered = {}, tag = 0;
-    for (const it of list) { tag += S.scoreItem(it, iwA, covered, { ctx: octx, mismatch: true }).score; for (const [k, s] of Object.entries(conv(it.tags, ctx.convert))) if (s >= 0.5) covered[k] = (covered[k] || 0) + 1; }
-    const VA = val(mwA, mA) - val(mwA, eA), contrib = (val(mwA, mA) - val(mwA, mB)) - (val(mwA, eA) - val(mwA, e0));
-    const J = NUM_K * (VA + 1 * contrib) + TAG_K * tag;  // 몰빵 목표 함수 (focus 1)
-    const V = val(mwB, mA) - val(mwB, eA);  // 전체 전투 가치 (균형 가중치, 증강 포함)
     let a = 0; for (const k of Object.keys(FLOOR)) a += ((mA[k] || 0) - (mB[k] || 0)) / norm[k];  // 증강 자체 효과 (성향 중립)
-    return { J, V, A: a * 100 };
+    return { J: eng.scoreOf(list), V: balB.valueOf(list), A: a * 100 };  // J = 엔진 몰빵 목표, V = 전체 전투 가치 (챔피언 성향)
   };
-  const B = S.buildConcepts(d.items, w, [aug], [], d.rules, c0, {}, ["augment"])[0].pick.map((p) => p.item);
+  const B = eng.pick.map((p) => p.item);
   // 엔진 제약 근사: 주 피해 유형 반대·치명타 못 쓰는 챔피언·필수 아이템
   const lift = ctx.lift || {};
   const critUser = c.tags.includes("Marksman") || !c.melee || ((c.traits || {}).CRIT || 0) > 0;

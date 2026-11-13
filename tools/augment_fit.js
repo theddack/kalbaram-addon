@@ -15,6 +15,9 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 global.Stats = global.Stats || require(path.join(ROOT, "web", "stats.js"));
 const S = require(path.join(ROOT, "web", "scoring.js"));
+// 실험 설정 (2026-11-14 P3): AUG_OFFICIAL=0 → 증강 몰빵에서 공식 추천 가산 뺌, AUG_DELTA=0.2 → 몰빵 = 증강 몫 최대 (전투 가치 ≥ 80% 균형)
+if (process.env.AUG_OFFICIAL === "0") S.setAugmentOfficial(false);
+if (process.env.AUG_DELTA) S.setAugmentDelta(+process.env.AUG_DELTA);
 
 const REPS = { Marksman: ["Jinx", "Vayne", "Caitlyn"], Mage: ["Lux", "Annie", "Viktor"], Tank: ["Malphite", "Sion", "Leona"],
   Fighter: ["Garen", "Darius", "Irelia"], Assassin: ["Zed", "Akali", "Kayn"], Support: ["Sona", "Nami", "Lulu"] };

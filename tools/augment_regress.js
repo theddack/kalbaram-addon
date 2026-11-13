@@ -18,6 +18,9 @@ const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.a
 const ROOT = arg("--root") || path.join(__dirname, "..");
 global.Stats = require(path.join(ROOT, "web", "stats.js"));
 const S = require(path.join(ROOT, "web", "scoring.js"));
+// 실험 설정 (2026-11-14 P3): AUG_OFFICIAL=0 → 증강 몰빵에서 공식 추천 가산 뺌, AUG_DELTA=0.2 → 몰빵 = 증강 몫 최대 (전투 가치 ≥ 80% 균형)
+if (process.env.AUG_OFFICIAL === "0") S.setAugmentOfficial(false);
+if (process.env.AUG_DELTA) S.setAugmentDelta(+process.env.AUG_DELTA);
 const d = JSON.parse(fs.readFileSync(path.join(ROOT, "web", "data.json"), "utf8"));
 S.attachSimilar(d.champions, null, d.items);
 

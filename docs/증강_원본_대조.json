@@ -1,7 +1,7 @@
 {
  "version": "16.22.8348910+branch.releases-16-22.content.release",
  "dataVersion": "16.22.8348910+branch.releases-16-22.content.release",
- "builtAt": "2026-11-04 23:25",
+ "builtAt": "2026-11-14 00:46",
  "augments": 239,
  "disabled": [
   "신발 수집가",
@@ -3222,11 +3222,11 @@
    "ref": "Calc_Damage",
    "kind": "수치",
    "source": "계산식 (상수)",
-   "applied": null,
-   "how": "-",
-   "key": null,
-   "state": "미구현",
-   "why": "수치 계산 없음 (효과 태그 점수로만 반영) · 빌드 계산기가 못 풀어 설명에 '?' (모르는 계산식 부품 {2b25a73a}, {e9a3c91d})",
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
+   "state": "일치",
+   "why": "빌드 계산기가 못 풀어 설명에 '?' (모르는 계산식 부품 {2b25a73a}, {e9a3c91d})",
    "buildFail": "모르는 계산식 부품 {2b25a73a}, {e9a3c91d}"
   },
   {
@@ -4637,7 +4637,7 @@
    "key": null,
    "hashed": true,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: goldValue)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: goldValue, itemStats)"
   },
   {
    "id": "Upgrade_Ravenous",
@@ -5382,7 +5382,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic)"
   },
   {
    "id": "TakeemDownDownDown",
@@ -5420,7 +5420,7 @@
    "how": "-",
    "key": null,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic)"
   },
   {
    "id": "TakeemDownDownDown",
@@ -5428,12 +5428,12 @@
    "ref": "Calc_Damage_Consume ⚠해시",
    "kind": "수치",
    "source": 0.17000000178813934,
-   "applied": null,
-   "how": "-",
-   "key": null,
+   "applied": "효과식",
+   "how": "자동 추출",
+   "key": "magic",
    "hashed": true,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic)"
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "TakeemDownDownDown",
@@ -5446,7 +5446,7 @@
    "key": null,
    "hashed": true,
    "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic)"
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, magic, magic)"
   },
   {
    "id": "ArmoredImpact",
@@ -5792,10 +5792,10 @@
    "kind": "지속 시간",
    "source": 4,
    "applied": null,
-   "how": "근사 규칙",
+   "how": "-",
    "key": null,
-   "state": "가정",
-   "why": "표식을 기본 공격으로 터뜨리면 그 스킬의 재사용 대기시간 65% 감소 (설명 · 영어 원문 'reduce the cooldown of {{SpellName}} by 65%'). 절반만 터뜨린다고 보면 재사용 대기시간 × (1 − 0.65 × 0.5) = 0.675 → 스킬 가속 48과 같음"
+   "state": "미구현",
+   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic, markCdRefund)"
   },
   {
    "id": "CrimsonCobalt",
@@ -5815,12 +5815,12 @@
    "ref": "Calc_Cooldown_Refund ⚠해시",
    "kind": "수치",
    "source": 0.6499999761581421,
-   "applied": null,
-   "how": "-",
-   "key": null,
+   "applied": 0.65,
+   "how": "이름 참조",
+   "key": "markCdRefund",
    "hashed": true,
-   "state": "미구현",
-   "why": "이 항목은 안 쓰임 (같은 증강의 다른 값만 계산: magic)"
+   "state": "일치",
+   "why": ""
   },
   {
    "id": "FlowOfSpirit",
@@ -10070,14 +10070,6 @@
    "why": "평균 4중첩"
   },
   {
-   "id": "CrimsonCobalt",
-   "name": "핏빛 코발트",
-   "key": "basicHaste",
-   "value": 48,
-   "state": "가정",
-   "why": "스킬을 맞힌 뒤 4초 안에 기본 공격으로 표식을 터뜨리는 비율 50% / 기본 스킬(Q·W·E)에만 적용"
-  },
-  {
    "id": "ArcaneAxiom",
    "name": "비전 원칙",
    "key": "ultHaste",
@@ -12688,9 +12680,9 @@
    "auto": false,
    "items": 1,
    "states": {
-    "일치": 0,
+    "일치": 1,
     "불일치": 0,
-    "미구현": 1,
+    "미구현": 0,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -14039,9 +14031,9 @@
    "auto": false,
    "items": 6,
    "states": {
-    "일치": 2,
+    "일치": 3,
     "불일치": 0,
-    "미구현": 4,
+    "미구현": 3,
     "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
@@ -14217,10 +14209,10 @@
    "auto": false,
    "items": 3,
    "states": {
-    "일치": 1,
+    "일치": 2,
     "불일치": 0,
     "미구현": 1,
-    "가정": 1,
+    "가정": 0,
     "원본 확인 불가": 0,
     "계산 제외": 0
    }
@@ -14530,10 +14522,10 @@
   }
  ],
  "count": {
-  "일치": 194,
+  "일치": 197,
   "불일치": 0,
-  "미구현": 197,
-  "가정": 69,
+  "미구현": 195,
+  "가정": 68,
   "원본 확인 불가": 5,
   "계산 제외": 37
  },
