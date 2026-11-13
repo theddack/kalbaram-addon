@@ -771,7 +771,8 @@ def resolve_rule_stats(rules, aug_spells):
 
 
 FIGHT_SEC = 6  # 한타에서 평타를 이어 치는 시간 (web/stats.js AUTO_FIGHT_SEC 와 같은 가정)
-AS_VALUE = re.compile(r"\s*(?:([\d.]+)~([\d.]+)\(레벨 비례\)|([\d.]+(?:/[\d.]+)*))\s*%")
+AS_VALUE = re.compile(r"\s*(?:([\d.]+)~([\d.]+)(?:\(레벨 비례\))?|([\d.]+(?:/[\d.]+)*))\s*%(?:\(레벨 비례\))?")
+FLAT_VALUE = re.compile(r"\s*(?:([\d.]+)~([\d.]+)(?:\(레벨 비례\))?|([\d.]+(?:/[\d.]+)*))")
 
 
 def fight_buffs(c, rc, warn):
@@ -781,25 +782,38 @@ def fight_buffs(c, rc, warn):
     out = []
     fs = dict(c.get("fightStats") or {})
     for spec in rc["fightBuffs"]:
-        sp = next((x for x in c["spells"] if x["slot"] == spec["slot"]), None)
-        text = re.sub(r"<[^>]+>", "", (sp or {}).get("tooltip", ""))
+        if spec["slot"] == "P":  # 패시브 (2026-11-13 통합: 벨베스·이렐리아 등 패시브 능력치)
+            text = re.sub(r"<[^>]+>", "", c["passive"].get("desc", ""))
+        else:
+            sp = next((x for x in c["spells"] if x["slot"] == spec["slot"]), None)
+            text = re.sub(r"<[^>]+>", "", (sp or {}).get("tooltip", ""))
         anchor = spec.get("anchor", "공격 속도가")
-        if spec.get("before"):  # 'N%의 공격 속도를 얻습니다' 처럼 수치가 앞에 오는 문장
-            m = re.search(AS_VALUE.pattern + re.escape(spec["before"]), text)
+        pat = FLAT_VALUE if spec.get("flat") else AS_VALUE  # flat: '공격력이 30~230 증가' 처럼 % 가 아닌 값
+        if spec.get("value") is not None:  # 설명에 수치가 없어 게임 데이터 값을 적은 것 (why 필수)
+            m = None
+        elif spec.get("before"):  # 'N%의 공격 속도를 얻습니다' 처럼 수치가 앞에 오는 문장
+            m = re.search(pat.pattern + re.escape(spec["before"]), text)
         else:
             k = text.find(anchor)
-            m = AS_VALUE.match(text, k + len(anchor)) if k >= 0 else None
-        if not m:
+            m = pat.match(text, k + len(anchor)) if k >= 0 else None
+        if spec.get("value") is None and not m:
             warn.append(f"{c['id']}.fightBuffs {spec['slot']}: 설명에서 '{anchor} N%' 를 못 찾음")
             print("  [규칙] 경고:", warn[-1])  # 패치로 설명 문장이 바뀌면 빌드에서 바로 보이게
             continue
-        val = float(m.group(2)) if m.group(2) else float(m.group(3).split("/")[-1])
-        val = val if spec.get("unit") == "fraction" else val / 100
+        if spec.get("value") is not None:
+            val = spec["value"]
+        else:
+            val = float(m.group(2)) if m.group(2) else float(m.group(3).split("/")[-1])
+            val = val if spec.get("unit") == "fraction" or spec.get("flat") else val / 100
+        val *= spec.get("stacks", 1)  # 중첩당 값 × 최대 중첩
         up = spec.get("uptime", 1 if spec.get("passive") else min(1, spec["dur"] / FIGHT_SEC))
-        fs["AS"] = round(fs.get("AS", 0) + val * up, 4)
+        stat = spec.get("stat", "AS")
+        fs[stat] = round(fs.get(stat, 0) + val * up, 4)
         when = "기본 지속 효과" if spec.get("passive") else f"{spec['dur']:g}초"
-        out.append({"t": "game", "text": f"{spec['slot']} 공격 속도 {val * 100:g}% ({when}) × 한타 가동률 {up:.2f} — 스킬 설명 수치"
-                    + (f" · {spec['why']}" if spec.get("why") else "")})
+        shown = f"{val:g}" if spec.get("flat") or stat in ("ARMOR", "MR", "AD") else f"{val * 100:g}%"
+        out.append({"t": "game" if spec.get("value") is None else "calc",
+                    "text": f"{'패시브' if spec['slot'] == 'P' else spec['slot']} {STAT_LABEL.get(stat, stat)} {shown} ({when}) × 한타 가동률 {up:.2f} — "
+                    + ("스킬 설명 수치" if spec.get("value") is None else "게임 데이터 값") + (f" · {spec['why']}" if spec.get("why") else "")})
     if out:
         c["fightStats"] = fs
         out.append({"t": "assume", "text": f"가동률 = 지속 시간 ÷ 한타 {FIGHT_SEC}초 (한타 시작에 쓴다고 봄)",
@@ -961,6 +975,9 @@ def auto_stats(desc_html):
 
 # 화면 '근거'용 능력치 이름 (rules.json stats 키)
 STAT_LABEL = {
+    "critChanceMult": "치명타 확률 배수", "critToAD": "치명타 초과분 → 공격력", "critDmgMod": "치명타 피해 배수",
+    "APtoBonusHP": "주문력 → 체력", "resistToAD": "방어·마저 → 공격력", "bonusMStoAD": "이동 속도 → 공격력", "APtoManaPct": "주문력 → 최대 마나 %",
+    "bonusADmult": "추가 공격력 %",
     "HP": "체력", "AD": "공격력", "AP": "주문력", "ARMOR": "방어력", "MR": "마법 저항력", "AS": "공격 속도",
     "CRIT": "치명타 확률", "HASTE": "스킬 가속", "MS": "이동 속도", "MSP": "이동 속도", "LS": "생명력 흡수",
     "OMNIVAMP": "모든 피해 흡혈", "LETHALITY": "물리 관통력", "MPEN": "마법 관통력", "MPENP": "마법 관통력",

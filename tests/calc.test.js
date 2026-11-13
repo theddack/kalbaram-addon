@@ -1052,3 +1052,27 @@ test("루난 탄환: 기본 공격마다 1번·치명타 적용, 구인수·한 
   const crit = (t) => 1 + Math.min(1, t.CRIT) * (t.CRITDMG - 1);
   for (const x of [a, b]) assert.ok(Math.abs(x.row.dps - x.row.hit * x.t.AS * crit(x.t)) < 1e-6, JSON.stringify(x.row));
 });
+
+// 챔피언 패시브 능력치 (2026-11-13 벨베스 판: 계산 공격 속도 1.31 · 실제 2.99). 태그로만 있던 패시브를 게임 데이터·설명 값으로 계산
+test("챔피언 패시브: 상시 능력치·변환 (다이애나 공속, 야스오 치명타 2배, 블라디미르·람머스·헤카림 변환)", () => {
+  const T = (id, items = [], L = 18) => St.computeStats(champ(id), L, items.map(item), [], { now: true }).total;
+  const T0 = (id, items = [], L = 18) => St.computeStats({ ...champ(id), stackStats: null }, L, items.map(item), [], { now: true }).total;
+  assert.ok(T("Diana").AS > T0("Diana").AS * 1.15, "다이애나 공속 35%");
+  const y = T("Yasuo", ["무한의 대검"]);  // 무한의 대검 치명타 25% → 50%
+  assert.ok(Math.abs(y.CRIT - 2 * T0("Yasuo", ["무한의 대검"]).CRIT) < 1e-6, `야스오 치명타 ${y.CRIT}`);
+  assert.ok(T("Vladimir", ["라바돈의 죽음모자"]).HP > T0("Vladimir", ["라바돈의 죽음모자"]).HP + 100, "블라디미르 주문력 → 체력");
+  assert.ok(T("Vladimir", ["워모그의 갑옷"]).AP > 20, "블라디미르 추가 체력 → 주문력");
+  assert.ok(T("Rammus", ["가시 갑옷"]).AD > T0("Rammus", ["가시 갑옷"]).AD + 20, "람머스 방어 → 공격력");
+  assert.ok(T("Hecarim", ["광전사의 군화"]).AD > T0("Hecarim", ["광전사의 군화"]).AD + 5, "헤카림 이속 → 공격력");
+});
+
+test("챔피언 패시브: 싸울 때만 켜지는 공격 속도는 한타 능력치에만 (이렐리아·벨베스)", () => {
+  const as = (id) => ((champ(id).fightStats || {}).AS || 0);
+  assert.ok(as("Irelia") > 0.5, `이렐리아 ${as("Irelia")}`);
+  assert.ok(as("Jax") > 0.3, `잭스 ${as("Jax")}`);
+  assert.ok(((champ("Belveth").fightStats || {}).ASmult || 0) > 0.1, "벨베스 본모습 총 공격 속도");
+  // 벨베스 연보라 중첩: 게임 중 지금 능력치에도 (영구)
+  const t = St.computeStats(champ("Belveth"), 14, [], [], { now: true }).total;
+  const t0 = St.computeStats({ ...champ("Belveth"), stackStats: null }, 14, [], [], { now: true }).total;
+  assert.ok(t.AS > t0.AS + 0.4, `벨베스 14레벨 ${t0.AS} → ${t.AS}`);
+});

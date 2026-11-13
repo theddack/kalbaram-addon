@@ -148,6 +148,9 @@
     if (adaptive) {
       if (adaptiveAP()) AP += adaptive; else bonusAD += adaptive * 0.6;
     }
+    // 챔피언 패시브 '의지'(야스오·요네): 치명타 확률 × (1 + critChanceMult), 100% 넘는 1%당 공격력 critToAD (게임 데이터 CritChanceMultiplier·YasuoCritToAD)
+    const critRaw = add.CRIT * (1 + (conv.critChanceMult || 0));
+    if (conv.critToAD) bonusAD += Math.max(0, critRaw - 1) * 100 * conv.critToAD;
     if (conv.bonusADtoAP) { AP += bonusAD * conv.bonusADtoAP; bonusAD = 0; }
     if (conv.APtoBonusAD) { bonusAD += AP * conv.APtoBonusAD; AP = 0; }
     t.AD = (base.AD + bonusAD) * (1 + mult.ADmult);
@@ -159,11 +162,18 @@
     t.ARMOR = base.ARMOR + t.bonusARMOR;
     t.bonusMR = add.MR * resMult;
     t.MR = base.MR + t.bonusMR;
+    // 람머스 패시브: 방어력·마법 저항력의 일부만큼 공격력 (설명 '15% 방어력 + 15% 마법 저항력')
+    if (conv.resistToAD) { const ad = (t.ARMOR + t.MR) * conv.resistToAD; t.AD += ad; t.bonusAD += ad; }
     t.MANA = champ.partype === "마나" ? base.MANA + add.MANA - itemManaGone : 0;
     t.bonusMANA = champ.partype === "마나" ? add.MANA - itemManaGone : 0;
     if (conv.bonusMANAtoAP) t.AP += t.bonusMANA * conv.bonusMANAtoAP * (1 + mult.APmult);
     if (conv.manaToHP && t.MANA) { t.HP += t.MANA * conv.manaToHP; t.bonusHP = t.HP - base.HP; }  // 정신 변환: 최대 마나의 50% 체력
+    const apBeforeHP = t.AP;
     if (conv.bonusHPtoAP) t.AP += t.bonusHP * conv.bonusHPtoAP * (1 + mult.APmult);  // 균열 생성기: 추가 체력의 2% 주문력
+    // 블라디미르 패시브: 주문력 1당 체력 1.6 (추가 체력 → 주문력과 서로 다시 키우지 않는다: 게임 규칙)
+    if (conv.APtoBonusHP) { t.HP += apBeforeHP * conv.APtoBonusHP; t.bonusHP = t.HP - base.HP; }
+    // 라이즈 패시브: 주문력 100당 최대 마나 10% (게임 데이터 PercentManaIncrease 10 · APAmount 100)
+    if (conv.APtoManaPct && t.MANA) { const m = t.MANA * t.AP * conv.APtoManaPct; t.MANA += m; t.bonusMANA += m; }
     // 서포터 아이템 버프 (흐르는 물의 지팡이·불타는 향로): 아군을 회복·보호막으로 도울 때 자신도 받는 버프. 아군을 돕는 챔피언만 (rules items)
     const helps = (champ.features || []).includes("allysupport");
     if (helps && conv.allyBuffAP) t.AP += conv.allyBuffAP * (1 + mult.APmult);
@@ -177,7 +187,7 @@
     let critDmgFromAS = 0;
     if (conv.AStoCRITDMG) { const moved = bonusAS * conv.AStoCRITDMG; bonusAS -= moved; critDmgFromAS = moved * (conv.AStoCRITDMGper || 0); }
     // 보석 건틀릿: 주문력 1당 치명타 확률 (conv.APtoCRIT, 원본 CritConverRatio 0.00045 = 주문력 100당 4.5%)
-    t.CRIT = Math.min(1, add.CRIT + (conv.APtoCRIT ? t.AP * conv.APtoCRIT : 0));
+    t.CRIT = Math.min(1, critRaw + (conv.APtoCRIT ? t.AP * conv.APtoCRIT : 0));
     // 그레이브즈처럼 공격 속도 표시값이 다른 챔피언은 레벨별 상한 (champ.asCapLv = [1레벨, 18레벨], rules.json champions.asCap)
     const cap = champ.asCapLv ? champ.asCapLv[0] + (champ.asCapLv[1] - champ.asCapLv[0]) * (L - 1) / 17 : ms.asCap || AS_CAP;
     const asOf = (b) => Math.min(cap, (base.AS + b * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
@@ -207,7 +217,7 @@
       t.onhitRepeat = (Math.max(0, n - max) / n) * (conv.onhitRepeat || 0);
     }
     t.AS = asOf(bonusAS);
-    t.CRITDMG = BASE_CRIT_DMG + add.CRITDMG + critDmgFromAS;
+    t.CRITDMG = (BASE_CRIT_DMG + add.CRITDMG + critDmgFromAS) * (conv.critDmgMod || 1);  // 야스오·요네 치명타 피해 × 0.95 (게임 데이터 CritDamageMod)
     // 진처럼 공격 속도가 고정인 챔피언 (champ.asFixed, rules.json champions.asFixed): 공격 속도는 레벨로만 오르고,
     // 레벨별 % + 치명타 확률·추가 공격 속도 비례 %만큼 공격력이 늘며 치명타 피해는 줄어든다 (위키 Jhin '속삭임')
     if (champ.asFixed) {
@@ -223,6 +233,8 @@
     // 이동 속도: (기본 + 고정 증가) × (1 + % 증가 합) → 게임의 감속 구간(415·490 초과분 감소)
     const rawMS = (base.MS + add.MS + (conv.HASTEtoMS ? t.HASTE * conv.HASTEtoMS : 0)) * (1 + add.MSP + mult.MSmult);
     t.MS = rawMS > 490 ? rawMS * 0.5 + 230 : rawMS > 415 ? rawMS * 0.8 + 83 : rawMS;
+    // 헤카림 패시브: 추가 이동 속도의 12~24%(레벨 비례)만큼 공격력 (게임 데이터 BonusAD)
+    if (conv.bonusMStoAD) { const ad = Math.max(0, t.MS - base.MS) * conv.bonusMStoAD; t.AD += ad; t.bonusAD += ad; }
     t.bonusMS = t.MS - base.MS;
     t.bonusAP = t.AP;  // 주문력은 전부 추가 주문력 (기본 주문력이 없다)
     for (const k of ["LETHALITY", "MPEN", "ARPEN", "MPENP", "LS", "OMNIVAMP", "HSP"]) t[k] = add[k];
