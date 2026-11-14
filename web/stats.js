@@ -49,12 +49,12 @@
 
   // 출처(src)를 붙인 효과 목록은 아이템·패시브마다 한 번만 만든다 (빌드 탐색에서 계산마다 복사하던 것. 읽기 전용으로 쓴다)
   const SRC_FX = new WeakMap();
-  function withSrc(owner, src) {
+  function withSrc(owner, src, isItem = false) {
     if (!owner || !owner.effects || !owner.effects.length) return [];
     let m = SRC_FX.get(owner);
     if (!m) SRC_FX.set(owner, (m = new Map()));
     let fx = m.get(src);
-    if (!fx) m.set(src, (fx = owner.effects.map((e) => ({ ...e, src }))));
+    if (!fx) m.set(src, (fx = owner.effects.map((e) => (isItem ? { ...e, src, item: true } : { ...e, src }))));
     return fx;
   }
 
@@ -87,7 +87,7 @@
     const mods = [...augStats, ...items.map((it) => it.passiveStats).filter(Boolean), ...(champ.stackStats ? [champ.stackStats] : []), ...fight];
     // 효과 출처: 챔피언 패시브, 아이템 고유 효과 (증강 효과는 augStats 의 _effects 로 들어온다)
     const effects = [...withSrc(champ.passive, "패시브")];
-    for (const it of items) effects.push(...withSrc(it, it.name));
+    for (const it of items) effects.push(...withSrc(it, it.name, true));
     // 쿨 반환(대마법사·노련한 저격수 등)은 증강마다 따로: 더하면 반환 30% + 80%, 확률 1 + 0.4 로 상한(90%)에 걸려
     // 스킬 가속 900 으로 계산됐다 (2026-10-20 피드백 #13: 대마법사 + 노련한 저격수 궁합 +365)
     const REFUND_KEYS = ["refundPct", "refundChanceRanged", "refundChanceMelee", "refundAll"];
@@ -210,7 +210,7 @@
       const max = conv.rampMax || 0;
       let n = 1;
       for (let i = 0; i < 8; i++) {
-        n = Math.max(1, Math.round(asOf(bonusAS + conv.rampAS * t.rampStacks) * AUTO_FIGHT_SEC));
+        n = Math.max(1, Math.round(asOf(bonusAS + conv.rampAS * t.rampStacks) * EXP.fightSec * EXP.autoUptime));
         let sum = 0;
         for (let k = 0; k < n; k++) sum += Math.min(k, max);
         t.rampStacks = sum / n;
@@ -442,6 +442,13 @@
   // 재사용 대기시간·갱신 상한을 건다 (리안드리 화상처럼 3초마다 한 번이면 되는 효과는 상한까지 그대로).
   // 2026-11-14 E1: 효과는 시전 빈도 100%로 세서 가렌 + 전부 다 무너뜨려의 증강 스킬분(50)이 가렌 자기 스킬(23)보다 컸다
   const SKILL_DPS_SHARE = 0.3;
+  // 실험 설정 (2026-11-14 후속 분석, 가정값 민감도용): 기본값 = 지금 가정. 화면은 바꾸지 않는다 (tools 에서만 setExperiment)
+  //   autoUptime  한타 중 기본 공격을 실제로 치는 시간 비율 (평타·적중·기본 공격 시 효과의 초당 피해, 구인수 중첩 평타 수에 곱함)
+  //   fightSec    평타를 이어 치는 한타 시간(초, 구인수 중첩 평균)
+  //   skillShare  SKILL_DPS_SHARE 대신 쓸 값
+  const EXP_DEFAULT = { autoUptime: 1, fightSec: AUTO_FIGHT_SEC, skillShare: SKILL_DPS_SHARE, itemSelfToEhp: false };
+  const EXP = { ...EXP_DEFAULT };
+  function setExperiment(e) { Object.assign(EXP, EXP_DEFAULT, e || {}); }
   const CAST_MIN_CD = 2; // '스킬 사용 시' 효과: 한 스킬은 최대 2초에 1번 (토글·충전형 스킬이 발동을 부풀리지 않게)
   const COMBO_WINDOW = 4; // 콤보 한 번(스킬 4개)에 걸리는 시간 가정(초): 쿨다운 있는 효과의 발동 횟수 상한
   // 주문 검(리치베인·삼위일체 …)처럼 '스킬 뒤 기본 공격'에 터지는 효과를 실제로 섞어 치는 비율.
@@ -480,6 +487,7 @@
     { what: "지속 피해(화상 등)는 지속 시간마다 1번", src: "data", why: "같은 대상에 다시 걸면 새로 쌓이지 않고 시간만 갱신되는 게임 규칙 그대로예요 (예: 리안드리 화상 3초). 설명에 '무한히 중첩'이 있으면(화염 낙인) 걸 때마다 쌓아요." },
   ];
 
+  const itemOrAugFx = (e) => e.src !== "패시브" && !e.champ;  // 아이템·증강 효과 (챔피언 자기 기술이 아님)
   function metrics(champ, L, stats, opts = {}) {
     const { total: t, flags, aram } = stats;
     const dealt = (aram.dmg_dealt || 1) * (1 + flags.dmgDealtMult);
@@ -488,7 +496,7 @@
     const magMit = mitigation(TARGET.MR, t.MPENP, t.MPEN);
     const ranks = ranksAt(L, champ.spells);
     const cv = stats.conv || {};
-    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, spellOnhit: 0 };
+    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0 };
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
     // 쿨의 f% 를 확률 p 로 돌려받음 → 남는 쿨 비율 (1 - pf). 여럿이면 곱한다 → 가속 100 × (1/Π(1-pf) - 1)
@@ -577,6 +585,8 @@
       out.comboRaw += raw;
       out.shield += shield;
       out.heal += heal;
+      out.kitShield += shield;
+      out.kitHeal += heal;
       // 원래 재사용 대기시간이 아주 짧은 스킬(징크스 Q 같은 전환형)은 DPS에서 제외, 가속으로 짧아진 건 0.5초까지만
       if (cdBase > 0.5) out.skillDps += dmg / Math.max(cd, 0.5);
     });
@@ -588,6 +598,8 @@
     out.augCombo = 0;
     out.augDps = 0;
     out.castDps = 0;  // augDps 중 스킬을 써야 나오는 몫 (시전 빈도 100% 기준)
+    out.atkDps = 0;  // augDps 중 기본 공격으로 나오는 몫 (적중·기본 공격 시·N회 공격) — 실험 설정 autoUptime 용
+    out.itemSelfHp = 0;  // 아이템 효과의 자기 회복·보호막 (버티는 힘에 더함)
     out.castDpsUsed = 0;  // 같은 몫을 '실제로 쓰여 맞는 스킬 빈도'(× SKILL_DPS_SHARE, 효과 상한 적용)로 센 값 — 초당 피해에 쓴다
     out.effects = [];
     for (const e of stats.effects || []) {
@@ -622,13 +634,17 @@
       if (e.kind === "shield" || e.kind === "heal") {
         const k = e.kind === "shield" ? (aram.shielding || 1) : (aram.healing || 1);
         const amt = v * k * (1 + t.HSP) * (tr.type === "cast" ? comboTimes(casts) : 1);
+        // 아이템 효과의 회복·보호막(스테락의 도전·케이닉 루컨·워모그의 갑옷 …)은 자기 자신에게만 → 버티는 힘(EHP)으로 (흡혈·생명선과 같게)
+        if (e.item && EXP.itemSelfToEhp) { out.itemSelfHp += amt; continue; }
         if (e.kind === "shield") out.shield += amt; else out.heal += amt;
+        // 챔피언 자기 기술(패시브)의 회복·보호막만 아군에게 줄 수 있다고 본다 (아이템·증강 효과의 보호막은 자기 자신에게만: 스테락·케이닉 루컨)
+        if (!itemOrAugFx(e)) { if (e.kind === "shield") out.kitShield += amt; else out.kitHeal += amt; }
         continue;
       }
       const kind = e.kind === "adaptive" ? (apMain(champ) ? "magic" : "physical") : e.kind;
       row.kind = kind;
       const mit = kind === "magic" ? magMit : kind === "physical" ? physMit : 1;
-      const itemOrAug = e.src !== "패시브" && !e.champ;
+      const itemOrAug = itemOrAugFx(e);
       // 취약: 아이템·지속 피해 효과도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값 (rules effectCritDmg)
       const effCrit = itemOrAug && cv.effectCritDmg ? 1 + Math.min(1, t.CRIT) * (cv.effectCritDmg + (t.CRITDMG - BASE_CRIT_DMG) - 1) : 1;
       const hit = v * mit * dealt * (1 + flags.trueBonus) * (itemOrAug ? 1 + (cv.effectDmgMult || 0) : 1) * effCrit;
@@ -637,14 +653,15 @@
       else if (tr.type === "attacks") {
         // 적중 시 중첩으로 세는 효과(베인 은화살·카이사 플라즈마, trigger.onhitStacks)는 구인수의 두 번째 적중도 한 번 더 쌓는다
         row.stackRepeat = tr.onhitStacks ? t.onhitRepeat || 0 : 0;
-        out.augDps += hit * rate(t.AS * (1 + row.stackRepeat) / tr.n);
+        const a = hit * rate(t.AS * (1 + row.stackRepeat) / tr.n);
+        out.augDps += a; out.atkDps += a;
       }
-      else if (tr.type === "onhit") out.augDps += hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0));
+      else if (tr.type === "onhit") { const a = hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0)); out.augDps += a; out.atkDps += a; }
       // '기본 공격 시'(on-attack) 효과 (루난의 허리케인 탄환): 공격마다 1번, 치명타 적용. 적중 효과 반복(구인수·한 발에 두 놈)은 안 받는다
-      else if (tr.type === "onattack") { row.dps = hit * rate(t.AS) * (1 + Math.min(1, t.critAuto ?? t.CRIT) * (t.CRITDMG - 1)); out.augDps += row.dps; }
-      else if (tr.type === "cast") { const v = hit * rate(castRate); out.augCombo += hit * comboTimes(casts); out.augDps += v; out.castDps += v; out.castDpsUsed += hit * rate(castRate * SKILL_DPS_SHARE); }
+      else if (tr.type === "onattack") { row.dps = hit * rate(t.AS) * (1 + Math.min(1, t.critAuto ?? t.CRIT) * (t.CRITDMG - 1)); out.augDps += row.dps; out.atkDps += row.dps; }
+      else if (tr.type === "cast") { const v = hit * rate(castRate); out.augCombo += hit * comboTimes(casts); out.augDps += v; out.castDps += v; out.castDpsUsed += hit * rate(castRate * EXP.skillShare); }
       // 지정 스킬 하나로 쌓은 표식을 기본 공격으로 터뜨림 (핏빛 코발트): 콤보 한 번에 대상 스킬 1번 × 터뜨리는 비율, 초당은 대상 스킬 빈도
-      else if (tr.type === "boundCast") { const v = hit * out.boundCastRate; out.augCombo += hit * (targetable ? weave : 0); out.augDps += v; out.castDps += v; out.castDpsUsed += v * SKILL_DPS_SHARE; }
+      else if (tr.type === "boundCast") { const v = hit * out.boundCastRate; out.augCombo += hit * (targetable ? weave : 0); out.augDps += v; out.castDps += v; out.castDpsUsed += v * EXP.skillShare; }
       else out.augCombo += hit;
     }
     // 흡수: 스킬로 준 피해(방어 적용 후)의 일부를 회복, 죽음의 순환: 회복량의 일부를 마법 피해로
@@ -665,7 +682,7 @@
     // 예전엔 흡혈 수치를 합계만 내고 점수엔 안 써서 '마도사의 주스 상자'(모든 피해 흡혈 10%)가 누구에게나 이득 0 → D 였다 (2026-10-22 점검)
     const autoCombo = out.autoDps * COMBO_WINDOW;
     out.vampHeal = ((t.LS || 0) * autoCombo + (t.OMNIVAMP || 0) * (autoCombo + out.combo)) * (aram.healing || 1);
-    const extraHp = (cv.selfHeal || 0) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2 + out.vampHeal;
+    const extraHp = (cv.selfHeal || 0) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2 + out.vampHeal + out.itemSelfHp;
     out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
     out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100)) / taken;
     if (cv.ehpMult) { out.ehpPhys *= 1 + cv.ehpMult; out.ehpMag *= 1 + cv.ehpMult; }  // 상대 피해량 감소 (감쇠 광선)
@@ -681,16 +698,21 @@
     if (cv.fearPerCast) for (const sp of out.spells) if (!sp.disabled) control += Math.min(cv.fearPerCast, sp.cd / (cv.fearCdDiv || 20));
     out.control = control;
     // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 스킬 피해와 스킬에 딸린 효과는 SKILL_DPS_SHARE 만
-    out.dps = out.autoDps + SKILL_DPS_SHARE * out.skillDps + (out.augDps - out.castDps) + out.castDpsUsed;
+    out.dps = out.autoDps * EXP.autoUptime + EXP.skillShare * out.skillDps + (out.augDps - out.castDps - out.atkDps) + out.atkDps * EXP.autoUptime + out.castDpsUsed;
     out.support = out.shield + out.heal;
     // 서포터 아이템: 아군을 돕는 챔피언(allysupport)이면 그 도움을 다른 아군에게 더 준다 (rules.json items).
     // 월석 재생기 연쇄(회복 30%·보호막 35%), 헬리아의 메아리(감소 전 피해 30% 충전 → 아군 회복, 최대 80~250).
     // 예전엔 수치로 안 잡혀 서포터 1위가 리치베인 같은 피해 아이템이었다 (2026-10-20 공식 추천 차이 분석)
     if ((champ.features || []).includes("allysupport")) {
       const hsp = (aram.healing || 1) * (1 + t.HSP);
-      const chain = out.heal * (cv.allyHealMult || 0) + out.shield * (cv.allyShieldMult || 0);
+      // 월석 재생기 연쇄는 아군을 회복·보호막으로 도울 때만 터진다: 챔피언 기술로 준 양(kitHeal·kitShield)만 쓴다.
+      // 2026-11-14 아이템 자기 보호막(스테락의 도전 1,400·케이닉 루컨 700)까지 연쇄해 레나타 기본 빌드가 스테락·케이닉·워모그가 됐다
+      const chain = out.kitHeal * (cv.allyHealMult || 0) + out.kitShield * (cv.allyShieldMult || 0);
       const helia = cv.dmgToAllyHeal ? Math.min(cv.allyHealCap || Infinity, out.comboRaw * cv.dmgToAllyHeal) * hsp : 0;
-      out.allySupport = chain + helia;
+      // 사용 효과로 아군을 돕는 아이템 (구원·미카엘의 축복 회복, 강철의 솔라리 펜던트 보호막): 한타 1번에 1번, 아군 한 명 (rules items).
+      // 2026-11-14 레나타·소라카 기본 빌드가 서포터 아이템 → 딜 아이템으로 바뀐 원인: 이 효과들이 지원 지표에 없어 피해 아이템보다 늘 낮았다
+      const active = (cv.allyActiveHeal || 0) * hsp + (cv.allyActiveShield || 0) * (aram.shielding || 1) * (1 + t.HSP);
+      out.allySupport = chain + helia + active;
       out.support += out.allySupport;
     }
     return out;
@@ -701,7 +723,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { SKILL_DPS_SHARE, ROWS, TARGET, DEFAULT_TARGET, ASSUMPTIONS, setTarget, baseStats, computeStats, metrics, evaluate, ranksAt };
+  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ASSUMPTIONS, setTarget, baseStats, computeStats, metrics, evaluate, ranksAt };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);

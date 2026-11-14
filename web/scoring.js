@@ -42,8 +42,9 @@
   const OFFICIAL_BOOST = 3;
   // 공식 추천 가산 비중: 변칙은 0. 증강 몰빵은 실험 설정 (2026-11-14 P3: 공식 추천은 증강 없는 기준이라 몰빵이 증강을 따라가는 걸 막았다
   // — 증강 효과와 전투 가치가 둘 다 나은 빌드 912장면 중 907장면을 이 가산이 밀어냄). 결정 전까지 기본은 예전처럼 1
-  let AUG_OFFICIAL = true;
-  const officialK = (c) => (c.flip || (c.focus && !AUG_OFFICIAL) ? 0 : 1);
+  // 실험 설정 setOfficialScale({augment, balanced}): 컨셉별 공식 가산 배율 (0 = 뺌, 0.5 = 절반). 기본 1·1
+  const OFFICIAL_SCALE = { augment: 1, balanced: 1 };
+  const officialK = (c) => (c.flip ? 0 : c.focus ? OFFICIAL_SCALE.augment : OFFICIAL_SCALE.balanced);
   // 증강 몰빵의 전투 가치 하한: 전체 전투 가치가 균형 빌드의 (1 − δ)보다 낮은 조합은 받지 않는다. null = 제한 없음 (δ 결정 전 기본)
   let AUG_DELTA = null;
   const OFFICIAL_RANGE_W = { first: 1, middle: 0.7, last: 0.4 };
@@ -498,7 +499,8 @@
     return champs;
   }
   const setSimilarK = (k) => { SIMILAR_K = k; memo.clear(); };
-  const setAugmentOfficial = (on) => { AUG_OFFICIAL = !!on; memo.clear(); };
+  const setAugmentOfficial = (on) => { OFFICIAL_SCALE.augment = on ? 1 : 0; memo.clear(); };
+  const setOfficialScale = (o) => { Object.assign(OFFICIAL_SCALE, { augment: 1, balanced: 1 }, o || {}); clearMemo(); };
   const setAugmentDelta = (dl) => { AUG_DELTA = dl == null ? null : +dl; memo.clear(); };
   function withOfficial(ctx, champ, k) {
     const official = officialWeights(champ, k);
@@ -1133,7 +1135,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

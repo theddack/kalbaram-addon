@@ -1116,3 +1116,45 @@ test("E8: 굶주린 히드라 업그레이드는 굶주린 히드라를 가졌�
   assert.ok(up && Math.abs(ls(["굶주린 히드라"]) - 0.2) < 1e-6, `히드라 보유 ${ls(["굶주린 히드라"])}`);
   assert.equal(ls([]), 0, "히드라가 없으면 그대로");
 });
+
+// 2026-11-14 후속 분석: 레나타 기본 빌드가 서포터 아이템 → 딜 아이템이 된 원인 (특정 챔피언·아이템을 고정하지 않고 지원 계산 구조를 고침)
+test("서포터: 월석 재생기 연쇄는 챔피언 기술로 준 회복·보호막만 (아이템 자기 보호막은 연쇄하지 않음)", () => {
+  const c = champ("Renata");
+  const ally = (names) => St.evaluate(c, 18, names.map(item), [], {}).m.allySupport || 0;
+  const moon = ally(["월석 재생기"]);
+  // 스테락의 도전 보호막(자기 자신에게만)은 아군에게 연쇄되지 않는다. 예전엔 1,400 × 35%가 더해졌다
+  assert.ok(Math.abs(ally(["월석 재생기", "스테락의 도전"]) - moon) < 1, `${moon} → ${ally(["월석 재생기", "스테락의 도전"])}`);
+  assert.ok(Math.abs(ally(["월석 재생기", "케이닉 루컨"]) - moon) < 1);
+  // 레나타 E 보호막(아군에게도 줌)은 연쇄된다
+  const kit = St.evaluate(c, 18, [item("월석 재생기")], [], {}).m.kitShield;
+  assert.ok(kit > 0 && moon >= kit * 0.35 - 1, `${kit} ${moon}`);
+});
+
+test("서포터: 사용 효과로 아군을 돕는 아이템(구원·미카엘·솔라리)은 아군을 돕는 챔피언의 지원 지표에 들어간다", () => {
+  const sup = (id, names) => St.evaluate(champ(id), 18, names.map(item), [], {}).m.support;
+  for (const [n, min] of [["구원", 350], ["미카엘의 축복", 250], ["강철의 솔라리 펜던트", 360]]) {
+    const g = sup("Renata", [n]) - sup("Renata", []);
+    assert.ok(g >= min * 0.9, `${n}: +${g}`);
+    // 아군을 돕지 않는 챔피언(가렌)에게는 사용 효과를 지원으로 세지 않는다 (아이템 능력치의 회복·보호막 효과 증가분만)
+    assert.ok(sup("Garen", [n]) - sup("Garen", []) < min * 0.5, `가렌 ${n}`);
+  }
+});
+
+test("서포터: 기본 빌드에 지원 아이템이 들어간다 (레나타·라칸, 수정 전엔 리치베인·라바돈·공허)", () => {
+  for (const id of ["Renata", "Rakan"]) {
+    const c = champ(id), w = S.profile(c, d.tags);
+    const names = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"])[0].pick.map((p) => p.item.name);
+    const supportItems = names.filter((n) => ["월석 재생기", "헬리아의 메아리", "구원", "미카엘의 축복", "강철의 솔라리 펜던트", "흐르는 물의 지팡이", "불타는 향로", "슈렐리아의 군가"].includes(n));
+    assert.ok(supportItems.length >= 2, `${id}: ${names.join(", ")}`);
+  }
+});
+
+test("실험 설정(setExperiment)은 기본값이면 계산이 그대로이고, 되돌리면 원래 값", () => {
+  const c = champ("Jinx"), l = [item("구인수의 격노검"), item("크라켄 학살자")];
+  const m0 = St.evaluate(c, 18, l, [], {}).m.dps;
+  St.setExperiment({ autoUptime: 0.5 });
+  const half = St.evaluate(c, 18, l, [], {}).m.dps;
+  St.setExperiment(null);
+  assert.equal(St.evaluate(c, 18, l, [], {}).m.dps, m0);
+  assert.ok(half < m0 * 0.7, `${m0} → ${half}`);
+});

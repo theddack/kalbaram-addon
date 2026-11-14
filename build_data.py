@@ -1032,7 +1032,7 @@ STAT_LABEL = {
     "ultTriggerMs": "궁극기 후 이동 속도", "dashHaste": "돌진 스킬 가속", "fearCdDiv": "공포 시간 계산 나눗수",
     "APtoCRIT": "주문력 → 치명타 확률", "skillCritDmg": "스킬 치명타 피해", "onhitOnCrit": "치명타 시 적중 효과 추가", "onhitRepeat": "적중 효과 반복", "rampAS": "평타당 공격 속도 중첩", "rampMax": "최대 중첩",
     "effectCritDmg": "아이템·지속 피해 치명타 피해",
-    "allyHealMult": "다른 아군 연쇄 회복", "allyShieldMult": "다른 아군 연쇄 보호막", "dmgToAllyHeal": "피해 → 아군 회복 충전", "allyHealCap": "아군 회복 최대",
+    "allyHealMult": "다른 아군 연쇄 회복", "allyShieldMult": "다른 아군 연쇄 보호막", "dmgToAllyHeal": "피해 → 아군 회복 충전", "allyHealCap": "아군 회복 최대", "allyActiveHeal": "사용 효과 아군 회복", "allyActiveShield": "사용 효과 아군 보호막",
 }
 # 0~1 비율로 저장하는 키 → 화면에 % 로
 PCT_KEYS = {"AS", "CRIT", "MSP", "LS", "OMNIVAMP", "HSP", "MPENP", "HPmult", "ADmult", "APmult", "ASmult",
