@@ -167,3 +167,22 @@ test("P7: 증강 활용 안내는 수치 없음 · 효과 없음 · 모든 피�
   const tagOnly = d.augments.find((a) => !a.category && !S.hasNumbers(a, d.rules));
   assert.equal(use("Jinx", tagOnly.name), "noNumbers");
 });
+
+// 2026-11-14 후속 분석: 케일 주문력 ↔ 공격력 갈래 (특정 아이템을 고정하지 않고, 같은 목표 함수에서 더 높은 갈래를 찾는지)
+test("혼합형 챔피언은 물리·마법 갈래 중 같은 목표 함수에서 높은 쪽을 찾는다 (공식 가산이 없어도)", () => {
+  const S2 = require(path.join(__dirname, "..", "web", "scoring.js"));
+  const dd = require(path.join(__dirname, "..", "web", "data.json"));
+  S2.attachSimilar(dd.champions, null, dd.items);
+  S2.setOfficialScale({ balanced: 0 });
+  try {
+    for (const id of ["Kayle", "KogMaw"]) {
+      const c = dd.champions.find((x) => x.id === id), w = S2.profile(c, dd.tags);
+      const b = S2.buildConcepts(dd.items, w, [], [], dd.rules, c, {}, ["balanced"])[0];
+      const isAP = (i) => (i.tags.AP || 0) >= 0.5 && !((i.tags.AD || 0) >= 0.5), isAD = (i) => (i.tags.AD || 0) >= 0.5 && !((i.tags.AP || 0) >= 0.5);
+      for (const f of [(i) => !isAP(i), (i) => !isAD(i)]) {
+        const alt = S2.buildConcepts(dd.items.filter(f), w, [], [], dd.rules, c, {}, ["balanced"])[0].pick.map((p) => p.item);
+        assert.ok(b.score >= b.scoreOf(alt) - 1e-6, `${id}: ${b.score} < ${b.scoreOf(alt)}`);
+      }
+    }
+  } finally { S2.setOfficialScale(null); }
+});

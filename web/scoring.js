@@ -873,7 +873,28 @@
       const amw = num && c.focus ? augOutputWeights(chosen, rules, champ0, statOpts) : null;
       const fallback = c.focus && AUG_DELTA != null && num && chosen.length
         ? buildConcepts(items, w, chosen, fixed, rules, champ0, statOpts, ["balanced"])[0].pick.map((p) => p.item) : null;
-      if (!c.flip) return { ...c, weights: iw, ...buildWith(items, iw, fixed, { ctx: cctx, mismatch: c.mismatch, num, mw: cmw, augMw: amw, focus: c.focus, off, core, offType, maxOff: offSlots(champ), fallback, delta: fallback ? AUG_DELTA : null }) };
+      if (!c.flip) {
+        const bo = { ctx: cctx, mismatch: c.mismatch, num, mw: cmw, augMw: amw, focus: c.focus, off, core, offType, maxOff: offSlots(champ), fallback, delta: fallback ? AUG_DELTA : null };
+        let built = buildWith(items, iw, fixed, bo);
+        // 혼합형(물리·마법 둘 다 쓰는 챔피언: 케일·코그모·카이사 …)은 물리 갈래·마법 갈래를 따로 한 번씩 더 찾는다 (2026-11-14 후속 분석).
+        // 한 칸 교체로는 주문력 빌드 ↔ 공격력 빌드처럼 4~5칸을 같이 바꿔야 하는 갈래를 못 넘어, 케일은 같은 목표 함수에서 공격력 치명타가 5% 높은데도
+        // 공식 가산·가정값이 조금만 달라지면 주문력 빌드에 머물렀다. 같은 목표 함수(scoreOf)로 비교해 높은 쪽을 쓴다
+        if (num && champ && isHybrid(champ)) {
+          const keep = new Set([...(cctx.must || []).flat(), ...Object.keys(cctx.wanted || {})]);
+          // 찾은 빌드의 반대 갈래만 한 번 더 (계산 시간: 둘 다 찾으면 빌드 3종 95% 631 → 1,149ms)
+          const only = (l, t) => l.filter((p) => p.item.kind === "legendary" && ((p.item.tags || {})[t] || 0) >= 0.5 && !(((p.item.tags || {})[t === "AD" ? "AP" : "AD"] || 0) >= 0.5)).length;
+          const nAD = only(built.pick, "AD"), nAP = only(built.pick, "AP");
+          for (const drop of nAD > nAP ? ["AD"] : nAP > nAD ? ["AP"] : []) {
+            const other = drop === "AP" ? "AD" : "AP";
+            const pool = items.filter((i) => keep.has(i.name) || !(((i.tags || {})[drop] || 0) >= 0.5 && !(((i.tags || {})[other] || 0) >= 0.5)));
+            if (pool.length === items.length) continue;
+            const alt = buildWith(pool, iw, fixed, bo);
+            const s = built.scoreOf(alt.pick.map((p) => p.item));
+            if (s > built.score + 1e-9) built = { ...alt, score: s, scoreOf: built.scoreOf, valueOf: built.valueOf, augOf: built.augOf, minV: built.minV };
+          }
+        }
+        return { ...c, weights: iw, ...built };
+      }
       const twist = twistSupport(w, ctx);
       const k = twistK(twist);
       const mw = k >= 1 ? inv : lerp(metricWeights(iw), inv, k);
