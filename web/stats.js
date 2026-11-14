@@ -504,6 +504,14 @@
   ];
 
   const itemOrAugFx = (e) => e.src !== "패시브" && !e.champ;  // 아이템·증강 효과 (챔피언 자기 기술이 아님)
+  // '대상 체력 X% 아래' 조건 효과의 공통 비율: 내가 준 피해 중 대상 체력이 at 아래일 때 들어간 몫.
+  // 따로 발동률을 정하지 않고 기준 상대 현재 체력(TARGET.CUR, 현재·잃은 체력 비례 피해와 같은 가정)에서 끌어낸다:
+  // 한타 동안 상대 체력이 100% → (2 × CUR − 1) 로 고르게 줄어든다 (CUR 70% → 100% → 40%, 평균 70%).
+  // 이 가정에선 끝점(40%) 아래로는 내려가지 않아 40% 이하 조건은 0이다 — 처치까지 가는 몫은 근거가 없어 넣지 않았다 (미검증)
+  function targetBelowShare(at) {
+    const end = Math.max(0, 2 * TARGET.CUR - 1);
+    return Math.max(0, Math.min(1, (at - end) / (1 - end)));
+  }
   function metrics(champ, L, stats, opts = {}) {
     const { total: t, flags, aram } = stats;
     const cv = stats.conv || {};
@@ -513,11 +521,8 @@
     const taken = aram.dmg_taken || 1;
     // 피해 유형별 증가 (그림자불꽃 '잿덩이꽃': 마법·고정 피해만)는 방어 적용 계수에 곱해 모든 피해 계산에 같이 들어간다.
     // 마법 저항력 감소(핏빛 저주 '썩은 부식')는 상대 마법 저항력 자체를 줄인다
-    // 체력 조건 피해 증가 (그림자불꽃: 체력 40% 아래 대상에게 마법·고정 피해 +20%): 기준 상대 현재 체력(평균 70%)과 같은 가정으로,
-    // 한타 동안 상대 체력이 100% → (2 × 평균 − 1) = 40% 로 고르게 줄어든다고 보고, 조건 아래에서 들어가는 피해 비율만큼 (평균 70%면 0)
-    const lowEnd = Math.max(0, 2 * TARGET.CUR - 1);
-    const lowShare = cv.lowHpAt ? Math.max(0, Math.min(1, (cv.lowHpAt - lowEnd) / (1 - lowEnd))) : 0;
-    const lowAmp = (cv.lowHpMagicTrueAmp || 0) * lowShare;
+    // 체력 조건 피해 증가 (그림자불꽃: 체력 40% 아래 대상에게 마법·고정 피해 +20%): 조건 아래에서 들어가는 피해 비율만큼 (targetBelowShare)
+    const lowAmp = cv.lowHpAt ? (cv.lowHpMagicTrueAmp || 0) * targetBelowShare(cv.lowHpAt) : 0;
     const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY) * (1 + (cv.physDmgMult || 0));
     const magMit = mitigation(TARGET.MR * (1 - Math.min(0.9, cv.mrShred || 0)), t.MPENP, t.MPEN) * (1 + (cv.magicDmgMult || 0) + lowAmp);
     const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
@@ -752,7 +757,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ASSUMPTIONS, setTarget, baseStats, computeStats, metrics, evaluate, ranksAt };
+  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);

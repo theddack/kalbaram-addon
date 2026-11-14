@@ -27,6 +27,15 @@ test("그림자불꽃 '잿덩이꽃': 체력 40% 아래 대상 마법·고정 �
   } finally { St.TARGET.CUR = cur; }
 });
 
+test("'대상 체력 X% 아래' 조건 비율은 공통 함수 하나로, 기준 상대 현재 체력 가정에서만 끌어낸다 (따로 정한 발동률 없음)", () => {
+  near(St.targetBelowShare(0.4), 0, 1e-12, "평균 70% → 100%~40%: 40% 아래 0");
+  near(St.targetBelowShare(0.5), 1 / 6, 1e-12, "50% 아래는 (0.5 − 0.4) / 0.6");
+  near(St.targetBelowShare(1), 1, 1e-12, "100% 아래는 전부");
+  const cur = St.TARGET.CUR;
+  St.TARGET.CUR = 0.5;
+  try { near(St.targetBelowShare(0.4), 0.4, 1e-12, "평균 50% → 처치까지: 40%"); } finally { St.TARGET.CUR = cur; }
+});
+
 test("도미닉 경의 인사 '거인 학살자': 기준 상대 추가 체력만큼 피해 증가 (1500에서 최대 15%)", () => {
   const it = item("도미닉 경의 인사"), c = champ("Jinx");
   assert.ok(it.passiveStats, "규칙이 붙어야 해요");
