@@ -863,6 +863,7 @@ def rule_effects(rules, aug_spells, out_augs, warn):
         if not r.get("effects") or aid not in by_id or aid not in aug_spells:
             continue
         calc = Calc(aug_spells[aid])
+        added = []
         for spec in r["effects"]:
             if spec.get("dvBase") or spec.get("dvRatios"):  # 계산식 안이 이름 없는 값이라 못 풀 때: 이름 있는 데이터 값으로 '기본 + 능력치 비례'를 만든다
                 b = calc.value(spec["dvBase"], 1) if spec.get("dvBase") else 0  # 기본 없이 비례만 (도취: 최대 마나 7%)
@@ -890,7 +891,12 @@ def rule_effects(rules, aug_spells, out_augs, warn):
                 fx["rangedScale"] = spec["rangedScale"]
             else:
                 apply_ranged_scale([fx], aug_spells[aid])
+            # 설명에서 자동으로 뽑은 같은 효과(같은 계산식 이름·같은 발동 방식)가 있으면 규칙 것으로 바꾼다 (두 번 세지 않게).
+            # 2026-11-14 간지럼 괴물: 적중 시 마법 피해 5~50 이 자동 추출 + 규칙으로 두 번 들어가 적중 피해가 2배였다 (전체 검증 P4)
+            by_id[aid]["effects"] = [x for x in by_id[aid]["effects"] if any(x is y for y in added)
+                                     or not (x.get("name") == fx["name"] and (x.get("trigger") or {}).get("type") == trig["type"])]
             by_id[aid]["effects"].append(fx)
+            added.append(fx)
 
 
 def rule_drop_effects(rules, out_augs, warn):

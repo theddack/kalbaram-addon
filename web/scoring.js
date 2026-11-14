@@ -784,8 +784,31 @@
         best = st;
       }
     }
+    // improve: 다른 목표(scoreFn)로 seed 구성에서 같은 제약·같은 후보의 한 칸 교체 탐색 (몰빵 균형 재사용 뒤 증강 몫 올리기)
+    const improve = (seed, scoreFn) => {
+      let c = seed.slice(), cs = scoreFn(c);
+      for (let round = 0; round < LOCAL_ROUNDS; round++) {
+        let up = false;
+        for (let k = 0; k < c.length; k++) {
+          const old = c[k];
+          if (locked(old) || !(old.kind in candPool)) continue;
+          for (const it of candPool[old.kind]) {
+            if (it === old) continue;
+            const cand = c.slice(); cand[k] = it;
+            if (!legal(cand)) continue;
+            const v = scoreFn(cand);
+            if (v > cs + 1e-9) { c = cand; cs = v; up = true; }
+          }
+        }
+        if (!up) break;
+      }
+      if (c.every((i, k) => i === seed[k])) return null;
+      let st = { items: [], covered: {}, m: num ? evalM([]) : null, bare: focus ? evalBare([]) : null, total: 0, picks: [] };
+      for (const i of c) st = step(st, i, fixed.includes(i));
+      return { pick: st.picks, final: st.m };
+    };
     // scoreOf·valueOf·augOf: 같은 목표 함수로 다른 구성을 재는 점검 도구용 (tools/augment_classify.js)
-    return { pick: best.picks, final: best.m, score: num ? curScore : null, scoreOf: finalScore, valueOf: num ? valueV : null, augOf: num ? (l) => augValue(l) : null, minV };
+    return { improve, pick: best.picks, final: best.m, score: num ? curScore : null, scoreOf: finalScore, valueOf: num ? valueV : null, augOf: num ? (l) => augValue(l) : null, minV };
   }
 
   // 능력치 계산에 넘길 증강 데이터: 능력치(rules stats) + 피해·보호막 효과(게임 데이터)
@@ -893,7 +916,7 @@
             if (pool.length === items.length) continue;
             const alt = buildWith(pool, iw, fixed, bo);
             const s = built.scoreOf(alt.pick.map((p) => p.item));
-            if (s > built.score + 1e-9) built = { ...alt, score: s, scoreOf: built.scoreOf, valueOf: built.valueOf, augOf: built.augOf, minV: built.minV };
+            if (s > built.score + 1e-9) built = { ...alt, score: s, scoreOf: built.scoreOf, valueOf: built.valueOf, augOf: built.augOf, minV: built.minV, improve: built.improve };
           }
         }
         // 증강 몰빵인데 균형 빌드보다 증강 몫을 못 늘리면(아이템으로 증강 효과를 더 키울 수 없음) 균형 빌드를 그대로 쓴다 (2026-11-14 릴리스 후보 점검).
@@ -913,7 +936,18 @@
           const gain = (built.augOf(mine) - a0) * 100;
           const ga = a0 > 1e-9 ? (built.augOf(mine) - a0) / a0 : Infinity, gv = v0 > 1e-9 ? (built.valueOf(mine) - v0) / v0 : 0;
           if (gain < AUG_GAIN_MIN || ga < gv) {
-            built = { ...built, pick: bal.pick, final: bal.final, score: built.scoreOf(balL), sameAsBalanced: true };
+            // 균형 빌드에서 시작해, 전체 전투 가치를 잃지 않고(≥ 균형) 같은 규칙(증강 몫 증가율 ≥ 전투 가치 증가율)을 지키면서
+            // 증강 몫을 더 키우는 한 칸 교체를 찾는다. 몰빵 탐색이 내놓은 후보가 전투 가치 쪽이라 규칙에 걸려도, 증강을 키우는 다른 조합이
+            // 있으면 그걸 쓴다 (2026-11-14 전체 검증 P5: 재사용 장면 269개 중 260개에 그런 조합이 있었다 — 럭스 + 속전속결 증강 몫 +43% · 전투 가치 +5%)
+            const ok = (l) => {
+              const a = built.augOf(l), v = built.valueOf(l);
+              if (v < v0 - 1e-12) return -Infinity;
+              const g = (a - a0) * 100, r = a0 > 1e-9 ? (a - a0) / a0 : Infinity, rv = v0 > 1e-9 ? (v - v0) / v0 : 0;
+              return g >= AUG_GAIN_MIN && r >= rv ? a : l.every((i, k) => i === balL[k]) ? a0 : -Infinity;
+            };
+            const up = built.improve(balL, ok);
+            built = up ? { ...built, pick: up.pick, final: up.final, score: built.scoreOf(up.pick.map((p) => p.item)), fromBalanced: true }
+              : { ...built, pick: bal.pick, final: bal.final, score: built.scoreOf(balL), sameAsBalanced: true };
           }
         }
         return { ...c, weights: iw, ...built };

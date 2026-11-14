@@ -208,3 +208,17 @@ test("몰빵: 아이템으로 증강을 못 키우면(효과 없음·고정·증
     assert.notEqual(m, b, `${cid} + ${an}`);
   }
 });
+
+// 2026-11-14 전체 검증 P5: 균형을 그대로 쓰는 규칙이 증강을 키울 수 있는 조합까지 버리던 것 (재사용 269장면 중 260장면)
+test("몰빵: 균형으로 돌아갈 때도 전투 가치를 잃지 않고 증강 몫을 키우는 교체가 있으면 쓴다 (럭스 + 속전속결·미친 과학자)", () => {
+  const S2 = require(path.join(__dirname, "..", "web", "scoring.js"));
+  const dd = require(path.join(__dirname, "..", "web", "data.json"));
+  S2.attachSimilar(dd.champions, null, dd.items);
+  for (const an of ["속전속결", "미친 과학자"]) {
+    const c = dd.champions.find((x) => x.id === "Lux"), w = S2.profile(c, dd.tags), a = dd.augments.find((x) => x.name === an);
+    const m = S2.buildConcepts(dd.items, w, [a], [], dd.rules, c, {}, ["augment"])[0], b = S2.buildConcepts(dd.items, w, [a], [], dd.rules, c, {}, ["balanced"])[0];
+    const ml = m.pick.map((p) => p.item), bl = b.pick.map((p) => p.item);
+    assert.ok(m.augOf(ml) > m.augOf(bl), `${an}: 증강 몫 ${m.augOf(bl)} → ${m.augOf(ml)}`);
+    assert.ok(m.valueOf(ml) >= m.valueOf(bl) - 1e-9, `${an}: 전투 가치 ${m.valueOf(bl)} → ${m.valueOf(ml)}`);
+  }
+});

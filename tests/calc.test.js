@@ -1184,3 +1184,18 @@ test("메이지·서포터 기본 빌드에 자기 보호막 탱커 아이템(�
     assert.ok(names.filter((n) => ["스테락의 도전", "케이닉 루컨", "워모그의 갑옷"].includes(n)).length <= 1, `${id}: ${names.join(", ")}`);
   }
 });
+
+// 2026-11-14 전체 검증 P4: 규칙으로 붙인 효과가 설명에서 자동으로 뽑은 같은 효과와 겹쳐 두 번 세던 오류 (간지럼 괴물 적중 피해 2배)
+test("증강 효과는 같은 계산식·같은 발동 방식이 두 번 들어가지 않는다 (간지럼 괴물 적중 피해 1번)", () => {
+  for (const a of d.augments) {
+    const seen = new Set();
+    for (const e of a.effects || []) {
+      const k = `${e.name}|${(e.trigger || {}).type}`;
+      assert.ok(!seen.has(k), `${a.name}: ${k}`);
+      seen.add(k);
+    }
+  }
+  assert.equal(aug("TickleMonster").effects.filter((e) => e.name === "Calc_OnHitDamage").length, 1);
+  // 전부 다 무너뜨려는 기본 공격 적중·스킬 적중을 따로 센다 (같은 계산식, 다른 발동)
+  assert.equal(aug("TakeemDownDownDown").effects.filter((e) => e.name === "Calc_Damage_Hit").length, 2);
+});
