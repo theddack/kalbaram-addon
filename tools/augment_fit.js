@@ -2,6 +2,7 @@
 //   node tools/augment_fit.js                 요약 (역할별 대표 18명 × 수치가 있는 증강 전부)
 //   node tools/augment_fit.js --write         docs/증강_아이템_점검표.md
 //   node tools/augment_fit.js --champs Jinx,Sion --augs 강타자
+//   node tools/augment_fit.js --from 결과.json --write   이미 잰 결과로 문서만
 // 잰 값 (계산 결과끼리의 비교, 실게임 아님):
 //   증강 자체 효과 = 증강을 넣었을 때 늘어나는 지표(한타 피해·초당 피해·버티는 힘·지원·기동·제어)를 맨몸 대비 비율로 더한 것.
 //                    챔피언 성향 가중치를 쓰지 않는다 (탱커가 고른 피해 증강도 피해가 얼마나 늘었는지 그대로 본다)
@@ -136,7 +137,8 @@ if (require.main === module) {
   const champs = arg("--champs") ? arg("--champs").split(",") : Object.values(REPS).flat();
   const augs = arg("--augs") ? arg("--augs").split(",") : null;
   const t0 = Date.now();
-  const rows = check(d, champs, augs);
+  // --from <json>: 이미 잰 결과(--json 으로 저장한 것)로 요약·문서만 다시 만든다
+  const rows = arg("--from") ? JSON.parse(fs.readFileSync(arg("--from"), "utf8")) : check(d, champs, augs);
   const sum = summarize(rows);
   console.log(`장면 ${sum.n} · ` + Object.entries(sum.all).map(([k, v]) => `${k} ${v}`).join(" · ") + ` (${Math.round((Date.now() - t0) / 1000)}초)`);
   for (const [k, v] of Object.entries(sum.byRole)) console.log(`  ${k}: ` + Object.entries(v).map(([g, n]) => `${g} ${n}`).join(" · "));
