@@ -418,13 +418,19 @@
     return v;
   }
 
+  // 실험 설정 (2026-11-15 태그·수치 중복 점검, tools/tag_overlap.js): {아이템 id: Set(태그)} 를 주면 그 태그는 태그 점수에서 뺀다.
+  // 기본 null = 지금 그대로. 화면은 바꾸지 않는다 (tools 에서만 setTagSkip)
+  let TAG_SKIP = null;
+  const setTagSkip = (m) => { TAG_SKIP = m || null; clearMemo(); };
   function scoreItem(item, iw, covered, opts = {}) {
     const ctx = opts.ctx;
     const view = tagView(item.tags, ctx && ctx.convert);
     const tags = view.tags;
     const parts = [];
     let score = 0;
+    const skip = TAG_SKIP && TAG_SKIP[item.id];
     for (const [t, s] of view.entries) {
+      if (skip && skip.has(t)) continue;
       const rate = t === "AD" || t === "AP" ? MAIN_STAT_DECAY : ITEM_DECAY;
       const decay = Math.pow(rate, (covered && covered[t]) || 0);
       const v = (iw[t] || 0) * Math.min(s, 1.5) * decay;
@@ -1228,7 +1234,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;
