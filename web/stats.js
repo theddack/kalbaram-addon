@@ -506,6 +506,8 @@
   ];
 
   const itemOrAugFx = (e) => e.src !== "패시브" && !e.champ;  // 아이템·증강 효과 (챔피언 자기 기술이 아님)
+  const CRIT_NAME = new Map();  // 효과 이름 → 치명타 버전인지 (정규식을 이름마다 한 번만)
+  const isCritName = (n) => { n = n || ""; let r = CRIT_NAME.get(n); if (r === undefined) { r = /crit/i.test(n); CRIT_NAME.set(n, r); } return r; };
   // '대상 체력 X% 아래' 조건 효과의 공통 비율: 내가 준 피해 중 대상 체력이 at 아래일 때 들어간 몫.
   // 따로 발동률을 정하지 않고 기준 상대 현재 체력(TARGET.CUR, 현재·잃은 체력 비례 피해와 같은 가정)에서 끌어낸다:
   // 한타 동안 상대 체력이 100% → (2 × CUR − 1) 로 고르게 줄어든다 (CUR 70% → 100% → 40%, 평균 70%).
@@ -645,12 +647,12 @@
     // 치명타 버전 효과: 같은 출처·피해 종류·발동 방식의 일반 효과가 있으면 그 대신 쓰이는 버전이다 (챔피언 스킬의 spellTotals 와 같은 원칙).
     // 일반 효과 + 적용되는 몫 × (치명타 − 일반). 몫은 체력 조건이 있으면(rules effectCritBelow) 그 조건 아래 피해 비율, 없으면 치명타 확률.
     // 2026-11-15 예전엔 둘 다 전부 더했다 (지옥불 난사 발동: 체력 30% 아래 대상에게만 치명타인 사격을 일반 사격과 같이 셈)
-    const fxKey = (e) => [e.src, e.kind, (e.trigger || {}).type || "once"].join("|");
-    const normalOf = new Map();
-    for (const e of stats.effects || []) if (!/crit/i.test(e.name || "") && !normalOf.has(fxKey(e))) normalOf.set(fxKey(e), e);
-    for (const e of stats.effects || []) {
+    // 치명타 버전이 있을 때만 짝을 찾는다 (모든 효과마다 찾으면 빌드 3종 계산이 약 11% 느려졌다)
+    const fxList = stats.effects || [];
+    const sameFx = (a, b) => a.src === b.src && a.kind === b.kind && ((a.trigger || {}).type || "once") === ((b.trigger || {}).type || "once");
+    for (const e of fxList) {
       let v = baseV(e);
-      const sib = /crit/i.test(e.name || "") ? normalOf.get(fxKey(e)) : null;
+      const sib = isCritName(e.name) ? fxList.find((x) => x !== e && !isCritName(x.name) && sameFx(x, e)) : null;
       let critAlt = null;
       if (sib) {
         const share = e.critBelow != null ? targetBelowShare(e.critBelow) : Math.min(1, t.CRIT || 0);
