@@ -37,6 +37,8 @@ const RULE_KIND = {
   allyHealMult: "heal", allyShieldMult: "shield", dmgToAllyHeal: "heal", allyHealCap: "heal", allyActiveHeal: "heal", allyActiveShield: "shield",
   allyBuffAP: "ally", allyBuffHaste: "ally", allyBuffAS: "ally", MS: "ms", MSP: "ms", MR: "defense", CRIT: "stat", AS: "stat",
   ultHasteAdd: "haste", basicHaste: "haste", onhitRemainingPct: "haste", controlPerCast: "cc", rampAS: "stat", rampMax: "stat", onhitRepeat: "dmg",
+  magicDmgMult: "dmg", lowHpMagicTrueAmp: "dmg", lowHpAt: "dmg", trueDmgMult: "dmg", physDmgMult: "dmg", tgtBonusHpAmp: "dmg", tgtBonusHpAt: "dmg", mrShred: "defense", bonusHPtoAD: "stat",
+  MP5PtoHSP: "heal", MP5PtoAP: "stat", selfHealMult: "heal", HP: "defense", MANA: "stat", AP: "stat",
 };
 const strip = (h) => (h || "").replace(/<br\s*\/?>/g, "\n").replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'");
 

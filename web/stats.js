@@ -172,6 +172,8 @@
     if (conv.manaToHP && t.MANA) { t.HP += t.MANA * conv.manaToHP; t.bonusHP = t.HP - base.HP; }  // 정신 변환: 최대 마나의 50% 체력
     const apBeforeHP = t.AP;
     if (conv.bonusHPtoAP) t.AP += t.bonusHP * conv.bonusHPtoAP * (1 + mult.APmult);  // 균열 생성기: 추가 체력의 2% 주문력
+    // 지배자의 피갑옷 '폭정': 추가 체력의 2.5% 공격력 (추가 공격력으로, 공격력 % 증가를 받는다)
+    if (conv.bonusHPtoAD) { const ad = t.bonusHP * conv.bonusHPtoAD * (1 + mult.ADmult); t.AD += ad; t.bonusAD += ad; }
     // 블라디미르 패시브: 주문력 1당 체력 1.6 (추가 체력 → 주문력과 서로 다시 키우지 않는다: 게임 규칙)
     if (conv.APtoBonusHP) { t.HP += apBeforeHP * conv.APtoBonusHP; t.bonusHP = t.HP - base.HP; }
     // 라이즈 패시브: 주문력 100당 최대 마나 10% (게임 데이터 PercentManaIncrease 10 · APAmount 100)
@@ -243,6 +245,10 @@
     // 가라앉은 자의 축복: 추가 체력을 물리 관통력으로 전환 (추가 체력은 없어진다)
     if (conv.bonusHPtoLETHALITY) { t.LETHALITY += t.bonusHP * conv.bonusHPtoLETHALITY; t.HP = base.HP; t.bonusHP = 0; }
     t.RANGE = base.RANGE;
+    t.MP5P = itemSum("MP5P");  // 아이템의 기본 마나 재생 % 합 (새벽심장 '기본 마나 재생 100%당')
+    // 새벽심장 '태초의 빛': 기본 마나 재생 100%당 체력 회복·보호막 효과 2%·주문력 15
+    if (conv.MP5PtoHSP) t.HSP += t.MP5P * conv.MP5PtoHSP;
+    if (conv.MP5PtoAP) { const ap = t.MP5P * conv.MP5PtoAP * (1 + mult.APmult); t.AP += ap; t.bonusAP = t.AP; if (conv.APtoHASTE) t.HASTE += ap * conv.APtoHASTE; }
     t.CSTACKS = champ.stacks || 0;  // 스킬의 '중첩당' 피해 (나서스 Q, 스몰더 Q …)
     for (const [k, raw] of late) {
       let v = levelValue(raw, L);
@@ -255,7 +261,7 @@
         t.bonusAP = t.AP;
         if (conv.APtoHASTE) t.HASTE += ap * conv.APtoHASTE;
         if (conv.APtoCRIT) t.CRIT = Math.min(1, t.CRIT + ap * conv.APtoCRIT);
-      } else if (k in t && typeof t[k] === "number") t[k] += v;
+      } else if (k in t && typeof t[k] === "number") { t[k] += v; if (k === "AD") t.bonusAD += v; }
       else if (k in flags) flags[k] += v;
       else conv[k] = (conv[k] || 0) + v;
     }
@@ -428,14 +434,15 @@
   // 기준 상대: 전 챔피언 173명의 18레벨 균형 빌드 능력치 중앙값 (패치 16.20, tools/target_median.js 로 계산)
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
   // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
-  const TARGET = { ARMOR: 113, MR: 63, HP: 3148, CUR: 0.7, DPS_TAKEN: 600 };
+  // 추가 체력(BONUS_HP): 같은 173명 균형 빌드의 18레벨 추가 체력 중앙값 (tools/target_median.js). 상대 추가 체력 비례 효과(도미닉 경의 인사)에 쓴다
+  const TARGET = { ARMOR: 113, MR: 63, HP: 3148, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600 };
   // 골드 → 능력치: 위키 '골드 효율' 기준 가치 (공격력 35, 주문력 20, 체력 2.67, 방어력·마법 저항력 20골드)
   // 골드의 50%는 주 공격 능력치, 30% 체력, 20% 방어력·마법 저항력 반반으로 산다고 본다
   const GOLD_VALUE = { AD: 35, AP: 20, HP: 2.67, ARMOR: 20, MR: 20 };
   const DEFAULT_TARGET = { ...TARGET };
   // 기준 상대 바꾸기: {ARMOR, MR, HP} (실제 상대 챔피언의 18레벨 빌드 능력치 등). 인자 없으면 기본값
   function setTarget(t) {
-    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP } : {});
+    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP, ...(t.bonusHP != null ? { BONUS_HP: t.bonusHP } : {}) } : {});
   }
   // 초당 피해에 스킬을 써야 나오는 피해를 넣는 비율 (스킬을 재사용 대기시간마다 계속 맞히는 일은 드물다, ASSUMPTIONS).
   // 스킬에 딸린 효과(스킬 사용 시·지정 스킬 표식)는 '실제로 쓰여 맞는 스킬 빈도' = 시전 빈도 × 이 비율로 보고, 그다음 효과 자체의
@@ -462,12 +469,12 @@
   // 계산 전체에 쓰는 가정값과 이유 (화면 '데이터 출처 → 계산 가정값'에 그대로 나온다)
   // src: data = 게임 데이터·위키에서 계산한 값, assume = 정한 값(실측 아님)
   const ASSUMPTIONS = [
-    { what: "기준 상대: 체력 3148 · 방어력 113 · 마법 저항력 63", src: "data",
+    { what: "기준 상대: 체력 3148(추가 체력 300) · 방어력 113 · 마법 저항력 63", src: "data",
       why: "전 챔피언 173명이 18레벨에 우리 추천 빌드(균형)를 갖췄을 때의 중앙값이에요 (패치 16.20). 평균은 탱커에 끌려 올라가서 중앙값을 써요. 능력치 패널 '상대'에서 실제 챔피언으로 바꿀 수 있어요." },
     { what: "증강 모드 공통 능력치: 기본 체력 20→400(원거리)·600(근접), 공격 속도 상한 5.0, 치명타 100% 넘는 1%마다 적응형 0.75", src: "data",
       why: "위키 'ARAM: Mayhem' 모드 변경 사항이에요. 실제 경기 기록(베인·미스 포츈) 체력·공격력과 맞춰 봤어요." },
     { what: "레벨당 공격력은 위키 값", src: "data", why: "라이엇 Data Dragon(16.20)이 173명 모두 0으로 주고 있어요. 실제 경기 기록과 위키 값이 맞았어요." },
-    { what: "상대 현재 체력 70% (잃은 체력 30%)", src: "assume", why: "한타가 한창일 때를 기준으로 했어요. 현재·잃은 체력 비례 피해에만 쓰여요." },
+    { what: "상대 현재 체력 70% (잃은 체력 30%)", src: "assume", why: "한타가 한창일 때를 기준으로 했어요. 현재·잃은 체력 비례 피해와, 체력이 낮을 때만 커지는 효과(그림자불꽃: 40% 아래)에 쓰여요. 체력 조건 효과는 상대 체력이 100%에서 40%로 고르게 줄어든다고 봐서(평균 70%) 그림자불꽃은 기본 계산에서 발동하지 않아요. 상대를 끝까지 잡는 판이 많으면 더 커져요 (실게임 검증 필요)." },
     { what: "받는 피해 초당 600", src: "assume", why: "무적·피해 감소 시간을 '버티는 힘'으로 바꿀 때만 써요. 18레벨 한타에서 집중을 받을 때 정도로 잡았어요." },
     { what: "콤보 = Q·W·E·R 각 1번, 4초", src: "assume", why: "스킬 4개를 한 번씩 쓰는 데 걸리는 시간이에요. 재사용 대기시간이 있는 효과는 4초 안에 발동하는 횟수만 세요." },
     { what: "초당 피해에 스킬 피해는 30%만 (스킬을 써야 터지는 증강·아이템 효과도 같이)", src: "assume", why: "스킬을 재사용 대기시간마다 계속 맞히는 일은 드물어서, 다 넣으면 너무 커져요. 스킬에 딸린 효과(주문 검·붐 앤 베이스 등)도 그 스킬을 써야 나오니 같은 비율이에요." },
@@ -490,12 +497,22 @@
   const itemOrAugFx = (e) => e.src !== "패시브" && !e.champ;  // 아이템·증강 효과 (챔피언 자기 기술이 아님)
   function metrics(champ, L, stats, opts = {}) {
     const { total: t, flags, aram } = stats;
-    const dealt = (aram.dmg_dealt || 1) * (1 + flags.dmgDealtMult);
-    const taken = aram.dmg_taken || 1;
-    const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY);
-    const magMit = mitigation(TARGET.MR, t.MPENP, t.MPEN);
-    const ranks = ranksAt(L, champ.spells);
     const cv = stats.conv || {};
+    // 상대 추가 체력 비례 피해 증가 (도미닉 경의 인사 '거인 학살자': 추가 체력 1500에서 최대 15%) → 기준 상대 추가 체력으로
+    const bonusHpAmp = cv.tgtBonusHpAmp ? cv.tgtBonusHpAmp * Math.min(1, TARGET.BONUS_HP / (cv.tgtBonusHpAt || 1500)) : 0;
+    const dealt = (aram.dmg_dealt || 1) * (1 + flags.dmgDealtMult) * (1 + bonusHpAmp);
+    const taken = aram.dmg_taken || 1;
+    // 피해 유형별 증가 (그림자불꽃 '잿덩이꽃': 마법·고정 피해만)는 방어 적용 계수에 곱해 모든 피해 계산에 같이 들어간다.
+    // 마법 저항력 감소(핏빛 저주 '썩은 부식')는 상대 마법 저항력 자체를 줄인다
+    // 체력 조건 피해 증가 (그림자불꽃: 체력 40% 아래 대상에게 마법·고정 피해 +20%): 기준 상대 현재 체력(평균 70%)과 같은 가정으로,
+    // 한타 동안 상대 체력이 100% → (2 × 평균 − 1) = 40% 로 고르게 줄어든다고 보고, 조건 아래에서 들어가는 피해 비율만큼 (평균 70%면 0)
+    const lowEnd = Math.max(0, 2 * TARGET.CUR - 1);
+    const lowShare = cv.lowHpAt ? Math.max(0, Math.min(1, (cv.lowHpAt - lowEnd) / (1 - lowEnd))) : 0;
+    const lowAmp = (cv.lowHpMagicTrueAmp || 0) * lowShare;
+    const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY) * (1 + (cv.physDmgMult || 0));
+    const magMit = mitigation(TARGET.MR * (1 - Math.min(0.9, cv.mrShred || 0)), t.MPENP, t.MPEN) * (1 + (cv.magicDmgMult || 0) + lowAmp);
+    const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
+    const ranks = ranksAt(L, champ.spells);
     const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0 };
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
@@ -567,13 +584,13 @@
       for (const v of vals) {
         if (v.onhit && DMG_KINDS.includes(v.kind)) {
           // 스킬의 '기본 지속 효과' 적중 시 피해: 기본 공격마다 (초당 피해의 평타 쪽). 스킬 피해 증폭은 안 받는다
-          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : 1;
+          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
           onhit += v.value * mit * dealt * (1 + flags.trueBonus);
           continue;
         }
         if (DMG_KINDS.includes(v.kind)) {
           const amp = dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * skillCrit * ((ohwK || cobalt) && cdBase ? eMult : 1);
-          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : 1;
+          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
         } else if (v.kind === "shield") shield += v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0)) * (1 + (flags.slotHeal[sp.slot] || 0));
@@ -645,7 +662,7 @@
       }
       const kind = e.kind === "adaptive" ? (apMain(champ) ? "magic" : "physical") : e.kind;
       row.kind = kind;
-      const mit = kind === "magic" ? magMit : kind === "physical" ? physMit : 1;
+      const mit = kind === "magic" ? magMit : kind === "physical" ? physMit : trueMit;
       const itemOrAug = itemOrAugFx(e);
       // 취약: 아이템·지속 피해 효과도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값 (rules effectCritDmg)
       const effCrit = itemOrAug && cv.effectCritDmg ? 1 + Math.min(1, t.CRIT) * (cv.effectCritDmg + (t.CRITDMG - BASE_CRIT_DMG) - 1) : 1;
@@ -684,7 +701,8 @@
     // 예전엔 흡혈 수치를 합계만 내고 점수엔 안 써서 '마도사의 주스 상자'(모든 피해 흡혈 10%)가 누구에게나 이득 0 → D 였다 (2026-10-22 점검)
     const autoCombo = out.autoDps * COMBO_WINDOW;
     out.vampHeal = ((t.LS || 0) * autoCombo + (t.OMNIVAMP || 0) * (autoCombo + out.combo)) * (aram.healing || 1);
-    const extraHp = (cv.selfHeal || 0) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2 + out.vampHeal + out.itemSelfHp;
+    // 정령의 형상 '무한한 활력': 자신이 받는 회복·보호막 증가 → 자기 회복(생명선·흡혈·아이템 자기 회복·보호막)에 곱한다
+    const extraHp = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHp) * (1 + (cv.selfHealMult || 0)) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
     out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
     out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100)) / taken;
     if (cv.ehpMult) { out.ehpPhys *= 1 + cv.ehpMult; out.ehpMag *= 1 + cv.ehpMult; }  // 상대 피해량 감소 (감쇠 광선)

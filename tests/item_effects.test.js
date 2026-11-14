@@ -1,0 +1,84 @@
+// v0.1.92 아이템 고유 효과 계산 보완: 아이템 검증표(docs/아이템_검증표.md)에서 '계산되지 않음'이던 고유 효과를
+// 설명 수치대로 계산하는지. 각 테스트는 같은 아이템에서 고유 효과(passiveStats)만 뺀 것과 비교한다.
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const path = require("path");
+const WEB = path.join(__dirname, "..", "web");
+global.Stats = require(path.join(WEB, "stats.js"));
+const St = global.Stats;
+const d = require(path.join(WEB, "data.json"));
+const champ = (id) => d.champions.find((c) => c.id === id);
+const item = (name) => d.items.find((i) => i.name === name);
+const bare = (it) => ({ ...it, passiveStats: undefined });
+const ev = (c, items) => St.evaluate(c, 18, items, [], {});
+const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b}`);
+
+test("그림자불꽃 '잿덩이꽃': 체력 40% 아래 대상 마법·고정 피해 +20%, 비율은 기준 상대 현재 체력 가정에서", () => {
+  const it = item("그림자불꽃"), c = champ("Lux");
+  assert.ok(it.passiveStats, "규칙이 붙어야 해요");
+  // 기본: 상대 체력 평균 70% = 100% → 40% 로 고르게 → 40% 아래 피해 0
+  near(ev(c, [it]).m.combo / ev(c, [bare(it)]).m.combo, 1, 1e-9, "기본 가정에선 발동 없음");
+  const cur = St.TARGET.CUR;
+  St.TARGET.CUR = 0.5;  // 100% → 0% (처치까지): 피해의 40%가 조건 아래 → 마법·고정 +8%
+  try {
+    const a = ev(c, [it]).m, b = ev(c, [bare(it)]).m;
+    near(a.combo / b.combo, 1.08, 0.005, "럭스 콤보(마법)");
+    near(a.autoDps, b.autoDps, 1e-9, "기본 공격(물리)은 그대로");
+  } finally { St.TARGET.CUR = cur; }
+});
+
+test("도미닉 경의 인사 '거인 학살자': 기준 상대 추가 체력만큼 피해 증가 (1500에서 최대 15%)", () => {
+  const it = item("도미닉 경의 인사"), c = champ("Jinx");
+  assert.ok(it.passiveStats, "규칙이 붙어야 해요");
+  const want = 1 + 0.15 * Math.min(1, St.DEFAULT_TARGET.BONUS_HP / 1500);
+  const a = ev(c, [it]).m, b = ev(c, [bare(it)]).m;
+  near(a.autoDps / b.autoDps, want, 1e-6, "징크스 평타");
+  St.setTarget({ ARMOR: 113, MR: 63, HP: 4500, bonusHP: 2000 });
+  try { near(ev(c, [it]).m.autoDps / ev(c, [bare(it)]).m.autoDps, 1.15, 1e-6, "추가 체력 2000 상대는 최대"); } finally { St.setTarget(); }
+});
+
+test("리안드리의 고통 '고난': 전투 중 매초 2% (최대 6%) → 콤보 4초 평균 4.5%", () => {
+  const it = item("리안드리의 고통"), c = champ("Annie");
+  const a = ev(c, [it]).m, b = ev(c, [bare(it)]).m;
+  near(a.combo / b.combo, 1.045, 0.002, "애니 콤보");
+});
+
+test("지배자의 피갑옷 '폭정': 추가 체력의 2.5% 공격력", () => {
+  const it = item("지배자의 피갑옷"), c = champ("Darius");
+  const a = St.computeStats(c, 18, [it], []).total, b = St.computeStats(c, 18, [bare(it)], []).total;
+  near(a.AD - b.AD, b.bonusHP * 0.025, 0.01, "공격력 증가");
+  near(a.bonusAD - b.bonusAD, a.AD - b.AD, 1e-9, "추가 공격력으로");
+});
+
+test("핏빛 저주 '썩은 부식': 마법 저항력 7.5% 감소 중첩을 콤보 평균(1.5중첩)으로", () => {
+  const it = item("핏빛 저주"), c = champ("Annie");
+  assert.ok(it.passiveStats, "규칙이 붙어야 해요");
+  assert.ok(ev(c, [it]).m.combo > ev(c, [bare(it)]).m.combo, "마법 피해가 늘어요");
+});
+
+test("새벽심장 '태초의 빛': 기본 마나 재생 100%당 주문력 15·회복/보호막 2%", () => {
+  const it = item("새벽심장"), c = champ("Soraka");
+  const a = St.computeStats(c, 18, [it], []).total, b = St.computeStats(c, 18, [bare(it)], []).total;
+  near(a.AP - b.AP, 15 * it.stats.MP5P, 0.01, "주문력");
+  near(a.HSP - b.HSP, 0.02 * it.stats.MP5P, 1e-9, "회복·보호막");
+});
+
+test("정령의 형상 '무한한 활력': 자신이 받는 회복·보호막 25% → 자기 회복이 있으면 버티는 힘 증가", () => {
+  const it = item("정령의 형상"), c = champ("Garen");
+  const sterak = item("스테락의 도전");
+  const a = ev(c, [it, sterak]).m, b = ev(c, [bare(it), sterak]).m;
+  assert.ok(a.ehp > b.ehp, `${a.ehp} > ${b.ehp}`);
+});
+
+test("영겁의 지팡이 '불멸의 시간': 최대 중첩(체력 100·마나 300·주문력 30)은 추천 점수에만", () => {
+  const it = item("영겁의 지팡이"), c = champ("Ryze");
+  const a = St.computeStats(c, 18, [it], []).total, b = St.computeStats(c, 18, [bare(it)], []).total;
+  assert.ok(a.AP > b.AP + 29 && a.HP > b.HP + 99, `AP ${a.AP - b.AP} HP ${a.HP - b.HP}`);
+});
+
+test("구원 '중재': 아군 회복과 함께 적 챔피언에게 최대 체력 10% 고정 피해 (한타 1번)", () => {
+  const it = item("구원"), c = champ("Renata");
+  const a = ev(c, [it]).m, b = ev(c, [bare(it)]).m;
+  near(a.combo - b.combo, 0.1 * St.DEFAULT_TARGET.HP, 1, "콤보 고정 피해");
+  assert.ok(a.support > b.support, "아군 회복은 그대로 지원으로");
+});
