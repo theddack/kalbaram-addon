@@ -1,5 +1,5 @@
 {
-  "_설명": "증강별 특수 규칙. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS HASTEtoDmg(가속 → 피해량, 가속은 0) bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, dropEffects=[설명에서 잘못 뽑힌 자동 효과 이름](능력치를 피해로 읽은 것), effects[].rangedScale=원거리 챔피언 배수(없으면 게임 계산식의 원거리 배율을 자동으로), effects[].times=평균 배수(평균 중첩·발동 비율, 이유는 basis), rangedStats={능력치 키: 원거리 배율이 붙은 계산식 이름}(원거리 챔피언은 그 능력치에 배율),effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
+  "_설명": "증강별 특수 규칙. stats.itemStats={아이템 이름: {능력치: 값|{calc18}}}=그 아이템을 가졌을 때만 붙는 능력치. tags=효과 태그 덮어쓰기, requires=챔피언 스킬 특징 조건(dash/knockback/terrain/spin/summon/channel/stealth/immobilize/allysupport/melee/ranged), items=같이 가면 좋은 아이템(빌드 가산), convert=아이템 스탯 환산(예: AD를 AP로 계산), zero=빌드에서 무시할 태그, generic=챔피언 무관 범용 증강, note=화면 표시용 설명. stats=능력치 수치(숫자 또는 게임 데이터 값 이름, '-이름'은 부호 반대, {calc:이름}은 계산식). 키: HP AD AP ARMOR MR AS CRIT HASTE MS LS OMNIVAMP ARPEN MPENP HSP(비율은 0~1) / HPmult ADmult APmult ASmult MSmult adaptiveMult(곱연산) / bonusADtoAP APtoBonusAD APtoHASTE HASTEtoMS HASTEtoDmg(가속 → 피해량, 가속은 0) bonusHPtoAP bonusHPtoLETHALITY itemMANAtoAP itemADtoAS AStoCRITDMG(+AStoCRITDMGper)(전환) bonusADmult(추가 공격력 %) ultCritDmg(궁극기 치명타) / dmgDealtMult skillDmgMult trueBonus ultHaste slotHaste noUlt. lift=빌드가 따라갈 태그 덮어쓰기({}면 아이템으로 안 커지는 증강), itemsActive=사용 효과 아이템 전체를 items 로(빌드할 때 채움), setsFeatures={add,remove}=이 증강을 고르면 챔피언 특징이 바뀜(검을 뽑아라: 원거리→근접) / basis={calc: 계산 방법, assume: [{what: 가정, why: 이유}]}, uptime=[능력치 키]=가동률로 셈한 조건부 능력치(게임 중 지금 능력치에선 뺀다), perTakedown={능력치: 처치 관여당 값}(게임 중 지금 능력치에 처치 관여 수만큼 더한다), effectCooldown={dv: 게임 데이터 값 이름, why: 근거}, effectCount={dv|calc18: 한 번에 몇 발, critPer: 치명타 100%당 더 쏘는 발 수, why}, effectTrigger=발동 빈도 덮어쓰기, dropEffects=[설명에서 잘못 뽑힌 자동 효과 이름](능력치를 피해로 읽은 것), effects[].rangedScale=원거리 챔피언 배수(없으면 게임 계산식의 원거리 배율을 자동으로), effects[].times=평균 배수(평균 중첩·발동 비율, 이유는 basis), rangedStats={능력치 키: 원거리 배율이 붙은 계산식 이름}(원거리 챔피언은 그 능력치에 배율),effectCritDmg=아이템·지속 피해 치명타 피해 배수, APtoCRIT=주문력 1당 치명타 확률, skillCritDmg=스킬 치명타 피해 배수(추가 치명타 피해를 더한다), onhitOnCrit=치명타 평타 때 적중 효과를 더 적용하는 횟수=기본 공격·스킬마다 터지는 효과의 재사용 대기시간(설명에 안 나오거나 '챔피언별'이라 자동으로 못 읽은 것) — 화면 '근거'에 그대로 보인다. 숫자가 설명·게임 데이터에 없으면 basis 필수(빌드 경고)",
   "features": {
     "dash": "돌진·도약 스킬",
     "knockback": "밀어내기 스킬",
@@ -671,8 +671,10 @@
         "VAMP": 0.8
       },
       "stats": {
-        "goldValue": "Gold"
-      }
+        "goldValue": "Gold",
+        "itemStats": {"굶주린 히드라": {"LS": {"calc18": "{6496b454}"}}}
+      },
+      "basis": {"calc": "굶주린 히드라의 생명력 흡수가 20%로 증가 (설명) = 굶주린 히드라 12% + 8% (게임 데이터 계산식 0.08). 2026-11-13 제이스 판 실측: 계산 12% · 실제 20%", "assume": []}
     },
     "Upgrade_DeathDance": {
       "items": [
@@ -2480,6 +2482,33 @@
       },
       "_why": "2026-10-20 리치베인 과대평가 확인: 서포터 아이템 고유 효과가 수치로 안 잡혀 룰루·유미 1위가 리치베인이었다"
     },
+    "구원": {
+      "stats": {"allyActiveHeal": {"base": [0], "lvl": [150, 350]}},
+      "check": "150~350",
+      "basis": {
+        "calc": "사용 효과 '중재': 2.5초 뒤 아군 체력 150~350(레벨 비례) 회복 (설명) → 지원 지표에 더한다",
+        "assume": [{"what": "한타 1번에 1번 사용, 회복을 받는 아군 한 명", "why": "재사용 대기시간이 길어 한타마다 한 번이에요. 범위 회복이라 실제로는 여러 명이 받을 수 있지만 월석 재생기 연쇄와 같게 한 명만 셌어요. 아군을 돕는 챔피언(allysupport)일 때만 셈", "noData": true}]
+      },
+      "_why": "2026-11-14 레나타·소라카 기본 빌드가 서포터 아이템 → 딜 아이템으로 바뀐 원인 분석: 서포터 아이템의 사용 효과(아군 회복·보호막)가 지원 지표에 없었다"
+    },
+    "미카엘의 축복": {
+      "stats": {"allyActiveHeal": {"base": [0], "lvl": [100, 250]}},
+      "check": "100~250",
+      "basis": {
+        "calc": "사용 효과 '정화': 아군 군중 제어 해제 + 체력 100~250(레벨 비례) 회복 (설명) → 회복만 지원 지표에 더한다 (해제는 수치화하지 않음)",
+        "assume": [{"what": "한타 1번에 1번 사용", "why": "재사용 대기시간이 길어 한타마다 한 번이에요. 아군을 돕는 챔피언(allysupport)일 때만 셈", "noData": true}]
+      },
+      "_why": "2026-11-14 서포터 아이템 사용 효과가 지원 지표에 없던 문제 (구원과 같음)"
+    },
+    "강철의 솔라리 펜던트": {
+      "stats": {"allyActiveShield": {"base": [0], "lvl": [290, 360]}},
+      "check": "290~360",
+      "basis": {
+        "calc": "사용 효과 '헌신': 주변 아군에게 보호막 290~360(레벨 비례, 2.5초에 걸쳐 줄어듦) (설명) → 지원 지표에 더한다",
+        "assume": [{"what": "한타 1번에 1번 사용, 보호막을 받는 아군 한 명", "why": "범위 보호막이라 실제로는 여러 명이 받지만 월석 재생기 연쇄와 같게 한 명만 셌어요. 아군을 돕는 챔피언(allysupport)일 때만 셈", "noData": true}]
+      },
+      "_why": "2026-11-14 서포터 아이템 사용 효과가 지원 지표에 없던 문제 (구원과 같음)"
+    },
     "헬리아의 메아리": {
       "stats": {
         "dmgToAllyHeal": 0.3,
@@ -2770,6 +2799,27 @@
   },
   "_챔피언": "champions: 중첩형 패시브·스킬. stats=게임 중반 평균 중첩일 때 능력치(중첩당 값은 설명 수치), stacks=스킬 피해의 '중첩당' 계산에 넣을 평균 중첩 수. basis 에 평균 중첩을 정한 이유. fight=한타 기준 능력치·스킬 효과(_effects, 게임 계산식에 없는 설명 수치)로 추천 점수에만 넣는다 (지금 능력치 비교 제외). rangeAt18=18레벨 사거리(레벨이 오르면 원거리가 되는 챔피언)",
   "champions": {
+    "Diana": {"stats": {"AS": {"base": [0], "lvl": [0.15, 0.35]}}, "fightBuffs": [{"slot": "P", "anchor": "추가 공격 속도가", "dur": 5, "why": "스킬을 쓴 뒤 5초"}], "basis": {"calc": "패시브: 공격 속도 15~35%(레벨 비례) 상시, 스킬 사용 후 5초 동안 추가 공격 속도 45~105% (설명)", "assume": []}},
+    "Yasuo": {"stats": {"critChanceMult": 1, "critToAD": 0.5, "critDmgMod": 0.95}, "basis": {"calc": "패시브 '의지': 치명타 확률 2배(게임 데이터 CritChanceMultiplier 1), 치명타 피해 × 0.95(CritDamageMod), 100% 넘는 치명타 확률 1%당 공격력 0.5(YasuoCritToAD 50)", "assume": [{"what": "증강 모드의 '치명타 100% 초과분 → 적응형'은 2배 하기 전 치명타 확률로 셈", "why": "두 효과가 함께 어떻게 적용되는지 원본으로 정할 수 없어요 (실게임 확인 필요)", "noData": true}]}},
+    "Yone": {"stats": {"critChanceMult": 1, "critToAD": 0.5, "critDmgMod": 0.95}, "basis": {"calc": "패시브 '의지': 치명타 확률 2배(게임 데이터 CritChanceMultiplier 1), 치명타 피해 × 0.95(CritDamageMod), 100% 넘는 치명타 확률 1%당 공격력 0.5(YoneCritToAD 50)", "assume": [{"what": "증강 모드의 '치명타 100% 초과분 → 적응형'은 2배 하기 전 치명타 확률로 셈", "why": "두 효과가 함께 어떻게 적용되는지 원본으로 정할 수 없어요 (실게임 확인 필요)", "noData": true}]}},
+    "Vladimir": {"stats": {"bonusHPtoAP": 0.0333, "APtoBonusHP": 1.6}, "basis": {"calc": "패시브: 추가 체력 30당 주문력 1, 주문력 1당 체력 1.6 (설명). 서로 다시 키우지 않음", "assume": []}},
+    "Rammus": {"stats": {"resistToAD": 0.15}, "basis": {"calc": "패시브: 공격력 + 15% 방어력 + 15% 마법 저항력 (설명)", "assume": []}},
+    "Hecarim": {"stats": {"bonusMStoAD": {"base": [0], "lvl": [0.12, 0.24]}}, "basis": {"calc": "패시브: 추가 이동 속도의 12~24%만큼 공격력 (게임 데이터 BonusAD: 1레벨 12%, 3레벨마다 +2%)", "assume": [{"what": "레벨 사이는 고르게 보간", "why": "게임은 3레벨마다 2%씩 오르는 계단이라 중간 레벨에서 1% 안쪽 차이가 나요"}]}},
+    "Ryze": {"stats": {"APtoManaPct": 0.001}, "basis": {"calc": "패시브: 주문력 100당 최대 마나 10% (게임 데이터 PercentManaIncrease 10 · APAmount 100)", "assume": []}},
+    "MonkeyKing": {"stats": {"ARMOR": {"base": [0], "lvl": [4.5, 10]}}, "fightBuffs": [{"slot": "P", "stat": "ARMOR", "value": 50, "passive": true, "uptime": 0.75, "why": "적 챔피언을 칠 때마다 5초 동안 100% 증가, 최대 5회 → 6배 (게임 데이터 TooltipMult 6: 18레벨 60 중 상시 10을 뺀 50). 한타 초반 쌓는 동안은 덜 켜져서 가동률 0.75 (가정)"}], "basis": {"calc": "패시브: 방어력 4.5~10(레벨 비례) 상시 (게임 데이터 BonusArmor)", "assume": []}},
+    "Shyvana": {"stats": {"ARMOR": 9, "MR": 9}, "basis": {"calc": "패시브: 처치 관여마다 미늘갑옷 중첩, 중첩당 방어력·마법 저항력 0.3 (설명) → 평균 30중첩", "assume": [{"what": "게임 중반(12분) 평균 30중첩", "why": "칼바람은 챔피언·대형 미니언 처치 관여가 1분에 2~3번이라 30 안팎으로 봤어요", "noData": true}]}},
+    "Sona": {"stats": {"slotHaste": {"Q": 30, "W": 30, "E": 30}}, "basis": {"calc": "패시브 아첼레란도: 중첩당 기본 스킬 가속 0.5, 최대 30 (설명)", "assume": [{"what": "게임 중반이면 최대(30)", "why": "스킬을 맞힐 때마다 쌓여 칼바람에선 금방 다 쌓여요", "noData": true}]}},
+    "Garen": {"stats": {"ARMOR": 30, "MR": 30}, "basis": {"calc": "W 기본 지속 효과: 유닛 처치마다 영구 방어력·마법 저항력, 최대 30 (설명)", "assume": [{"what": "게임 중반이면 최대(30)", "why": "미니언 처치로도 쌓여 칼바람 중반이면 다 쌓여요", "noData": true}]}},
+    "Belveth": {"stats": {"AS": {"base": [0], "lvl": [0.06, 1.2]}}, "fightBuffs": [{"slot": "P", "anchor": "공격 속도가", "dur": 3, "why": "스킬을 쓴 뒤 3초"}, {"slot": "R", "stat": "ASmult", "anchor": "총공격 속도가", "passive": true, "why": "본모습 45초(연보라 40중첩 90초, 80중첩이면 죽을 때까지)라 한타 동안 켜져 있다고 봄"}], "basis": {"calc": "패시브 연보라 중첩: 중첩당 공격 속도 0.1~2%(레벨 비례, 게임 데이터 ASPerStack) × 평균 60중첩", "assume": [{"what": "게임 중반 평균 60중첩", "why": "처치 관여 1번에 2중첩 + 칼바람 추가 1중첩, 대형 미니언 1중첩 (게임 데이터). 2026-11-13 벨베스 판 실제 공격 속도(14레벨 2.01)에 맞춰 봤어요 (한 판 기록)", "noData": true}]}},
+    "Irelia": {"fightBuffs": [{"slot": "P", "before": "의 공격 속도", "stacks": 4, "passive": true, "uptime": 0.75, "why": "스킬 적중마다 1중첩, 최대 4, 챔피언을 치면 유지. 한타 초반 쌓는 동안은 덜 켜져서 0.75 (가정)"}]},
+    "Sylas": {"fightBuffs": [{"slot": "P", "passive": true, "uptime": 0.5, "why": "스킬 사용마다 충전 1, 충전이 있을 때만 125%. 스킬 한 번에 평타 한 번이라 한타의 절반 (가정)"}]},
+    "Ambessa": {"fightBuffs": [{"slot": "P", "dur": 4, "why": "스킬 사용마다 4초 충전"}]},
+    "Volibear": {"fightBuffs": [{"slot": "P", "stacks": 5, "passive": true, "uptime": 0.75, "why": "피해를 줄 때마다 6초 동안 5%, 최대 5회 (주문력 비례분은 안 셈). 쌓는 동안은 덜 켜져서 0.75 (가정)"}]},
+    "Teemo": {"fightBuffs": [{"slot": "P", "dur": 5, "why": "투명이 풀린 뒤 5초"}]},
+    "Ezreal": {"fightBuffs": [{"slot": "P", "stacks": 5, "passive": true, "uptime": 0.75, "why": "스킬 적중마다 6초 동안 10%, 최대 5회. 쌓는 동안은 덜 켜져서 0.75 (가정)"}]},
+    "Jax": {"fightBuffs": [{"slot": "P", "anchor": "최대 공격 속도", "passive": true, "uptime": 0.5, "why": "평타마다 2.5초 동안 쌓여 최대 40~100%. 평타 8번에 최대라 한타 6초 평균 절반 (가정)"}]},
+    "Zaahen": {"fightBuffs": [{"slot": "P", "stat": "bonusADmult", "anchor": "중첩당 공격력이", "stacks": 12, "passive": true, "uptime": 0.75, "why": "적중마다 1중첩, 최대 12. 쌓는 동안은 덜 켜져서 0.75 (가정). 최대 중첩 때 두 배가 되는 몫은 안 셈"}]},
+    "Darius": {"fightBuffs": [{"slot": "P", "stat": "AD", "anchor": "다리우스의 공격력이", "flat": true, "passive": true, "uptime": 0.5, "why": "과다출혈 5중첩·처치 뒤 5초. 한타의 절반쯤 켜진다고 봄 (가정)"}]},
     "Tristana": {"fightBuffs": [{"slot": "Q", "dur": 7}]},
     "Twitch": {"fightBuffs": [{"slot": "Q", "dur": 6, "why": "위장이 끝난 뒤 6초"}]},
     "MissFortune": {"fightBuffs": [{"slot": "W", "dur": 4, "why": "사용 시 4초 (기본 지속 효과 이동 속도는 안 셈)"}]},

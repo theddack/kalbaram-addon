@@ -120,10 +120,14 @@ test("생존형 증강 두 개: 같은 효과를 두 번 세지 않는다 (같�
   const surv = d.augments.filter((a) => a.rarity === 1 && !unmet(a, c)
     && (a.effects || []).some((e) => ["heal", "shield"].includes(e.kind))).slice(0, 6);
   assert.ok(surv.length >= 2);
-  const gain = (chosen, a) => S.numericAugmentGains([a], d.items, w, chosen, [], d.rules, c, { aram: true }).gains[a.id];
+  // 같이·따로를 같은 지표 가중치로 잰다 (엔진 augmentTiers 와 같은 방식 weightsFrom). 2026-11-14 P2-2 로 가중치가 증강 출력을 따르면서
+  // 따로(증강 없음 가중치)·같이(첫 증강 가중치)를 다른 저울로 재 비교가 어긋났다
+  // 같은 아이템 빌드에서도 잰다: 첫 증강 때문에 빌드가 회복 아이템 쪽으로 바뀌어 둘째 증강이 커지는 건 아이템을 통한 연계(중복 아님)라서
+  const gain = (chosen, a, from, fixed = []) => S.numericAugmentGains([a], d.items, w, chosen, fixed, d.rules, c, { aram: true }, from).gains[a.id];
   for (let i = 0; i + 1 < surv.length; i += 2) {
     const [a, b] = [surv[i], surv[i + 1]];
-    const alone = gain([], b), withA = gain([a], b);
+    const items = S.buildConcepts(d.items, w, [a], [], d.rules, c, { aram: true }, ["balanced"])[0].pick.map((p) => p.item);
+    const alone = gain([], b, [a], items), withA = gain([a], b, null, items);
     if (!alone || !withA) continue;
     assert.ok(withA.gain <= alone.gain * 1.05 + 1e-6, `${a.name} + ${b.name}: 같이 ${withA.gain.toFixed(3)} > 따로 ${alone.gain.toFixed(3)}`);
   }

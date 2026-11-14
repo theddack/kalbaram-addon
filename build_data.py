@@ -744,6 +744,21 @@ def resolve_rule_stats(rules, aug_spells):
                 out[key] = {"base": [round(e.base, 8)], **({"lvl": [round(x, 8) for x in e.lvl]} if e.lvl else {}),
                             **({"ratios": {k2: [round(c, 8)] for k2, c in e.ratios.items()}} if e.ratios else {})} \
                     if hasattr(e, "ratios") else expr_json([e])
+            elif key == "itemStats":  # 그 아이템을 가졌을 때만 붙는 능력치 {아이템 이름: {능력치: 값 | {calc18: 계산식}}} (업그레이드 증강)
+                sub = {}
+                for item_name, st in v.items():
+                    vals = {}
+                    for sk, sv in st.items():
+                        if isinstance(sv, dict) and "calc18" in sv:
+                            e, _ = calc.calc(sv["calc18"], 1)
+                            if e is None or not hasattr(e, "ratios"):
+                                warn.append(f"{aid}.itemStats.{item_name}.{sk}: 계산식 '{sv['calc18']}' 해석 실패")
+                                continue
+                            vals[sk] = round(e.base + (e.lvl[1] if e.lvl else 0), 6)
+                        else:
+                            vals[sk] = sv
+                    sub[item_name] = vals
+                out[key] = sub
             elif isinstance(v, dict):  # 스킬별 가속 {"Q": "QAbilityHaste"}
                 sub = {}
                 for slot, name in v.items():
@@ -771,7 +786,8 @@ def resolve_rule_stats(rules, aug_spells):
 
 
 FIGHT_SEC = 6  # 한타에서 평타를 이어 치는 시간 (web/stats.js AUTO_FIGHT_SEC 와 같은 가정)
-AS_VALUE = re.compile(r"\s*(?:([\d.]+)~([\d.]+)\(레벨 비례\)|([\d.]+(?:/[\d.]+)*))\s*%")
+AS_VALUE = re.compile(r"\s*(?:([\d.]+)~([\d.]+)(?:\(레벨 비례\))?|([\d.]+(?:/[\d.]+)*))\s*%(?:\(레벨 비례\))?")
+FLAT_VALUE = re.compile(r"\s*(?:([\d.]+)~([\d.]+)(?:\(레벨 비례\))?|([\d.]+(?:/[\d.]+)*))")
 
 
 def fight_buffs(c, rc, warn):
@@ -781,30 +797,63 @@ def fight_buffs(c, rc, warn):
     out = []
     fs = dict(c.get("fightStats") or {})
     for spec in rc["fightBuffs"]:
-        sp = next((x for x in c["spells"] if x["slot"] == spec["slot"]), None)
-        text = re.sub(r"<[^>]+>", "", (sp or {}).get("tooltip", ""))
+        if spec["slot"] == "P":  # 패시브 (2026-11-13 통합: 벨베스·이렐리아 등 패시브 능력치)
+            text = re.sub(r"<[^>]+>", "", c["passive"].get("desc", ""))
+        else:
+            sp = next((x for x in c["spells"] if x["slot"] == spec["slot"]), None)
+            text = re.sub(r"<[^>]+>", "", (sp or {}).get("tooltip", ""))
         anchor = spec.get("anchor", "공격 속도가")
-        if spec.get("before"):  # 'N%의 공격 속도를 얻습니다' 처럼 수치가 앞에 오는 문장
-            m = re.search(AS_VALUE.pattern + re.escape(spec["before"]), text)
+        pat = FLAT_VALUE if spec.get("flat") else AS_VALUE  # flat: '공격력이 30~230 증가' 처럼 % 가 아닌 값
+        if spec.get("value") is not None:  # 설명에 수치가 없어 게임 데이터 값을 적은 것 (why 필수)
+            m = None
+        elif spec.get("before"):  # 'N%의 공격 속도를 얻습니다' 처럼 수치가 앞에 오는 문장
+            m = re.search(pat.pattern + re.escape(spec["before"]), text)
         else:
             k = text.find(anchor)
-            m = AS_VALUE.match(text, k + len(anchor)) if k >= 0 else None
-        if not m:
+            m = pat.match(text, k + len(anchor)) if k >= 0 else None
+        if spec.get("value") is None and not m:
             warn.append(f"{c['id']}.fightBuffs {spec['slot']}: 설명에서 '{anchor} N%' 를 못 찾음")
             print("  [규칙] 경고:", warn[-1])  # 패치로 설명 문장이 바뀌면 빌드에서 바로 보이게
             continue
-        val = float(m.group(2)) if m.group(2) else float(m.group(3).split("/")[-1])
-        val = val if spec.get("unit") == "fraction" else val / 100
+        if spec.get("value") is not None:
+            val = spec["value"]
+        else:
+            val = float(m.group(2)) if m.group(2) else float(m.group(3).split("/")[-1])
+            val = val if spec.get("unit") == "fraction" or spec.get("flat") else val / 100
+        val *= spec.get("stacks", 1)  # 중첩당 값 × 최대 중첩
         up = spec.get("uptime", 1 if spec.get("passive") else min(1, spec["dur"] / FIGHT_SEC))
-        fs["AS"] = round(fs.get("AS", 0) + val * up, 4)
+        stat = spec.get("stat", "AS")
+        fs[stat] = round(fs.get(stat, 0) + val * up, 4)
         when = "기본 지속 효과" if spec.get("passive") else f"{spec['dur']:g}초"
-        out.append({"t": "game", "text": f"{spec['slot']} 공격 속도 {val * 100:g}% ({when}) × 한타 가동률 {up:.2f} — 스킬 설명 수치"
-                    + (f" · {spec['why']}" if spec.get("why") else "")})
+        shown = f"{val:g}" if spec.get("flat") or stat in ("ARMOR", "MR", "AD") else f"{val * 100:g}%"
+        out.append({"t": "game" if spec.get("value") is None else "calc",
+                    "text": f"{'패시브' if spec['slot'] == 'P' else spec['slot']} {STAT_LABEL.get(stat, stat)} {shown} ({when}) × 한타 가동률 {up:.2f} — "
+                    + ("스킬 설명 수치" if spec.get("value") is None else "게임 데이터 값") + (f" · {spec['why']}" if spec.get("why") else "")})
     if out:
         c["fightStats"] = fs
         out.append({"t": "assume", "text": f"가동률 = 지속 시간 ÷ 한타 {FIGHT_SEC}초 (한타 시작에 쓴다고 봄)",
                     "why": "구인수 중첩과 같은 한타 시간 가정이에요. 실게임 검증 필요", "noData": True})
     return out
+
+
+OWN_HP_KEYS = {"HP", "bonusHP"}
+
+
+def prune_target_hp_tags(rules, out_augs):
+    """설명의 '최대 체력'이 대상 체력이면 자기 체력 태그(HP)를 뺀다: 계산 효과가 대상 체력(TGT_*)만 쓰고 자기 체력 계수·능력치가 없을 때.
+    (2026-11-14 P1 E4: 화염 낙인 '최대 체력의 0.4% 화상'은 대상 체력인데 HP 태그가 붙어 체력 아이템과 연계로 잡혔다)
+    규칙에서 tags 를 직접 정한 증강은 건드리지 않는다"""
+    for a in out_augs:
+        r = rules["augments"].get(a["id"]) or {}
+        if "HP" not in (a.get("tags") or {}) or r.get("tags"):
+            continue
+        keys = set()
+        for e in a.get("effects") or []:
+            keys |= set((e.get("ratios") or {}).keys())
+            keys |= {k.strip('"') for k in re.findall(r'TGT_\w+|"bonusHP"|"HP"', json.dumps(e.get("tree") or ""))}
+        own = keys & OWN_HP_KEYS or any("HP" in k for k in (r.get("statsResolved") or {}))
+        if not own and any(k.startswith("TGT_") for k in keys):
+            del a["tags"]["HP"]
 
 
 def rule_effects(rules, aug_spells, out_augs, warn):
@@ -814,6 +863,7 @@ def rule_effects(rules, aug_spells, out_augs, warn):
         if not r.get("effects") or aid not in by_id or aid not in aug_spells:
             continue
         calc = Calc(aug_spells[aid])
+        added = []
         for spec in r["effects"]:
             if spec.get("dvBase") or spec.get("dvRatios"):  # 계산식 안이 이름 없는 값이라 못 풀 때: 이름 있는 데이터 값으로 '기본 + 능력치 비례'를 만든다
                 b = calc.value(spec["dvBase"], 1) if spec.get("dvBase") else 0  # 기본 없이 비례만 (도취: 최대 마나 7%)
@@ -841,7 +891,12 @@ def rule_effects(rules, aug_spells, out_augs, warn):
                 fx["rangedScale"] = spec["rangedScale"]
             else:
                 apply_ranged_scale([fx], aug_spells[aid])
+            # 설명에서 자동으로 뽑은 같은 효과(같은 계산식 이름·같은 발동 방식)가 있으면 규칙 것으로 바꾼다 (두 번 세지 않게).
+            # 2026-11-14 간지럼 괴물: 적중 시 마법 피해 5~50 이 자동 추출 + 규칙으로 두 번 들어가 적중 피해가 2배였다 (전체 검증 P4)
+            by_id[aid]["effects"] = [x for x in by_id[aid]["effects"] if any(x is y for y in added)
+                                     or not (x.get("name") == fx["name"] and (x.get("trigger") or {}).get("type") == trig["type"])]
             by_id[aid]["effects"].append(fx)
+            added.append(fx)
 
 
 def rule_drop_effects(rules, out_augs, warn):
@@ -961,6 +1016,9 @@ def auto_stats(desc_html):
 
 # 화면 '근거'용 능력치 이름 (rules.json stats 키)
 STAT_LABEL = {
+    "critChanceMult": "치명타 확률 배수", "critToAD": "치명타 초과분 → 공격력", "critDmgMod": "치명타 피해 배수",
+    "APtoBonusHP": "주문력 → 체력", "resistToAD": "방어·마저 → 공격력", "bonusMStoAD": "이동 속도 → 공격력", "APtoManaPct": "주문력 → 최대 마나 %",
+    "bonusADmult": "추가 공격력 %",
     "HP": "체력", "AD": "공격력", "AP": "주문력", "ARMOR": "방어력", "MR": "마법 저항력", "AS": "공격 속도",
     "CRIT": "치명타 확률", "HASTE": "스킬 가속", "MS": "이동 속도", "MSP": "이동 속도", "LS": "생명력 흡수",
     "OMNIVAMP": "모든 피해 흡혈", "LETHALITY": "물리 관통력", "MPEN": "마법 관통력", "MPENP": "마법 관통력",
@@ -980,7 +1038,7 @@ STAT_LABEL = {
     "ultTriggerMs": "궁극기 후 이동 속도", "dashHaste": "돌진 스킬 가속", "fearCdDiv": "공포 시간 계산 나눗수",
     "APtoCRIT": "주문력 → 치명타 확률", "skillCritDmg": "스킬 치명타 피해", "onhitOnCrit": "치명타 시 적중 효과 추가", "onhitRepeat": "적중 효과 반복", "rampAS": "평타당 공격 속도 중첩", "rampMax": "최대 중첩",
     "effectCritDmg": "아이템·지속 피해 치명타 피해",
-    "allyHealMult": "다른 아군 연쇄 회복", "allyShieldMult": "다른 아군 연쇄 보호막", "dmgToAllyHeal": "피해 → 아군 회복 충전", "allyHealCap": "아군 회복 최대",
+    "allyHealMult": "다른 아군 연쇄 회복", "allyShieldMult": "다른 아군 연쇄 보호막", "dmgToAllyHeal": "피해 → 아군 회복 충전", "allyHealCap": "아군 회복 최대", "allyActiveHeal": "사용 효과 아군 회복", "allyActiveShield": "사용 효과 아군 보호막",
 }
 # 0~1 비율로 저장하는 키 → 화면에 % 로
 PCT_KEYS = {"AS", "CRIT", "MSP", "LS", "OMNIVAMP", "HSP", "MPENP", "HPmult", "ADmult", "APmult", "ASmult",
@@ -1598,6 +1656,8 @@ def main():
             "aramSource": aram_source,
             # 모드 공통 능력치: 근접·원거리별 기본 체력 [1레벨, 18레벨], 공속 상한, 치명타 초과분 → 적응형
             "modeStats": {k: v for k, v in {
+                # 제이스는 2026-11-13 판에서 원거리 값(−200)으로 나왔지만 케일(같은 원거리 정체성)은 근접 값이 맞았다(tests/replay).
+                # 제이스는 형태(해머·캐논)에 따라 달라지는 것으로 보여 바꾸지 않는다 (실게임 확인 필요, docs/추천엔진_개선_결과.md)
                 "hp": (mode_global.get("hp") or {}).get("melee" if c["stats"]["attackrange"] <= 250 else "ranged"),
                 "asCap": mode_global.get("asCap"), "critAdaptive": mode_global.get("critAdaptive")}.items() if v} or None,
             "patch": patch_lines.get(c["name"]),
@@ -1715,6 +1775,7 @@ def main():
     rule_effects(rules, aug_spells, out_augs, rule_warn)
     rule_effect_cooldowns(rules, aug_spells, out_augs, rule_warn)
     rule_effect_counts(rules, aug_spells, out_augs, rule_warn)
+    prune_target_hp_tags(rules, out_augs)
     # rules effectUptime: 조건이 맞을 때만 터지는 효과의 가동률 (아티스트 보호: 최대 사거리 75% 밖에서 쏜 공격만). 근거는 basis assume
     for aid, r in rules["augments"].items():
         if r.get("effectUptime") is not None:

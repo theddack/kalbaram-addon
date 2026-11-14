@@ -823,7 +823,8 @@ test("점검 3: 조건을 못 맞춘 증강(근접 + 조준경 부착)은 빌드
   const ctx = S.augContext([aug("ARAM_ScopiestWeapons")], d.rules, champ("Renekton"));
   assert.deepEqual(ctx.lift, {}, "근접 레넥톤에겐 사거리 증강이 아무것도 키우지 않는다");
   assert.ok((S.augContext([aug("ARAM_ScopiestWeapons")], d.rules, champ("Jinx")).lift.AS || 0) > 0, "원거리는 그대로");
-  assert.deepEqual(legendBuild("Renekton", ["ARAM_ScopiestWeapons"], "augment"), legendBuild("Renekton", [], "augment"));
+  // 발동하지 않는 증강의 몰빵 = 균형 빌드 (2026-11-14: 증강 몫을 못 늘리면 균형 빌드를 그대로 쓴다)
+  assert.deepEqual(legendBuild("Renekton", ["ARAM_ScopiestWeapons"], "augment"), legendBuild("Renekton", [], "balanced"));
 });
 
 test("점검 4: 퀘스트가 아이템을 모두 요구하면(궁극의 히드라 3종·우글렛·이케시아) 증강 몰빵 빌드에 다 넣는다", () => {
@@ -1051,4 +1052,150 @@ test("루난 탄환: 기본 공격마다 1번·치명타 적용, 구인수·한 
   const a = dpsOf([run], twin), b = dpsOf([run, gu], twin);
   const crit = (t) => 1 + Math.min(1, t.CRIT) * (t.CRITDMG - 1);
   for (const x of [a, b]) assert.ok(Math.abs(x.row.dps - x.row.hit * x.t.AS * crit(x.t)) < 1e-6, JSON.stringify(x.row));
+});
+
+// 챔피언 패시브 능력치 (2026-11-13 벨베스 판: 계산 공격 속도 1.31 · 실제 2.99). 태그로만 있던 패시브를 게임 데이터·설명 값으로 계산
+test("챔피언 패시브: 상시 능력치·변환 (다이애나 공속, 야스오 치명타 2배, 블라디미르·람머스·헤카림 변환)", () => {
+  const T = (id, items = [], L = 18) => St.computeStats(champ(id), L, items.map(item), [], { now: true }).total;
+  const T0 = (id, items = [], L = 18) => St.computeStats({ ...champ(id), stackStats: null }, L, items.map(item), [], { now: true }).total;
+  assert.ok(T("Diana").AS > T0("Diana").AS * 1.15, "다이애나 공속 35%");
+  const y = T("Yasuo", ["무한의 대검"]);  // 무한의 대검 치명타 25% → 50%
+  assert.ok(Math.abs(y.CRIT - 2 * T0("Yasuo", ["무한의 대검"]).CRIT) < 1e-6, `야스오 치명타 ${y.CRIT}`);
+  assert.ok(T("Vladimir", ["라바돈의 죽음모자"]).HP > T0("Vladimir", ["라바돈의 죽음모자"]).HP + 100, "블라디미르 주문력 → 체력");
+  assert.ok(T("Vladimir", ["워모그의 갑옷"]).AP > 20, "블라디미르 추가 체력 → 주문력");
+  assert.ok(T("Rammus", ["가시 갑옷"]).AD > T0("Rammus", ["가시 갑옷"]).AD + 20, "람머스 방어 → 공격력");
+  assert.ok(T("Hecarim", ["광전사의 군화"]).AD > T0("Hecarim", ["광전사의 군화"]).AD + 5, "헤카림 이속 → 공격력");
+});
+
+test("챔피언 패시브: 싸울 때만 켜지는 공격 속도는 한타 능력치에만 (이렐리아·벨베스)", () => {
+  const as = (id) => ((champ(id).fightStats || {}).AS || 0);
+  assert.ok(as("Irelia") > 0.5, `이렐리아 ${as("Irelia")}`);
+  assert.ok(as("Jax") > 0.3, `잭스 ${as("Jax")}`);
+  assert.ok(((champ("Belveth").fightStats || {}).ASmult || 0) > 0.1, "벨베스 본모습 총 공격 속도");
+  // 벨베스 연보라 중첩: 게임 중 지금 능력치에도 (영구)
+  const t = St.computeStats(champ("Belveth"), 14, [], [], { now: true }).total;
+  const t0 = St.computeStats({ ...champ("Belveth"), stackStats: null }, 14, [], [], { now: true }).total;
+  assert.ok(t.AS > t0.AS + 0.4, `벨베스 14레벨 ${t0.AS} → ${t.AS}`);
+});
+
+// P1 E1 (2026-11-14 엔진 개선): 스킬을 써야 터지는 효과(스킬 사용 시·지정 스킬)는 스킬 피해와 같은 비율로 초당 피해에 넣는다.
+// 스킬 피해는 '재사용 대기시간마다 계속 맞히지 못한다'는 이유로 30%만 넣는데, 그 스킬에 딸린 효과는 100%로 넣어
+// 가렌 + 전부 다 무너뜨려에서 증강의 스킬분(50)이 가렌 자기 스킬(23)보다 크게 들어갔다
+test("E1: 스킬 사용 시 효과는 초당 피해에서 스킬 피해와 같은 비율 (평타 효과는 100%)", () => {
+  const c = champ("Garen");
+  const castFx = { kind: "magic", name: "t", base: [100], trigger: { type: "cast" }, src: "시험" };
+  const hitFx = { kind: "magic", name: "t2", base: [100], trigger: { type: "onhit" }, src: "시험2" };
+  const m0 = St.evaluate(c, 18, [], []).m;
+  const mc = St.evaluate(c, 18, [], [{ _effects: [castFx] }]).m;
+  const mh = St.evaluate(c, 18, [], [{ _effects: [hitFx] }]).m;
+  const castRaw = mc.augDps - m0.augDps, hitRaw = mh.augDps - m0.augDps;
+  assert.ok(Math.abs((mc.dps - m0.dps) - St.SKILL_DPS_SHARE * castRaw) < 1e-6, `스킬 효과 ${mc.dps - m0.dps} vs ${castRaw}`);
+  assert.ok(Math.abs((mh.dps - m0.dps) - hitRaw) < 1e-6, "평타 효과는 그대로");
+});
+
+test("E1: 갱신·재사용 대기시간 상한이 있는 스킬 효과는 상한까지 그대로 (리안드리 3초 화상)", () => {
+  const c = champ("Kayle");
+  const capped = { kind: "magic", name: "t", base: [100], trigger: { type: "cast" }, cooldown: 3, src: "시험" };
+  const m0 = St.evaluate(c, 18, [item("광전사의 군화")], []).m, m = St.evaluate(c, 18, [item("광전사의 군화")], [{ _effects: [capped] }]).m;
+  const raw = m.augDps - m0.augDps, used = m.dps - m0.dps;
+  // 시전 빈도 × 0.3 이 1/3초보다 크면 상한(1/3)에 걸려 그대로, 작으면 줄어든다 — 어느 쪽이든 30% 아래로는 안 내려간다
+  assert.ok(used >= St.SKILL_DPS_SHARE * raw - 1e-6 && used <= raw + 1e-6, `${used} / ${raw}`);
+});
+
+// P1 E4: '대상' 최대 체력에 비례하는 증강(화염 낙인: 대상 최대 체력 0.4% 화상)에 자기 체력 태그(HP)가 붙어
+// 체력 아이템을 따라가게 될 수 있었다. 계산 효과가 대상 체력만 쓰면 HP 태그를 뺀다 (강타자처럼 자기 체력 비례는 유지)
+test("E4: 대상 체력 비례만 있는 증강은 자기 체력 태그가 없다", () => {
+  for (const id of ["ARAM_Firebrand", "ThirdTimesTheHarm", "ARAM_MagicMissile"]) assert.ok(!(aug(id).tags || {}).HP, `${id} ${JSON.stringify(aug(id).tags)}`);
+  assert.ok((aug("ARAM_HeavyHitter").tags || {}).HP > 0, "강타자는 자기 체력 비례");
+});
+
+// P1 E8 (2026-11-13 제이스 판 실측). 증강 모드 기본 체력 −200 은 형태(해머·캐논)에 따른 것으로 보여 바꾸지 않는다 (케일 실측은 근접 값이 맞음).
+// 굶주린 히드라 업그레이드: 굶주린 히드라의 생명력 흡수 +8% (게임 데이터 계산식 0.08, 설명 '20%로 증가') — 계산 12% · 실제 20%
+test("E8: 굶주린 히드라 업그레이드는 굶주린 히드라를 가졌을 때만 그 아이템의 흡혈을 올린다", () => {
+  const up = aug("Upgrade_Ravenous"), st = (d.rules.augments.Upgrade_Ravenous || {}).statsResolved;
+  const ls = (items) => St.computeStats(champ("Jayce"), 13, items.map(item), [st]).total.LS;
+  assert.ok(up && Math.abs(ls(["굶주린 히드라"]) - 0.2) < 1e-6, `히드라 보유 ${ls(["굶주린 히드라"])}`);
+  assert.equal(ls([]), 0, "히드라가 없으면 그대로");
+});
+
+// 2026-11-14 후속 분석: 레나타 기본 빌드가 서포터 아이템 → 딜 아이템이 된 원인 (특정 챔피언·아이템을 고정하지 않고 지원 계산 구조를 고침)
+test("서포터: 월석 재생기 연쇄는 챔피언 기술로 준 회복·보호막만 (아이템 자기 보호막은 연쇄하지 않음)", () => {
+  const c = champ("Renata");
+  const ally = (names) => St.evaluate(c, 18, names.map(item), [], {}).m.allySupport || 0;
+  const moon = ally(["월석 재생기"]);
+  // 스테락의 도전 보호막(자기 자신에게만)은 아군에게 연쇄되지 않는다. 예전엔 1,400 × 35%가 더해졌다
+  assert.ok(Math.abs(ally(["월석 재생기", "스테락의 도전"]) - moon) < 1, `${moon} → ${ally(["월석 재생기", "스테락의 도전"])}`);
+  assert.ok(Math.abs(ally(["월석 재생기", "케이닉 루컨"]) - moon) < 1);
+  // 레나타 E 보호막(아군에게도 줌)은 연쇄된다
+  const kit = St.evaluate(c, 18, [item("월석 재생기")], [], {}).m.kitShield;
+  assert.ok(kit > 0 && moon >= kit * 0.35 - 1, `${kit} ${moon}`);
+});
+
+test("서포터: 사용 효과로 아군을 돕는 아이템(구원·미카엘·솔라리)은 아군을 돕는 챔피언의 지원 지표에 들어간다", () => {
+  const sup = (id, names) => St.evaluate(champ(id), 18, names.map(item), [], {}).m.support;
+  for (const [n, min] of [["구원", 350], ["미카엘의 축복", 250], ["강철의 솔라리 펜던트", 360]]) {
+    const g = sup("Renata", [n]) - sup("Renata", []);
+    assert.ok(g >= min * 0.9, `${n}: +${g}`);
+    // 아군을 돕지 않는 챔피언(가렌)에게는 사용 효과를 지원으로 세지 않는다 (아이템 능력치의 회복·보호막 효과 증가분만)
+    assert.ok(sup("Garen", [n]) - sup("Garen", []) < min * 0.5, `가렌 ${n}`);
+  }
+});
+
+test("서포터: 기본 빌드에 지원 아이템이 들어간다 (레나타·라칸, 수정 전엔 리치베인·라바돈·공허)", () => {
+  for (const id of ["Renata", "Rakan"]) {
+    const c = champ(id), w = S.profile(c, d.tags);
+    const names = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"])[0].pick.map((p) => p.item.name);
+    const supportItems = names.filter((n) => ["월석 재생기", "헬리아의 메아리", "구원", "미카엘의 축복", "강철의 솔라리 펜던트", "흐르는 물의 지팡이", "불타는 향로", "슈렐리아의 군가"].includes(n));
+    assert.ok(supportItems.length >= 2, `${id}: ${names.join(", ")}`);
+  }
+});
+
+test("실험 설정(setExperiment)은 기본값이면 계산이 그대로이고, 되돌리면 원래 값", () => {
+  const c = champ("Jinx"), l = [item("구인수의 격노검"), item("크라켄 학살자")];
+  const m0 = St.evaluate(c, 18, l, [], {}).m.dps;
+  St.setExperiment({ autoUptime: 0.5 });
+  const half = St.evaluate(c, 18, l, [], {}).m.dps;
+  St.setExperiment(null);
+  assert.equal(St.evaluate(c, 18, l, [], {}).m.dps, m0);
+  assert.ok(half < m0 * 0.7, `${m0} → ${half}`);
+});
+
+// 2026-11-14 후속 분석: 아이템 자기 보호막이 '회복·보호막(지원)' 지표로 가던 구조 오류
+test("아이템 효과의 자기 회복·보호막(스테락의 도전)은 지원이 아니라 버티는 힘으로", () => {
+  const c = champ("Leona");
+  const m0 = St.evaluate(c, 18, [], [], {}).m, m1 = St.evaluate(c, 18, [item("스테락의 도전")], [], {}).m;
+  assert.equal(m1.support, m0.support, "지원 지표는 그대로");
+  assert.ok(m1.itemSelfHp > 200 && m1.ehp > m0.ehp, `${m1.itemSelfHp} ${m0.ehp} → ${m1.ehp}`);
+});
+
+test("레오나 + 탱크 엔진: 점검표의 증강 효과(모든 지표 같은 비중)와 엔진의 증강 몫(증강 출력 가중치)이 같은 지표(버티는 힘)를 본다", () => {
+  const c0 = champ("Leona"), a = d.augments.find((x) => x.name === "탱크 엔진"), c = S.withChosenFeatures(c0, [a], d.rules), A = S.augStatsOf([a], d.rules, c);
+  const l = ["스테락의 도전", "케이닉 루컨", "워모그의 갑옷"].map(item);
+  const m1 = St.evaluate(c, 18, l, A, {}).m, m0 = St.evaluate(c, 18, l, [], {}).m;
+  // 예전엔 탱크 엔진 체력이 스테락 보호막을 키운 몫이 지원 +213%(점검표 효과의 2/3)로 잡혔다
+  assert.ok(Math.abs(m1.support - m0.support) < 1e-6, `${m0.support} → ${m1.support}`);
+  assert.ok(m1.ehp > m0.ehp);
+});
+
+test("메이지·서포터 기본 빌드에 자기 보호막 탱커 아이템(스테락·케이닉·워모그)이 몰리지 않는다 (피들스틱·나미)", () => {
+  for (const id of ["Fiddlesticks", "Nami"]) {
+    const c = champ(id), w = S.profile(c, d.tags);
+    const names = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"])[0].pick.map((p) => p.item.name);
+    assert.ok(names.filter((n) => ["스테락의 도전", "케이닉 루컨", "워모그의 갑옷"].includes(n)).length <= 1, `${id}: ${names.join(", ")}`);
+  }
+});
+
+// 2026-11-14 전체 검증 P4: 규칙으로 붙인 효과가 설명에서 자동으로 뽑은 같은 효과와 겹쳐 두 번 세던 오류 (간지럼 괴물 적중 피해 2배)
+test("증강 효과는 같은 계산식·같은 발동 방식이 두 번 들어가지 않는다 (간지럼 괴물 적중 피해 1번)", () => {
+  for (const a of d.augments) {
+    const seen = new Set();
+    for (const e of a.effects || []) {
+      const k = `${e.name}|${(e.trigger || {}).type}`;
+      assert.ok(!seen.has(k), `${a.name}: ${k}`);
+      seen.add(k);
+    }
+  }
+  assert.equal(aug("TickleMonster").effects.filter((e) => e.name === "Calc_OnHitDamage").length, 1);
+  // 전부 다 무너뜨려는 기본 공격 적중·스킬 적중을 따로 센다 (같은 계산식, 다른 발동)
+  assert.equal(aug("TakeemDownDownDown").effects.filter((e) => e.name === "Calc_Damage_Hit").length, 2);
 });

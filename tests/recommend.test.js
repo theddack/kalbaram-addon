@@ -69,12 +69,15 @@ test("추천 4: 균형 빌드의 칸 제한은 코어 밖 '반대 유형' 아이
   const v = builds("Viktor", ["궁극의 히드라"]);
   const core = v.legend("base");
   assert.ok(v.legend("balanced").filter((n) => !core.includes(n) && ad(n)).length <= S.offSlots(champ("Viktor")), `${v.legend("balanced")}`);
-  // 같은 유형(AD 챔피언의 AD 아이템)은 코어 밖이어도 칸 수에 안 센다: 다리우스 + 공격 증강 3개면 코어 밖 AD 템이 2칸을 넘을 수 있다.
-  // (2026-11-12 바꿈: 예전 예시 '오공 + 원 히트 원더'는 원 히트 원더가 모든 피해를 키우던 계산 오류에 기대고 있었다)
-  const dar = builds("Darius", ["붐 앤 베이스", "왕관의 무게", "이빨 요정"]);
-  const darCore = dar.legend("base");
-  const sameType = dar.legend("balanced").filter((n) => !darCore.includes(n) && ad(n));
-  assert.ok(sameType.length > S.offSlots(champ("Darius")), `${dar.legend("balanced")} / 코어 ${darCore}`);
+  // 같은 유형(AD 챔피언의 AD 아이템)은 코어 밖이어도 칸 수에 안 센다: 코어 아이템을 후보에서 빼면 코어 밖 AD 템이 2칸을 넘어 들어가야 한다.
+  // (2026-11-14 바꿈: 예전 예시 '다리우스 + 붐 앤 베이스 + 왕관의 무게 + 이빨 요정'은 증강 태그가 지표 가중치에 섞이던 것(E3)에 기대고 있었다)
+  const darC = champ("Darius"), darW = S.profile(darC, d.tags);
+  const darCore = S.buildConcepts(d.items, darW, [], [], d.rules, darC, {}, ["balanced"])[0].pick.filter((p) => p.item.kind === "legendary").map((p) => p.item.name);
+  const augs = ["붐 앤 베이스", "왕관의 무게"].map(byName);
+  const pool = d.items.filter((i) => !darCore.includes(i.name));
+  const bal = S.buildConcepts(pool, darW, augs, [], d.rules, darC, {}, ["balanced"])[0].pick.filter((p) => p.item.kind === "legendary").map((p) => p.item.name);
+  const sameType = bal.filter((n) => ad(n));
+  assert.ok(sameType.length > S.offSlots(darC), `${bal} / 코어 ${darCore}`);
 });
 
 test("추천 5: 혼합형(원딜 + 메이지 또는 피해 유형 혼합)은 반대 유형 칸을 하나 더", () => {
@@ -91,4 +94,131 @@ test("추천 6: 적중 시 아이템(구인수)의 이득은 평타로 싸우는
     return (m1.dps - m0.dps) / m0.dps;
   };
   assert.ok(gain("Kayle") > gain("Lux"), `케일 ${gain("Kayle")} 럭스 ${gain("Lux")}`);
+});
+
+// P2 (2026-11-14 엔진 개선): 증강이 빌드에서 따라갈 입력 능력치(lift)를 효과 계수·발동 방식·변환 키에서 읽는다.
+// 예전엔 수치 증강 180개 중 128개가 비어, 몰빵 가중치가 챔피언 가중치와 같아졌다 (화염 낙인·치명적 리듬·유레카 …)
+test("P2-1: 변환·발동 방식에서 입력 능력치를 읽는다 (고정 능력치만 있는 증강은 비워 둔다)", () => {
+  const jinx = champ("Jinx");
+  const lift = (n) => S.augContext([byName(n)], d.rules, jinx).lift;
+  assert.ok(lift("유레카").AP > 0, "유레카: 주문력 → 가속");
+  assert.ok(lift("치명적 리듬").CRIT > 0, "치명적 리듬: 치명타마다 공속");
+  assert.ok(lift("간지럼 괴물").AD > 0, "간지럼 괴물: 아이템 공격력 → 공속");
+  assert.ok(lift("화염 낙인").AS > 0, "화염 낙인: 평타마다 화상");
+  assert.ok(!lift("화염 낙인").HP, "대상 체력 비례는 자기 체력과 연결 안 함");
+  assert.ok(lift("강타자").HP > 0, "강타자: 자기 최대 체력 비례");
+  assert.deepEqual(lift("사악한 정신"), {}, "주문력 +80 은 아이템으로 안 커짐");
+});
+
+// P2-2: 전체 전투 가치는 챔피언 성향 가중치 그대로(증강 태그를 섞지 않음), 몰빵의 증강 몫은 증강 출력 가중치로.
+// 강타자(최대 체력 비례 '피해')의 체력 태그가 버티는 힘 가중치로 새지 않고, 증강 출력은 피해 쪽이다
+test("P2-2: 증강 태그는 지표 가중치에 섞지 않고, 증강 몫은 증강 출력(강타자 = 피해)으로 잰다", () => {
+  const sion = champ("Sion"), w = S.profile(sion, d.tags), hh = byName("강타자");
+  assert.deepEqual(S.conceptMetricWeights(w, [hh], d.rules, sion, S.CONCEPTS[0]), S.conceptMetricWeights(w, [], d.rules, sion, S.CONCEPTS[0]));
+  const out = S.augOutputWeights([hh], d.rules, sion);
+  assert.ok(out.dps + out.combo > 0.9 && out.ehp < 0.05, JSON.stringify(out));
+  assert.equal(S.augOutputWeights([], d.rules, sion), null);
+});
+
+// P4 (2026-11-14): 최종 점수는 순서와 무관하고, 빔 뒤 교체 탐색으로 한 칸 교체로는 더 오르지 않는다
+test("P4: 같은 구성은 순서와 무관하게 같은 점수, 엔진 빌드는 한 칸 교체로 더 오르지 않는다", () => {
+  for (const [cid, names, key] of [["Leona", ["핀볼"], "augment"], ["Nami", ["흡수"], "balanced"], ["Jinx", ["강타자"], "augment"]]) {
+    const c = champ(cid), w = S.profile(c, d.tags), ch = names.map(byName);
+    const b = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, [key])[0];
+    const list = b.pick.map((p) => p.item);
+    assert.ok(Math.abs(b.scoreOf(list) - b.scoreOf(list.slice().reverse())) < 1e-9, `${cid} 순서`);
+    // 교체 후보: 이 챔피언의 다른 빌드에 나온 아이템 (엔진 제약을 지키는 아이템들)
+    const pool = new Set(S.buildConcepts(d.items, w, ch, [], d.rules, c, {}).flatMap((x) => x.pick.map((p) => p.item)));
+    const base = b.scoreOf(list);
+    for (let k = 0; k < list.length; k++) for (const it of pool) {
+      if (it.kind !== list[k].kind || list.includes(it)) continue;
+      const cand = list.slice(); cand[k] = it;
+      const lim = cand.map((i) => i.limit).filter(Boolean);
+      if (new Set(lim).size !== lim.length) continue;
+      assert.ok(b.scoreOf(cand) <= base + 1e-9, `${cid} ${key}: ${list[k].name} → ${it.name} 이 더 높다`);
+    }
+  }
+});
+
+// P3: 몰빵의 공식 추천 가산 실험 설정과 δ(전투 가치 하한)
+test("P3: δ 를 정하면 몰빵 빌드의 전투 가치는 균형 빌드의 (1 − δ) 이상, 끄면 예전 목표 그대로", () => {
+  const c = champ("Jinx"), w = S.profile(c, d.tags), ch = [byName("강타자")];
+  const off = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, ["augment"])[0];
+  try {
+    S.setAugmentDelta(0.2);
+    const b = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, ["augment"])[0];
+    const bal = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, ["balanced"])[0].pick.map((p) => p.item);
+    const list = b.pick.map((p) => p.item);
+    assert.ok(b.valueOf(list) >= 0.8 * b.valueOf(bal) - 1e-9, `${b.valueOf(list)} vs ${b.valueOf(bal)}`);
+    assert.ok(b.augOf(list) >= off.augOf(off.pick.map((p) => p.item)) - 1e-9, "증강 몫은 줄지 않는다");
+  } finally { S.setAugmentDelta(null); }
+  const again = S.buildConcepts(d.items, w, ch, [], d.rules, c, {}, ["augment"])[0];
+  assert.deepEqual(again.pick.map((p) => p.item.name), off.pick.map((p) => p.item.name), "끄면 원래대로");
+});
+
+// P7 (2026-11-14): 미구현(수치 계산 없음)과 효과 없음·아이템 무관을 구분해 안내한다
+test("P7: 증강 활용 안내는 수치 없음 · 효과 없음 · 모든 피해 배수 · 고정 효과를 구분한다", () => {
+  const use = (cid, n) => { const c = champ(cid); return (S.augmentUsage(byName(n), d.items, S.profile(c, d.tags), d.rules, c, {}) || {}).kind || null; };
+  assert.equal(use("Garen", "사악한 정신"), "noEffect", "가렌은 주문력 계수가 없다");
+  assert.equal(use("Lux", "사악한 정신"), "fixed", "럭스에겐 효과가 있지만 아이템으로 안 커진다");
+  assert.equal(use("Jinx", "속전속결"), "allDamage");
+  assert.equal(use("Jinx", "천상의 신체"), "fixed");
+  assert.equal(use("Jinx", "강타자"), null, "아이템(체력)으로 커지는 증강은 안내 없음");
+  const tagOnly = d.augments.find((a) => !a.category && !S.hasNumbers(a, d.rules));
+  assert.equal(use("Jinx", tagOnly.name), "noNumbers");
+});
+
+// 2026-11-14 후속 분석: 케일 주문력 ↔ 공격력 갈래 (특정 아이템을 고정하지 않고, 같은 목표 함수에서 더 높은 갈래를 찾는지)
+test("혼합형 챔피언은 물리·마법 갈래 중 같은 목표 함수에서 높은 쪽을 찾는다 (공식 가산이 없어도)", () => {
+  const S2 = require(path.join(__dirname, "..", "web", "scoring.js"));
+  const dd = require(path.join(__dirname, "..", "web", "data.json"));
+  S2.attachSimilar(dd.champions, null, dd.items);
+  S2.setOfficialScale({ balanced: 0 });
+  try {
+    for (const id of ["Kayle", "KogMaw"]) {
+      const c = dd.champions.find((x) => x.id === id), w = S2.profile(c, dd.tags);
+      const b = S2.buildConcepts(dd.items, w, [], [], dd.rules, c, {}, ["balanced"])[0];
+      const isAP = (i) => (i.tags.AP || 0) >= 0.5 && !((i.tags.AD || 0) >= 0.5), isAD = (i) => (i.tags.AD || 0) >= 0.5 && !((i.tags.AP || 0) >= 0.5);
+      for (const f of [(i) => !isAP(i), (i) => !isAD(i)]) {
+        const alt = S2.buildConcepts(dd.items.filter(f), w, [], [], dd.rules, c, {}, ["balanced"])[0].pick.map((p) => p.item);
+        assert.ok(b.score >= b.scoreOf(alt) - 1e-6, `${id}: ${b.score} < ${b.scoreOf(alt)}`);
+      }
+    }
+  } finally { S2.setOfficialScale(null); }
+});
+
+// 2026-11-14 릴리스 후보: 증강 몰빵은 공식 가산 없이(V1), 증강 몫을 못 늘리면 균형 빌드를 그대로 쓴다 (안내 종류로 일괄 빼지 않음)
+test("몰빵: 아이템으로 증강을 못 키우면(효과 없음·고정·증강 몫 증가율 < 전투 가치 증가율) 균형 빌드를 그대로, 간접 연계는 남긴다", () => {
+  const S2 = require(path.join(__dirname, "..", "web", "scoring.js"));
+  const dd = require(path.join(__dirname, "..", "web", "data.json"));
+  S2.attachSimilar(dd.champions, null, dd.items);
+  const both = (cid, an) => {
+    const c = dd.champions.find((x) => x.id === cid), w = S2.profile(c, dd.tags), a = dd.augments.find((x) => x.name === an);
+    const names = (k) => S2.buildConcepts(dd.items, w, [a], [], dd.rules, c, {}, [k])[0].pick.map((p) => p.item.name).sort().join(",");
+    return [names("augment"), names("balanced")];
+  };
+  // 효과 없음(가렌 + 사악한 정신)·고정 효과(레오나 + 핀볼)·전투 가치 때문에만 바뀌던 것(소라카 + 원기 회복 → 딜, 사이온 + 강타자 → 풀탱)
+  for (const [cid, an] of [["Garen", "사악한 정신"], ["Leona", "핀볼"], ["Soraka", "원기 회복"], ["Sion", "강타자"]]) {
+    const [m, b] = both(cid, an);
+    assert.equal(m, b, `${cid} + ${an}`);
+  }
+  // '고정 효과'·'아이템과 무관'으로 분류돼도 아이템을 거쳐 커지는 증강, 증강을 크게 키우는 증강은 다른 빌드
+  for (const [cid, an] of [["Vayne", "빵과 버터"], ["Vayne", "처형 시간"], ["Nami", "흡수"], ["Zed", "치명적 리듬"]]) {
+    const [m, b] = both(cid, an);
+    assert.notEqual(m, b, `${cid} + ${an}`);
+  }
+});
+
+// 2026-11-14 전체 검증 P5: 균형을 그대로 쓰는 규칙이 증강을 키울 수 있는 조합까지 버리던 것 (재사용 269장면 중 260장면)
+test("몰빵: 균형으로 돌아갈 때도 전투 가치를 잃지 않고 증강 몫을 키우는 교체가 있으면 쓴다 (럭스 + 속전속결·미친 과학자)", () => {
+  const S2 = require(path.join(__dirname, "..", "web", "scoring.js"));
+  const dd = require(path.join(__dirname, "..", "web", "data.json"));
+  S2.attachSimilar(dd.champions, null, dd.items);
+  for (const an of ["속전속결", "미친 과학자"]) {
+    const c = dd.champions.find((x) => x.id === "Lux"), w = S2.profile(c, dd.tags), a = dd.augments.find((x) => x.name === an);
+    const m = S2.buildConcepts(dd.items, w, [a], [], dd.rules, c, {}, ["augment"])[0], b = S2.buildConcepts(dd.items, w, [a], [], dd.rules, c, {}, ["balanced"])[0];
+    const ml = m.pick.map((p) => p.item), bl = b.pick.map((p) => p.item);
+    assert.ok(m.augOf(ml) > m.augOf(bl), `${an}: 증강 몫 ${m.augOf(bl)} → ${m.augOf(ml)}`);
+    assert.ok(m.valueOf(ml) >= m.valueOf(bl) - 1e-9, `${an}: 전투 가치 ${m.valueOf(bl)} → ${m.valueOf(ml)}`);
+  }
 });

@@ -18,6 +18,8 @@ const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.a
 const ROOT = arg("--root") || path.join(__dirname, "..");
 global.Stats = require(path.join(ROOT, "web", "stats.js"));
 const S = require(path.join(ROOT, "web", "scoring.js"));
+// 실험 설정 (환경 변수 AUG_OFFICIAL·OFFICIAL_AUG·OFFICIAL_BAL·AUG_DELTA·AUTO_UPTIME·FIGHT_SEC·SKILL_SHARE, tools/exp_env.js)
+const EXP_LABEL = require("./exp_env")(S, global.Stats);
 const d = JSON.parse(fs.readFileSync(path.join(ROOT, "web", "data.json"), "utf8"));
 S.attachSimilar(d.champions, null, d.items);
 
