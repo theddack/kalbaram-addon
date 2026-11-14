@@ -1,5 +1,5 @@
 // 실험 설정을 환경 변수로 받아 엔진에 건다 (분석 도구 공용, 화면 기본값은 그대로).
-//   AUG_OFFICIAL=0         증강 몰빵 공식 추천 가산 뺌 (= OFFICIAL_AUG=0)
+//   AUG_OFFICIAL=1         증강 몰빵에 공식 추천 가산을 다시 넣음 (기본은 뺌, 2026-11-14 결정. = OFFICIAL_AUG=1)
 //   OFFICIAL_AUG=0.5       증강 몰빵 공식 가산 배율
 //   OFFICIAL_BAL=0.5       균형 빌드 공식 가산 배율
 //   AUG_DELTA=0.2          증강 몰빵 = 증강 몫 최대 (전체 전투 가치 ≥ (1 − δ) × 균형)
@@ -10,7 +10,7 @@
 module.exports = function apply(S, Stats, env = process.env) {
   const parts = [];
   const num = (k) => (env[k] != null && env[k] !== "" ? +env[k] : null);
-  const oa = env.AUG_OFFICIAL === "0" ? 0 : num("OFFICIAL_AUG"), ob = num("OFFICIAL_BAL");
+  const oa = env.AUG_OFFICIAL === "0" ? 0 : env.AUG_OFFICIAL === "1" ? 1 : num("OFFICIAL_AUG"), ob = num("OFFICIAL_BAL");
   if (oa != null || ob != null) {
     S.setOfficialScale({ ...(oa != null ? { augment: oa } : {}), ...(ob != null ? { balanced: ob } : {}) });
     if (oa != null) parts.push(`몰빵 공식 ×${oa}`);

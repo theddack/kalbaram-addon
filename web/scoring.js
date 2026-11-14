@@ -38,12 +38,14 @@
   // 라이엇 공식 챔피언별 추천 아이템(champ.officialItems, 칼바람 우선) 가산. 목록으로만 고르게 하지는 않는다 (증강 맞춤이 우리 장점).
   // 묶음 순서: 핵심 → 신발 → 3·4·5번째 → 상황별. 변칙(챔피언 성향을 뒤집는 빌드)에는 넣지 않는다.
   // 세기 3: 공식 핵심을 담는 챔피언 24 → 76 / 108, 겹치는 칸 평균 2.4 → 3.9 / 6 (5 면 4.7 칸으로 거의 목록 복사) — tools/official_check.js.
-  // 균형에만 넣으면 몰빵 점검이 98.4 → 94.0% (몰빵이 공식 아이템을 놓쳐 균형보다 증강을 덜 살림) → 몰빵에도 같게 넣어 98.4% 유지
+  // (예전엔 몰빵에도 넣었다: 균형에만 넣으면 몰빵 점검이 98.4 → 94.0%. 2026-11-14 계산 오류를 고친 뒤 몰빵에서 빼는 게 낫게 바뀜 — 아래)
   const OFFICIAL_BOOST = 3;
-  // 공식 추천 가산 비중: 변칙은 0. 증강 몰빵은 실험 설정 (2026-11-14 P3: 공식 추천은 증강 없는 기준이라 몰빵이 증강을 따라가는 걸 막았다
-  // — 증강 효과와 전투 가치가 둘 다 나은 빌드 912장면 중 907장면을 이 가산이 밀어냄). 결정 전까지 기본은 예전처럼 1
-  // 실험 설정 setOfficialScale({augment, balanced}): 컨셉별 공식 가산 배율 (0 = 뺌, 0.5 = 절반). 기본 1·1
-  const OFFICIAL_SCALE = { augment: 1, balanced: 1 };
+  // 공식 추천 가산 비중: 균형 1, 증강 몰빵 0, 변칙 0 (2026-11-14 결정, docs/추천엔진_후속분석.md).
+  // 몰빵: 공식 추천은 증강 없는 기준이라 몰빵이 증강을 따라가는 걸 막았다 — 증강 효과·전투 가치가 둘 다 나은 빌드를 놓친 장면 693 → 5, 악화 44 → 0.
+  // 균형: 빼면 전투 가치 계산의 치우침(전사 풀탱·서포터 딜)이 드러나 유지 (공식 핵심 담기 76 → 12명)
+  // 실험 설정 setOfficialScale({augment, balanced}): 컨셉별 공식 가산 배율 (0 = 뺌, 0.5 = 절반)
+  const OFFICIAL_DEFAULT = { augment: 0, balanced: 1 };
+  const OFFICIAL_SCALE = { ...OFFICIAL_DEFAULT };
   const officialK = (c) => (c.flip ? 0 : c.focus ? OFFICIAL_SCALE.augment : OFFICIAL_SCALE.balanced);
   // 증강 몰빵의 전투 가치 하한: 전체 전투 가치가 균형 빌드의 (1 − δ)보다 낮은 조합은 받지 않는다. null = 제한 없음 (δ 결정 전 기본)
   let AUG_DELTA = null;
@@ -57,7 +59,8 @@
   // 수치: 최종 능력치로 계산한 스킬 콤보·DPS·유효 체력·회복/보호막의 상대 증가율 (18레벨, 칼바람 보정 포함)
   // 태그: 고유 효과·증강 연계처럼 수치로 안 잡히는 부분
   const NUM_K = 4;
-  const LIFT_FROM_CALC = 0.6;  // 계산(계수·발동·변환)으로만 찾은 입력 능력치의 lift 세기 = 설명 키워드 태그 세기 (build_data tag_text)
+  const LIFT_FROM_CALC = 0.6;
+  const AUG_GAIN_MIN = 0.02;  // 증강 몰빵이 균형보다 증강 몫(맨몸 대비 %p)을 이만큼은 늘려야 다른 빌드로 (tools/augment_fit.js NONE 과 같음)  // 계산(계수·발동·변환)으로만 찾은 입력 능력치의 lift 세기 = 설명 키워드 태그 세기 (build_data tag_text)
   const TAG_K = 0.4;
   const METRIC_FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };
 
@@ -500,7 +503,7 @@
   }
   const setSimilarK = (k) => { SIMILAR_K = k; memo.clear(); };
   const setAugmentOfficial = (on) => { OFFICIAL_SCALE.augment = on ? 1 : 0; memo.clear(); };
-  const setOfficialScale = (o) => { Object.assign(OFFICIAL_SCALE, { augment: 1, balanced: 1 }, o || {}); clearMemo(); };
+  const setOfficialScale = (o) => { Object.assign(OFFICIAL_SCALE, OFFICIAL_DEFAULT, o || {}); clearMemo(); };
   const setAugmentDelta = (dl) => { AUG_DELTA = dl == null ? null : +dl; memo.clear(); };
   function withOfficial(ctx, champ, k) {
     const official = officialWeights(champ, k);
@@ -891,6 +894,26 @@
             const alt = buildWith(pool, iw, fixed, bo);
             const s = built.scoreOf(alt.pick.map((p) => p.item));
             if (s > built.score + 1e-9) built = { ...alt, score: s, scoreOf: built.scoreOf, valueOf: built.valueOf, augOf: built.augOf, minV: built.minV };
+          }
+        }
+        // 증강 몰빵인데 균형 빌드보다 증강 몫을 못 늘리면(아이템으로 증강 효과를 더 키울 수 없음) 균형 빌드를 그대로 쓴다 (2026-11-14 릴리스 후보 점검).
+        // 증강 몫이 늘어도 늘어난 비율이 전체 전투 가치가 늘어난 비율보다 작으면 균형을 쓴다: 바뀐 까닭이 증강이 아니라
+        // 공식 추천을 뺀 전투 가치 계산 최적이라서다 (소라카 + 원기 회복: 증강 몫 +3% · 전투 가치 +24% → 딜 빌드, 사이온 + 강타자 +2% · +9% → 풀탱).
+        // 비율끼리 비교라 정한 기준값이 없다. 증강을 크게 키우는 경우는 남는다 (나미 + 흡수 +199% · +104%, 럭스 + 마법 명사수 +40% · +6%)
+        // 안내 종류(효과 없음·고정·아이템과 무관)로 일괄 빼지 않고 실제 증강 몫으로 판단: '고정 효과'로 분류돼도 아이템을 거쳐 커지는 간접 연계가 670장면 있었다
+        // (베인 + 빵과 버터 등). 기준 AUG_GAIN_MIN 은 점검표의 '아이템 무관' 기준과 같다. 예전엔 전투 가치 계산 최적으로 바뀌었다 (가렌 + 사악한 정신 → 풀탱)
+        // 꼭 넣을 아이템이 있는 증강(퀘스트·업그레이드·효과 종류)은 빼고, 수치 없이 효과 종류만 있는 증강은 키울 능력치(lift)가 없을 때만
+        // (수치 계산이 효과 종류 증강의 이득을 못 보니까. 근접 + 조준경 부착처럼 발동하지 않는 증강은 균형 그대로)
+        const tagOnlyGrows = chosen.some((a) => !hasNumbers(a, rules) && Object.keys((ctx.liftBy || {})[a.name] || {}).some((t) => !t.startsWith("_")));
+        if (c.focus && num && chosen.length && champ0 && built.augOf && !(cctx.must || []).length && !tagOnlyGrows) {
+          const bal = buildConcepts(items, w, chosen, fixed, rules, champ0, statOpts, ["balanced"])[0];
+          const balL = bal.pick.map((p) => p.item);
+          const mine = built.pick.map((p) => p.item);
+          const a0 = built.augOf(balL), v0 = built.valueOf(balL);
+          const gain = (built.augOf(mine) - a0) * 100;
+          const ga = a0 > 1e-9 ? (built.augOf(mine) - a0) / a0 : Infinity, gv = v0 > 1e-9 ? (built.valueOf(mine) - v0) / v0 : 0;
+          if (gain < AUG_GAIN_MIN || ga < gv) {
+            built = { ...built, pick: bal.pick, final: bal.final, score: built.scoreOf(balL), sameAsBalanced: true };
           }
         }
         return { ...c, weights: iw, ...built };

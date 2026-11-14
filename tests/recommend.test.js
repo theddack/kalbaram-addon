@@ -186,3 +186,25 @@ test("혼합형 챔피언은 물리·마법 갈래 중 같은 목표 함수에�
     }
   } finally { S2.setOfficialScale(null); }
 });
+
+// 2026-11-14 릴리스 후보: 증강 몰빵은 공식 가산 없이(V1), 증강 몫을 못 늘리면 균형 빌드를 그대로 쓴다 (안내 종류로 일괄 빼지 않음)
+test("몰빵: 아이템으로 증강을 못 키우면(효과 없음·고정·증강 몫 증가율 < 전투 가치 증가율) 균형 빌드를 그대로, 간접 연계는 남긴다", () => {
+  const S2 = require(path.join(__dirname, "..", "web", "scoring.js"));
+  const dd = require(path.join(__dirname, "..", "web", "data.json"));
+  S2.attachSimilar(dd.champions, null, dd.items);
+  const both = (cid, an) => {
+    const c = dd.champions.find((x) => x.id === cid), w = S2.profile(c, dd.tags), a = dd.augments.find((x) => x.name === an);
+    const names = (k) => S2.buildConcepts(dd.items, w, [a], [], dd.rules, c, {}, [k])[0].pick.map((p) => p.item.name).sort().join(",");
+    return [names("augment"), names("balanced")];
+  };
+  // 효과 없음(가렌 + 사악한 정신)·고정 효과(레오나 + 핀볼)·전투 가치 때문에만 바뀌던 것(소라카 + 원기 회복 → 딜, 사이온 + 강타자 → 풀탱)
+  for (const [cid, an] of [["Garen", "사악한 정신"], ["Leona", "핀볼"], ["Soraka", "원기 회복"], ["Sion", "강타자"]]) {
+    const [m, b] = both(cid, an);
+    assert.equal(m, b, `${cid} + ${an}`);
+  }
+  // '고정 효과'·'아이템과 무관'으로 분류돼도 아이템을 거쳐 커지는 증강, 증강을 크게 키우는 증강은 다른 빌드
+  for (const [cid, an] of [["Vayne", "빵과 버터"], ["Vayne", "처형 시간"], ["Nami", "흡수"], ["Zed", "치명적 리듬"]]) {
+    const [m, b] = both(cid, an);
+    assert.notEqual(m, b, `${cid} + ${an}`);
+  }
+});

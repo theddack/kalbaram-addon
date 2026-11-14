@@ -823,7 +823,8 @@ test("점검 3: 조건을 못 맞춘 증강(근접 + 조준경 부착)은 빌드
   const ctx = S.augContext([aug("ARAM_ScopiestWeapons")], d.rules, champ("Renekton"));
   assert.deepEqual(ctx.lift, {}, "근접 레넥톤에겐 사거리 증강이 아무것도 키우지 않는다");
   assert.ok((S.augContext([aug("ARAM_ScopiestWeapons")], d.rules, champ("Jinx")).lift.AS || 0) > 0, "원거리는 그대로");
-  assert.deepEqual(legendBuild("Renekton", ["ARAM_ScopiestWeapons"], "augment"), legendBuild("Renekton", [], "augment"));
+  // 발동하지 않는 증강의 몰빵 = 균형 빌드 (2026-11-14: 증강 몫을 못 늘리면 균형 빌드를 그대로 쓴다)
+  assert.deepEqual(legendBuild("Renekton", ["ARAM_ScopiestWeapons"], "augment"), legendBuild("Renekton", [], "balanced"));
 });
 
 test("점검 4: 퀘스트가 아이템을 모두 요구하면(궁극의 히드라 3종·우글렛·이케시아) 증강 몰빵 빌드에 다 넣는다", () => {
