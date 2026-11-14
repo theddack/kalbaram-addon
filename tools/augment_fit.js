@@ -15,9 +15,8 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 global.Stats = global.Stats || require(path.join(ROOT, "web", "stats.js"));
 const S = require(path.join(ROOT, "web", "scoring.js"));
-// 실험 설정 (2026-11-14 P3): AUG_OFFICIAL=0 → 증강 몰빵에서 공식 추천 가산 뺌, AUG_DELTA=0.2 → 몰빵 = 증강 몫 최대 (전투 가치 ≥ 80% 균형)
-if (process.env.AUG_OFFICIAL === "0") S.setAugmentOfficial(false);
-if (process.env.AUG_DELTA) S.setAugmentDelta(+process.env.AUG_DELTA);
+// 실험 설정 (환경 변수 AUG_OFFICIAL·OFFICIAL_AUG·OFFICIAL_BAL·AUG_DELTA·AUTO_UPTIME·FIGHT_SEC·SKILL_SHARE, tools/exp_env.js)
+const EXP_LABEL = require("./exp_env")(S, global.Stats);
 
 const REPS = { Marksman: ["Jinx", "Vayne", "Caitlyn"], Mage: ["Lux", "Annie", "Viktor"], Tank: ["Malphite", "Sion", "Leona"],
   Fighter: ["Garen", "Darius", "Irelia"], Assassin: ["Zed", "Akali", "Kayn"], Support: ["Sona", "Nami", "Lulu"] };
@@ -53,7 +52,11 @@ function check(d, champIds, augFilter) {
       const rule = (d.rules.augments || {})[a.id] || {};
       if (rule.requires && !((S.withChosenFeatures(c, [a], d.rules).features || []).includes(rule.requires))) continue;  // 발동 안 함
       const { cc, eff } = setup(d, c, a);
-      const mine = S.buildConcepts(d.items, w, [a], [], d.rules, c, {}, ["augment"])[0].pick.map((p) => p.item);
+      const engA = S.buildConcepts(d.items, w, [a], [], d.rules, c, {}, ["augment"])[0];
+      const mine = engA.pick.map((p) => p.item);
+      // 같은 증강을 고른 균형 빌드: 전체 전투 가치(V, 챔피언 성향)와 증강 몫(엔진 기준, 증강 출력 가중치)을 몰빵과 같은 잣대로 비교
+      const balB = S.buildConcepts(d.items, w, [a], [], d.rules, c, {}, ["balanced"])[0];
+      const balL = balB.pick.map((p) => p.item);
       const boots = mine.filter((i) => i.kind !== "legendary");
       const pool = items.filter((i) => !(i.only === "ranged" && cc.melee) && !(i.only === "melee" && !cc.melee));
       // 탐욕 선택: 한 칸씩 증강 자체 효과를 가장 많이 늘리는 아이템 (후보는 첫 칸 기준 상위 40개)
@@ -74,7 +77,10 @@ function check(d, champIds, augFilter) {
       const leg = (list) => list.filter((i) => i.kind === "legendary").map((i) => i.name);
       rows.push({ champ: cid, role: (c.tags || [])[0], aug: a.name, rarity: a.rarityName, base: +b.toFixed(1), mine: +m.toFixed(1), top: +top.toFixed(1),
         reach: room < NONE ? null : +((m - b) / room).toFixed(2), same: leg(base).sort().join() === leg(mine).sort().join(),
-        mineItems: leg(mine), topItems: leg(pick) });
+        mineItems: leg(mine), topItems: leg(pick),
+        bal: +eff(balL).toFixed(1), balItems: leg(balL),
+        vMine: balB.valueOf ? +balB.valueOf(mine).toFixed(4) : null, vBal: balB.valueOf ? +balB.valueOf(balL).toFixed(4) : null,
+        aoMine: engA.augOf ? +(engA.augOf(mine) * 100).toFixed(2) : null, aoBal: engA.augOf ? +(engA.augOf(balL) * 100).toFixed(2) : null, aoBase: engA.augOf ? +(engA.augOf(base) * 100).toFixed(2) : null });
     }
   }
   return rows;

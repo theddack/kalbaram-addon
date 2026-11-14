@@ -15,9 +15,8 @@ const path = require("path");
 const WEB = path.join(__dirname, "..", "web");
 global.Stats = require(path.join(WEB, "stats.js"));
 const S = require(path.join(WEB, "scoring.js"));
-// 실험 설정 (2026-11-14 P3): AUG_OFFICIAL=0 → 증강 몰빵에서 공식 추천 가산 뺌, AUG_DELTA=0.2 → 몰빵 = 증강 몫 최대 (전투 가치 ≥ 80% 균형)
-if (process.env.AUG_OFFICIAL === "0") S.setAugmentOfficial(false);
-if (process.env.AUG_DELTA) S.setAugmentDelta(+process.env.AUG_DELTA);
+// 실험 설정 (환경 변수 AUG_OFFICIAL·OFFICIAL_AUG·OFFICIAL_BAL·AUG_DELTA·AUTO_UPTIME·FIGHT_SEC·SKILL_SHARE, tools/exp_env.js)
+const EXP_LABEL = require("./exp_env")(S, global.Stats);
 
 const REPS = ["Jinx", "Ezreal", "Lux", "Annie", "Malphite", "Garen", "Zed", "Sona", "Darius", "Yasuo", "Vayne", "Nami"];
 const KEY_MIN = 0.6;  // 주된 효과로 볼 강도

@@ -9,8 +9,8 @@ const path = require("path");
 const R = path.join(__dirname, "..");
 global.Stats = require(R + "/web/stats.js");
 const S = require(R + "/web/scoring.js");
-if (process.env.AUG_OFFICIAL === "0") S.setAugmentOfficial(false);
-if (process.env.AUG_DELTA) S.setAugmentDelta(+process.env.AUG_DELTA);
+// 실험 설정 (환경 변수 AUG_OFFICIAL·OFFICIAL_AUG·OFFICIAL_BAL·AUG_DELTA·AUTO_UPTIME·FIGHT_SEC·SKILL_SHARE, tools/exp_env.js)
+const EXP_LABEL = require("./exp_env")(S, global.Stats);
 const d = require(R + "/web/data.json");
 const fs = require("fs");
 S.attachSimilar(d.champions, null, d.items);
