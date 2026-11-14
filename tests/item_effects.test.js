@@ -82,3 +82,17 @@ test("구원 '중재': 아군 회복과 함께 적 챔피언에게 최대 체력
   near(a.combo - b.combo, 0.1 * St.DEFAULT_TARGET.HP, 1, "콤보 고정 피해");
   assert.ok(a.support > b.support, "아군 회복은 그대로 지원으로");
 });
+
+// v0.1.92 서포터 평가: 체력 단위로 셀 수 있는데 계산에 빠져 있던 아군 지원 기술 (rules.json champions fight)
+test("서포터 기술: 룰루 R 아군 최대 체력, 타릭 R 아군 무적, 유미 W 회복·보호막 증가가 지원(support)에 들어간다", () => {
+  const sup = (id, l = []) => St.evaluate(champ(id), 18, l, [], {}).m;
+  const lulu = sup("Lulu"), luluAp = sup("Lulu", [item("라바돈의 죽음모자")]);
+  assert.ok(champ("Lulu").fightStats, "룰루 규칙");
+  const row = lulu.effects.find((e) => e.src === "R 급속 성장");
+  assert.ok(row && row.value >= 575, `룰루 R ${row && row.value}`);
+  assert.ok(luluAp.kitShield - lulu.kitShield > 0, "주문력 비례");
+  const taric = sup("Taric").effects.find((e) => e.src === "R 우주의 광휘");
+  assert.ok(taric && Math.abs(taric.value - 2.5 * St.DEFAULT_TARGET.DPS_TAKEN / 2) < 1, `타릭 R ${taric && taric.value}`);
+  const y = St.computeStats(champ("Yuumi"), 18, [], []).total.HSP;
+  assert.ok(Math.abs(y - 0.08) < 1e-9, `유미 회복·보호막 ${y}`);
+});
