@@ -633,11 +633,28 @@
     out.itemSelfHp = 0;  // 아이템 효과의 자기 회복·보호막 (버티는 힘에 더함)
     out.castDpsUsed = 0;  // 같은 몫을 '실제로 쓰여 맞는 스킬 빈도'(× SKILL_DPS_SHARE, 효과 상한 적용)로 센 값 — 초당 피해에 쓴다
     out.effects = [];
-    for (const e of stats.effects || []) {
-      // 한 번에 여러 발 (rules effectCount: 탄환 세례 5발 · 마법 미사일 3발 · 쌍둥이 불꽃 1 + 치명타 확률 × 3)
+    // 한 번에 여러 발 (rules effectCount: 탄환 세례 5발 · 마법 미사일 3발 · 쌍둥이 불꽃 1 + 치명타 확률 × 3)
+    const baseV = (e) => {
       let v = effectValue(e, 1, L, t) * (e.ticks || 1) * ((e.count || 1) + (e.countCrit ? Math.min(1, t.CRIT) * e.countCrit : 0));
       if (e.rangedScale != null && !champ.melee) v *= e.rangedScale;
       if (e.uptime != null) v *= e.uptime;  // 조건부 효과의 가동률 (rules effectUptime)
+      return v;
+    };
+    // 치명타 버전 효과: 같은 출처·피해 종류·발동 방식의 일반 효과가 있으면 그 대신 쓰이는 버전이다 (챔피언 스킬의 spellTotals 와 같은 원칙).
+    // 일반 효과 + 적용되는 몫 × (치명타 − 일반). 몫은 체력 조건이 있으면(rules effectCritBelow) 그 조건 아래 피해 비율, 없으면 치명타 확률.
+    // 2026-11-15 예전엔 둘 다 전부 더했다 (지옥불 난사 발동: 체력 30% 아래 대상에게만 치명타인 사격을 일반 사격과 같이 셈)
+    const fxKey = (e) => [e.src, e.kind, (e.trigger || {}).type || "once"].join("|");
+    const normalOf = new Map();
+    for (const e of stats.effects || []) if (!/crit/i.test(e.name || "") && !normalOf.has(fxKey(e))) normalOf.set(fxKey(e), e);
+    for (const e of stats.effects || []) {
+      let v = baseV(e);
+      const sib = /crit/i.test(e.name || "") ? normalOf.get(fxKey(e)) : null;
+      let critAlt = null;
+      if (sib) {
+        const share = e.critBelow != null ? targetBelowShare(e.critBelow) : Math.min(1, t.CRIT || 0);
+        critAlt = { full: v, share };
+        v = share * Math.max(0, v - baseV(sib));
+      }
       // 쪼개기(불경한 히드라)는 원거리 챔피언이면 절반 (근접 공격력 40% · 원거리 20%, 리그 오브 레전드 위키)
       // (2026-10-15 베인+치명적 리듬: 원거리인데 근접 값으로 세서 불경한 히드라가 무한의 대검보다 위였다)
       if (/cleave/i.test(e.name || "") && !champ.melee && e.rangedScale == null) v *= CLEAVE_RANGED;
@@ -660,7 +677,7 @@
         if (refresh) k = Math.min(k, 1 / refresh);
         return e.needsAuto ? Math.min(k, t.AS) : k;
       };
-      const row = { src: e.src || "", kind: e.kind, value: v, trigger: tr.type };
+      const row = { src: e.src || "", kind: e.kind, value: v, trigger: tr.type, ...(critAlt ? { critAlt: true, full: critAlt.full, share: critAlt.share } : {}) };
       out.effects.push(row);
       if (e.kind === "shield" || e.kind === "heal") {
         const k = e.kind === "shield" ? (aram.shielding || 1) : (aram.healing || 1);

@@ -105,3 +105,21 @@ test("서포터 기술: 룰루 R 아군 최대 체력, 타릭 R 아군 무적, �
   const y = St.computeStats(champ("Yuumi"), 18, [], []).total.HSP;
   assert.ok(Math.abs(y - 0.08) < 1e-9, `유미 회복·보호막 ${y}`);
 });
+
+// v0.1.92 회귀 확인: '체력 X% 아래 대상에게 치명타' 버전 효과가 일반 효과와 따로 전부 더해지던 중복 (지옥불 난사 발동)
+test("치명타 버전 효과(체력 조건)는 일반 효과를 대신한다: 조건 아래 몫만큼만 (치명타 − 일반) 차이를 더한다", () => {
+  const a = d.augments.find((x) => x.name === "지옥불 난사 발동"), c = champ("Jinx");
+  const S = require(path.join(WEB, "scoring.js"));
+  const crit = (a.effects || []).find((e) => /crit/i.test(e.name));
+  assert.ok(crit && crit.critBelow === 0.3, `치명타 체력 기준 ${crit && crit.critBelow}`);
+  const rows = (cur) => {
+    const keep = St.TARGET.CUR; St.TARGET.CUR = cur;
+    try { return St.evaluate(c, 18, [], S.augStatsOf([a], d.rules, c), {}).m.effects.filter((e) => e.src === a.name); } finally { St.TARGET.CUR = keep; }
+  };
+  const base = rows(0.7);
+  const normal = base.find((e) => e.value > 0 && !e.critAlt), alt = base.find((e) => e.critAlt);
+  assert.ok(normal && alt, "일반·치명타 두 줄");
+  near(alt.value, 0, 1e-9, "기본 가정(100% → 40%)에선 30% 아래가 없어 치명타 몫 0");
+  const r = rows(0.5), n2 = r.find((e) => !e.critAlt), a2 = r.find((e) => e.critAlt);
+  near(a2.value, 0.3 * (alt.full - n2.value), 1e-6, "처치까지 가면 피해의 30%만 치명타 차이");
+});

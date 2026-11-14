@@ -1847,6 +1847,11 @@
       }
     },
     "ARAM_InfernoTriggered": {
+      "effectCritBelow": {
+        "calc": "Calc_Crit_Threshold",
+        "check": "체력이 30% 아래인 적에게는 치명타",
+        "why": "2026-11-15 v0.1.92 회귀 확인: 치명타 사격은 체력 30% 아래 대상에게만 일반 사격 대신 적용되는데, 일반·치명타 두 사격을 둘 다 전부 더했다"
+      },
       "effectCooldown": {
         "dv": "Cooldown",
         "why": "설명 '이 효과는 5초의 재사용 대기시간이 적용됩니다'. 스타일 S 등급을 채우는 시간은 따로 세지 않아 최대 빈도(5초에 1번)"

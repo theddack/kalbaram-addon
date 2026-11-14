@@ -939,6 +939,29 @@ def rule_effect_cooldowns(rules, aug_spells, out_augs, warn):
             warn.append(f"{aid}: effectCooldown 을 걸 반복 발동 효과가 없음")
 
 
+def rule_effect_crit_below(rules, aug_spells, out_augs, warn):
+    """rules.json effectCritBelow: '체력이 X% 아래인 적에게는 치명타' 처럼 조건이 맞을 때만 일반 효과 대신 쓰는 치명타 버전 효과에
+    조건 체력 비율(원본 값)을 붙인다 (e["critBelow"]). 계산은 일반 효과 + 조건 아래 몫 × (치명타 − 일반) (stats.js).
+    없으면 일반·치명타 두 효과를 둘 다 전부 더했다 (2026-11-15 지옥불 난사 발동)."""
+    by_id = {a["id"]: a for a in out_augs}
+    for aid, r in rules["augments"].items():
+        spec = r.get("effectCritBelow")
+        if not spec or aid not in by_id or aid not in aug_spells:
+            continue
+        c = Calc(aug_spells[aid]).calc(spec["calc"], 1)[0]
+        at = c.base if c else None
+        if not at:
+            warn.append(f"{aid}: effectCritBelow 값 '{spec['calc']}' 없음")
+            continue
+        hit = 0
+        for e in by_id[aid]["effects"]:
+            if re.search(r"crit", e.get("name") or "", re.I):
+                e["critBelow"] = round(at, 4)
+                hit += 1
+        if not hit:
+            warn.append(f"{aid}: effectCritBelow 를 걸 치명타 버전 효과가 없음")
+
+
 def rule_effect_counts(rules, aug_spells, out_augs, warn):
     """rules.json effectCount / effectTrigger: 효과 한 번에 몇 발인지(원본 값), 발동 빈도를 바로잡는다.
     count = 원본 값(탄환 세례 5발·마법 미사일 3발·검무 8회), critPer = 치명타 확률 100% 일 때 더 쏘는 발 수(쌍둥이 불꽃 3·치명적 미사일 2).
@@ -1775,6 +1798,7 @@ def main():
     rule_effects(rules, aug_spells, out_augs, rule_warn)
     rule_effect_cooldowns(rules, aug_spells, out_augs, rule_warn)
     rule_effect_counts(rules, aug_spells, out_augs, rule_warn)
+    rule_effect_crit_below(rules, aug_spells, out_augs, rule_warn)
     prune_target_hp_tags(rules, out_augs)
     # rules effectUptime: 조건이 맞을 때만 터지는 효과의 가동률 (아티스트 보호: 최대 사거리 75% 밖에서 쏜 공격만). 근거는 basis assume
     for aid, r in rules["augments"].items():
