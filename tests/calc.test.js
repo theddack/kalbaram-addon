@@ -1158,3 +1158,28 @@ test("실험 설정(setExperiment)은 기본값이면 계산이 그대로이고,
   assert.equal(St.evaluate(c, 18, l, [], {}).m.dps, m0);
   assert.ok(half < m0 * 0.7, `${m0} → ${half}`);
 });
+
+// 2026-11-14 후속 분석: 아이템 자기 보호막이 '회복·보호막(지원)' 지표로 가던 구조 오류
+test("아이템 효과의 자기 회복·보호막(스테락의 도전)은 지원이 아니라 버티는 힘으로", () => {
+  const c = champ("Leona");
+  const m0 = St.evaluate(c, 18, [], [], {}).m, m1 = St.evaluate(c, 18, [item("스테락의 도전")], [], {}).m;
+  assert.equal(m1.support, m0.support, "지원 지표는 그대로");
+  assert.ok(m1.itemSelfHp > 200 && m1.ehp > m0.ehp, `${m1.itemSelfHp} ${m0.ehp} → ${m1.ehp}`);
+});
+
+test("레오나 + 탱크 엔진: 점검표의 증강 효과(모든 지표 같은 비중)와 엔진의 증강 몫(증강 출력 가중치)이 같은 지표(버티는 힘)를 본다", () => {
+  const c0 = champ("Leona"), a = d.augments.find((x) => x.name === "탱크 엔진"), c = S.withChosenFeatures(c0, [a], d.rules), A = S.augStatsOf([a], d.rules, c);
+  const l = ["스테락의 도전", "케이닉 루컨", "워모그의 갑옷"].map(item);
+  const m1 = St.evaluate(c, 18, l, A, {}).m, m0 = St.evaluate(c, 18, l, [], {}).m;
+  // 예전엔 탱크 엔진 체력이 스테락 보호막을 키운 몫이 지원 +213%(점검표 효과의 2/3)로 잡혔다
+  assert.ok(Math.abs(m1.support - m0.support) < 1e-6, `${m0.support} → ${m1.support}`);
+  assert.ok(m1.ehp > m0.ehp);
+});
+
+test("메이지·서포터 기본 빌드에 자기 보호막 탱커 아이템(스테락·케이닉·워모그)이 몰리지 않는다 (피들스틱·나미)", () => {
+  for (const id of ["Fiddlesticks", "Nami"]) {
+    const c = champ(id), w = S.profile(c, d.tags);
+    const names = S.buildConcepts(d.items, w, [], [], d.rules, c, {}, ["balanced"])[0].pick.map((p) => p.item.name);
+    assert.ok(names.filter((n) => ["스테락의 도전", "케이닉 루컨", "워모그의 갑옷"].includes(n)).length <= 1, `${id}: ${names.join(", ")}`);
+  }
+});

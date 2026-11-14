@@ -446,7 +446,7 @@
   //   autoUptime  한타 중 기본 공격을 실제로 치는 시간 비율 (평타·적중·기본 공격 시 효과의 초당 피해, 구인수 중첩 평타 수에 곱함)
   //   fightSec    평타를 이어 치는 한타 시간(초, 구인수 중첩 평균)
   //   skillShare  SKILL_DPS_SHARE 대신 쓸 값
-  const EXP_DEFAULT = { autoUptime: 1, fightSec: AUTO_FIGHT_SEC, skillShare: SKILL_DPS_SHARE, itemSelfToEhp: false };
+  const EXP_DEFAULT = { autoUptime: 1, fightSec: AUTO_FIGHT_SEC, skillShare: SKILL_DPS_SHARE };
   const EXP = { ...EXP_DEFAULT };
   function setExperiment(e) { Object.assign(EXP, EXP_DEFAULT, e || {}); }
   const CAST_MIN_CD = 2; // '스킬 사용 시' 효과: 한 스킬은 최대 2초에 1번 (토글·충전형 스킬이 발동을 부풀리지 않게)
@@ -634,8 +634,10 @@
       if (e.kind === "shield" || e.kind === "heal") {
         const k = e.kind === "shield" ? (aram.shielding || 1) : (aram.healing || 1);
         const amt = v * k * (1 + t.HSP) * (tr.type === "cast" ? comboTimes(casts) : 1);
-        // 아이템 효과의 회복·보호막(스테락의 도전·케이닉 루컨·워모그의 갑옷 …)은 자기 자신에게만 → 버티는 힘(EHP)으로 (흡혈·생명선과 같게)
-        if (e.item && EXP.itemSelfToEhp) { out.itemSelfHp += amt; continue; }
+        // 아이템 효과의 회복·보호막(스테락의 도전·케이닉 루컨·워모그의 갑옷 …)은 자기 자신에게만 → 버티는 힘(EHP)으로 (흡혈·생명선과 같게).
+        // 2026-11-14 예전엔 '회복·보호막(지원)' 지표에 넣어, 지원 기준값(600)이 작은 탓에 메이지·서포터 계산 최적이 스테락·케이닉·워모그가 됐고
+        // (공식 추천 가산이 가리고 있었음), 레오나 + 탱크 엔진의 점검표 증강 효과 2/3가 스테락 보호막 증가분이었다
+        if (e.item) { out.itemSelfHp += amt; continue; }
         if (e.kind === "shield") out.shield += amt; else out.heal += amt;
         // 챔피언 자기 기술(패시브)의 회복·보호막만 아군에게 줄 수 있다고 본다 (아이템·증강 효과의 보호막은 자기 자신에게만: 스테락·케이닉 루컨)
         if (!itemOrAugFx(e)) { if (e.kind === "shield") out.kitShield += amt; else out.kitHeal += amt; }
