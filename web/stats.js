@@ -109,9 +109,11 @@
       if (s && s.refundPct) conv.refunds.push({ pct: s.refundPct, ranged: s.refundChanceRanged ?? 1, melee: s.refundChanceMelee ?? 1, all: !!s.refundAll });
       // 원거리 챔피언은 값이 다른 능력치 (rules rangedStats → statsResolved.rangedScale: 유리 대포 고정 피해 ×0.6)
       const rScale = (!champ.melee && s && s.rangedScale) || {};
+      // '대상 체력 X% 아래' 조건 고유 효과 (rules _belowAt: 세릴다의 원한 둔화): 값 × 조건 아래 피해 비율 (targetBelowShare, 그림자불꽃과 같은 기준)
+      const below = s && s._belowAt != null ? targetBelowShare(s._belowAt) : 1;
       for (const [k, raw0] of entriesOf(s)) {
-        if (k === "rangedScale") continue;
-        const raw = typeof raw0 === "number" && rScale[k] != null ? raw0 * rScale[k] : raw0;
+        if (k === "rangedScale" || k === "_belowAt") continue;
+        const raw = typeof raw0 === "number" ? (rScale[k] != null ? raw0 * rScale[k] : raw0) * below : raw0;
         // needsItem: 그 아이템을 가졌을 때만 터지는 증강 효과 (폭풍 쇄도 업그레이드: 폭풍 쇄도의 질풍이 폭발)
         if (k === "_effects") { effects.push(...raw.filter((e) => !e.needsItem || items.some((it) => it.name === e.needsItem))); continue; }
         if (REFUND_KEYS.includes(k)) continue;

@@ -123,3 +123,13 @@ test("치명타 버전 효과(체력 조건)는 일반 효과를 대신한다: �
   const r = rows(0.5), n2 = r.find((e) => !e.critAlt), a2 = r.find((e) => e.critAlt);
   near(a2.value, 0.3 * (alt.full - n2.value), 1e-6, "처치까지 가면 피해의 30%만 치명타 차이");
 });
+
+test("세릴다의 원한 '매서운 추위': 대상 체력 50% 아래 조건을 그림자불꽃과 같은 공통 기준(targetBelowShare)으로", () => {
+  const it = item("세릴다의 원한"), c = champ("Draven");
+  assert.equal(it.passiveStats._belowAt, 0.5, "조건 체력 규칙");
+  const ctl = () => St.computeStats(c, 18, [it], []).conv.controlPerCast || 0;
+  near(ctl(), 0.3 * St.targetBelowShare(0.5), 1e-9, "라일라이 기준 0.3초 × 조건 아래 비율 (기본 1/6)");
+  const cur = St.TARGET.CUR;
+  St.TARGET.CUR = 0.5;
+  try { near(ctl(), 0.3 * 0.5, 1e-9, "처치까지 가는 경로면 절반 (예전 고정값 0.15와 같은 경우)"); } finally { St.TARGET.CUR = cur; }
+});
