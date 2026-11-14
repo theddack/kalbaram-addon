@@ -47,6 +47,15 @@
     return v;
   }
 
+  // 능력치 객체(아이템 stats·고유 효과·증강 statsResolved)의 [키, 값] 목록은 객체마다 한 번만 만든다 (읽기 전용 데이터라 결과가 같다.
+  // 빌드 탐색이 계산마다 Object.entries 를 새로 만들던 몫이 계산 시간의 큰 부분이었다, 2026-11-14 v0.1.92 성능)
+  const ENTRIES = new WeakMap();
+  const entriesOf = (o) => {
+    if (!o) return [];
+    let e = ENTRIES.get(o);
+    if (!e) ENTRIES.set(o, (e = Object.entries(o)));
+    return e;
+  };
   // 출처(src)를 붙인 효과 목록은 아이템·패시브마다 한 번만 만든다 (빌드 탐색에서 계산마다 복사하던 것. 읽기 전용으로 쓴다)
   const SRC_FX = new WeakMap();
   function withSrc(owner, src, isItem = false) {
@@ -69,7 +78,7 @@
     // 관통력 %는 게임처럼 곱해서 합친다: 35% + 35% = 1 − 0.65 × 0.65 = 57.75% (더하면 70%로 과대평가해 세릴다·도미닉을 같이 권했다)
     const PCT_PEN = new Set(["ARPEN", "MPENP"]);
     const addTo = (k, v) => { add[k] = PCT_PEN.has(k) ? 1 - (1 - add[k]) * (1 - v) : add[k] + v; };
-    for (const it of items) for (const [k, v] of Object.entries(it.stats || {})) if (k in add) addTo(k, v);
+    for (const it of items) for (const [k, v] of entriesOf(it.stats)) if (k in add) addTo(k, v);
     const goldAug = augStats.reduce((a, s) => a + (Number((s || {}).goldValue) || 0), 0);
     if (goldAug) {
       const main = apMain(champ) ? "AP" : "AD";
@@ -100,7 +109,7 @@
       if (s && s.refundPct) conv.refunds.push({ pct: s.refundPct, ranged: s.refundChanceRanged ?? 1, melee: s.refundChanceMelee ?? 1, all: !!s.refundAll });
       // 원거리 챔피언은 값이 다른 능력치 (rules rangedStats → statsResolved.rangedScale: 유리 대포 고정 피해 ×0.6)
       const rScale = (!champ.melee && s && s.rangedScale) || {};
-      for (const [k, raw0] of Object.entries(s || {})) {
+      for (const [k, raw0] of entriesOf(s)) {
         if (k === "rangedScale") continue;
         const raw = typeof raw0 === "number" && rScale[k] != null ? raw0 * rScale[k] : raw0;
         // needsItem: 그 아이템을 가졌을 때만 터지는 증강 효과 (폭풍 쇄도 업그레이드: 폭풍 쇄도의 질풍이 폭발)
@@ -327,7 +336,7 @@
     if (e.tree) return evalTree(e.tree[Math.min(i, e.tree.length - 1)], L, t);
     let v = e.base[Math.min(i, e.base.length - 1)] || 0;
     if (e.lvl) v += e.lvl[0] + (e.lvl[1] - e.lvl[0]) * (L - 1) / 17;
-    for (const [k, arr] of Object.entries(e.ratios || {})) v += arr[Math.min(i, arr.length - 1)] * statFor(k, t);
+    for (const [k, arr] of entriesOf(e.ratios)) v += arr[Math.min(i, arr.length - 1)] * statFor(k, t);
     return v;
   }
 

@@ -404,12 +404,27 @@
     return out;
   }
 
+  // 읽기 전용으로 쓰는 곳(점수·덮은 태그 세기)은 환산한 태그와 그 [태그, 값] 목록을 (아이템 태그, 환산) 쌍마다 한 번만 만든다.
+  // 결과는 convertTags 와 같다 (2026-11-14 v0.1.92 성능: 빌드 탐색이 계산마다 태그 객체를 새로 복사했다)
+  const NO_CONVERT = {};
+  const TAG_VIEW = new WeakMap();
+  function tagView(tags, convert) {
+    tags = tags || NO_CONVERT;
+    convert = convert || NO_CONVERT;
+    let m = TAG_VIEW.get(tags);
+    if (!m) TAG_VIEW.set(tags, (m = new WeakMap()));
+    let v = m.get(convert);
+    if (!v) { const out = convertTags(tags, convert); m.set(convert, (v = { tags: out, entries: Object.entries(out) })); }
+    return v;
+  }
+
   function scoreItem(item, iw, covered, opts = {}) {
     const ctx = opts.ctx;
-    const tags = convertTags(item.tags, (ctx && ctx.convert) || {});
+    const view = tagView(item.tags, ctx && ctx.convert);
+    const tags = view.tags;
     const parts = [];
     let score = 0;
-    for (const [t, s] of Object.entries(tags)) {
+    for (const [t, s] of view.entries) {
       const rate = t === "AD" || t === "AP" ? MAIN_STAT_DECAY : ITEM_DECAY;
       const decay = Math.pow(rate, (covered && covered[t]) || 0);
       const v = (iw[t] || 0) * Math.min(s, 1.5) * decay;
@@ -586,7 +601,7 @@
   }
 
   function addCovered(covered, tags) {
-    for (const [t, s] of Object.entries(tags)) if (s >= 0.5) covered[t] = (covered[t] || 0) + 1;
+    for (const [t, s] of (tags && tags.entries) || Object.entries(tags)) if (s >= 0.5) covered[t] = (covered[t] || 0) + 1;
   }
 
   // 빌드 가치(수치 부분) = Σ 지표 가중치 × 지표 / 기준값. 기준값은 아이템 없는 상태(최소 METRIC_FLOOR)
@@ -653,7 +668,7 @@
       const numGain = num ? (valueOf(m, num) - valueOf(state.m, num) + focus * augPart) * NUM_K : 0;
       const score = num ? numGain + tag.score * TAG_K : tag.score;
       const covered = { ...state.covered };
-      addCovered(covered, convertTags(item.tags, opts.ctx.convert));
+      addCovered(covered, tagView(item.tags, opts.ctx.convert));
       return {
         items: list, covered, m, bare, total: state.total + score,
         picks: [...state.picks, { item, ...tag, tagScore: tag.score, score, gain: num ? gainParts(state.m, m) : null, fixed: fixedFlag }],
@@ -717,7 +732,7 @@
       const order = list.map((i) => [i, scoreItem(i, iw, {}, opts).score]).sort((a, b) => b[1] - a[1]).map((x) => x[0]);
       const cov = {};
       let t = 0;
-      for (const i of order) { t += scoreItem(i, iw, cov, opts).score; addCovered(cov, convertTags(i.tags, opts.ctx.convert)); }
+      for (const i of order) { t += scoreItem(i, iw, cov, opts).score; addCovered(cov, tagView(i.tags, opts.ctx.convert)); }
       return t;
     };
     const e0 = num ? evalM([]) : null, b0 = focus ? evalBare([]) : null;
@@ -976,7 +991,7 @@
     const iw = conceptWeights(w, ctx, concept);
     const off = offTypeFilter(champ, ctx, concept, items, fixed);
     const covered = {};
-    for (const it of fixed) addCovered(covered, convertTags(it.tags, ctx.convert));
+    for (const it of fixed) addCovered(covered, tagView(it.tags, ctx.convert));
     const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(sc, rules, champ), statOpts, mw: metricWeights(iw) } : null;
     let m0 = null;
     if (num) {
