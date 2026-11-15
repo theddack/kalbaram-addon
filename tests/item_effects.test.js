@@ -171,3 +171,9 @@ test("아이템 아군 버프(불타는 향로)는 아군을 돕는 챔피언만
   near(St.allyGain("allyAP", 40, 6), 0, 1e-12, "기준 아군(원딜)은 주문력 계수 0");
   assert.ok(A.autoDps > 0 && A.AS > 0);
 });
+
+test("받는 아군 공격력 비례 효과(밀리오 패시브)와 아군이 터뜨리는 표식(레나타 패시브)도 기준 아군으로", () => {
+  const row = (id, src) => St.evaluate(champ(id), 18, [], [], {}).m.effects.find((e) => e.src === src);
+  near(row("Milio", "패시브 타오르는 힘").ally, 0.15 * St.ALLY.AD * 100 / (100 + St.TARGET.MR), 1e-6, "아군 공격력 15% 마법 피해 1번");
+  near(row("Renata", "패시브 영향력").ally, 0.033 * St.TARGET.HP * 100 / (100 + St.TARGET.MR), 1e-6, "최대 체력 3.3% 마법 피해 1번");
+});

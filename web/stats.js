@@ -712,7 +712,8 @@
       // 아군 강화 (룰루 W 공격 속도·잔나 E 공격력 …, 불타는 향로 아군 몫): 기준 아군이 더 넣는 피해 → 지원. 아이템 몫은 아군을 돕는 챔피언만 (needsAlly)
       if (isAllyKind(e.kind)) {
         if (e.needsAlly && !(champ.features || []).includes("allysupport")) { row.value = 0; continue; }
-        row.ally = allyGain(e.kind, v, e.sec, e.hits, asCapOf) * ALLY_TARGETS;
+        // ofAllyAD: 받는 아군의 공격력 비례 (밀리오 패시브 '아군 공격력의 15%')
+        row.ally = allyGain(e.kind, v + (e.ofAllyAD || 0) * ALLY.AD, e.sec, e.hits, asCapOf) * ALLY_TARGETS;
         out.allyDmg += row.ally;
         continue;
       }
