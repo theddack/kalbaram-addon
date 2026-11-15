@@ -358,6 +358,33 @@ def official_items(champ_bin):
     return None
 
 
+def _positive(e):
+    """효과 수치가 0보다 큰가 (기본값·레벨 비례값(lvl)·계수 중 하나라도)"""
+    vals = list(e.get("base") or []) + list(e.get("lvl") or []) + [v for r in (e.get("ratios") or {}).values() for v in (r if isinstance(r, list) else [r])]
+    return any(isinstance(v, (int, float)) and v > 0 for v in vals)
+
+
+def ally_healshield_trait(c):
+    """아군을 돕는 챔피언의 회복·보호막 특성 = 지원 수치(회복·보호막·아군 강화)가 나오는 스킬·패시브 수 × 0.4 (최대 1).
+
+    다른 특성(champion_traits)과 같은 규칙. 예전엔 '아군' + '회복·보호막' 문장이 하나라도 있으면 1.0 으로 고정해서,
+    맨몸 지원 몫이 12%인 럭스와 83%인 소라카가 같은 값을 받았다 (v0.1.93 P3 E2, docs/v0.1.93_P3_분석.md).
+    세는 단위는 엔진(stats.js) 계산과 같다: 스킬은 칸(Q·W·E·R), 패시브는 하나, 규칙 효과(fightStats._effects)는 출처마다 하나.
+    tests/scale.test.js 가 엔진 계산(tools/exp_env.js healShieldTrait)과 같은지 본다."""
+    support = lambda e: (e.get("kind") in ("shield", "heal") and _positive(e)) or bool(e.get("ally")) or str(e.get("kind", "")).startswith("ally")
+    src = set()
+    for sp in c.get("spells") or []:
+        if any(support(e) for e in sp.get("effects") or []):
+            src.add(sp["slot"])
+    if any(support(e) for e in (c.get("passive") or {}).get("effects") or []):
+        src.add("P")
+    for e in ((c.get("fightStats") or {}).get("_effects") or []):
+        if support(e):
+            s = str(e.get("src") or "")
+            src.add("P" if s.startswith("패시브") else s)
+    return round(min(1.0, len(src) * 0.4), 2)
+
+
 def champion_traits(detail):
     """패시브 + 스킬 4개 설명에서 특성 태그와 피해 유형 비율을 뽑는다.
 
@@ -380,9 +407,8 @@ def champion_traits(detail):
             if re.search(pat, plain):
                 features.add(f)
     traits = {t: round(min(1.0, c * 0.4), 2) for t, c in counts.items()}
-    if ally_support:
-        traits["HEALSHIELD"] = 1.0
-    elif "HEALSHIELD" in traits:
+    # 아군을 돕는 챔피언의 회복·보호막 특성은 스킬 수치를 읽은 뒤 ally_healshield_trait 로 정한다 (v0.1.93 P3, 예전엔 1.0 고정)
+    if not ally_support and "HEALSHIELD" in traits:
         traits["HEALSHIELD"] = min(traits["HEALSHIELD"], 0.4)  # 자기 회복만 있으면 약하게
     if ally_support:
         features.add("allysupport")
@@ -1758,6 +1784,8 @@ def main():
             c["stacks"] = rc.get("stacks", 0)
             text = c["passive"]["desc"] + " ".join(sp["tooltip"] for sp in c["spells"])
             c["stackBasis"] = rule_basis(rc, c["stackStats"], text, stack_warn, c["name"])
+        if "allysupport" in c["features"]:  # 스킬·패시브·규칙 효과가 모두 붙은 뒤에 센다
+            c["traits"]["HEALSHIELD"] = ally_healshield_trait(c)
     out_champs.sort(key=lambda c: c["name"])
 
     # --- 아이콘

@@ -169,6 +169,31 @@ class ManaRestoreNotDamage(unittest.TestCase):
         self.assertFalse(C.skip_effect("magic", "maxmanadamage", "의 마법 피해"), "최대 마나 비례 피해는 피해")
 
 
+class AllyHealShieldTrait(unittest.TestCase):
+    """v0.1.93 P3 E2: 아군을 돕는 챔피언의 회복·보호막 특성 = 지원 수치가 나오는 스킬·패시브 수 × 0.4 (최대 1). 예전 1.0 고정 규칙은 없앴다"""
+    def test_count_rule(self):
+        import build_data as B
+        sp = lambda slot, *effects: {"slot": slot, "effects": list(effects)}
+        heal = {"kind": "heal", "base": [50, 100]}
+        zero = {"kind": "shield", "base": [0, 0]}
+        lv = {"kind": "heal", "base": [0], "lvl": [35, 100]}
+        one = {"spells": [sp("W", {"kind": "shield", "base": [90]}), sp("Q", {"kind": "magic", "base": [80]})], "passive": {"effects": []}}
+        self.assertEqual(B.ally_healshield_trait(one), 0.4, "보호막 스킬 하나")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", zero)], "passive": {"effects": []}}), 0, "수치 0 은 세지 않음")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", heal), sp("W", heal), sp("R", heal)], "passive": {"effects": [lv]}}), 1.0, "최대 1")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("W", {"kind": "magic", "base": [80], "ally": {"hits": 1}})], "passive": {"effects": [lv]}}), 0.8,
+                         "아군이 넣는 피해(ally) 와 레벨 비례 패시브")
+        rule = {"spells": [], "passive": {"effects": []}, "fightStats": {"_effects": [{"src": "W 변덕쟁이", "kind": "allyAS", "base": [0.3]}, {"src": "패시브 영향력", "kind": "allyOnhit", "base": [0]}]}}
+        self.assertEqual(B.ally_healshield_trait(rule), 0.8, "규칙 효과는 출처마다, 아군 강화 종류는 수치 없이도 셈")
+
+    def test_data_has_no_fixed_one(self):
+        d = json.loads((Path(__file__).resolve().parent.parent / "web" / "data.json").read_text(encoding="utf-8"))
+        lux = next(c for c in d["champions"] if c["id"] == "Lux")
+        soraka = next(c for c in d["champions"] if c["id"] == "Soraka")
+        self.assertEqual(lux["traits"]["HEALSHIELD"], 0.4)
+        self.assertEqual(soraka["traits"]["HEALSHIELD"], 1.0)
+
+
 class RemovedAugments(unittest.TestCase):
     def test_removed_carried_within_patch(self):
         prev = {"augments": [{"id": "A", "name": "가"}, {"id": "B", "name": "나", "rarityName": "프리즘"}], "removedAugs": []}

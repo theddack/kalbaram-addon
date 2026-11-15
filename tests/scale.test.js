@@ -36,14 +36,29 @@ test("화면 이유 문장(지표 증가율)도 같은 기준값: 잔나 균형 
   assert.ok(S.normOf(e0, c).combo === S.normOf(e0, c).support);
 });
 
-// 후속 회귀 대상 (P2로 안 풀림, docs/v0.1.93_P2_적용.md): 럭스·소나 몰빵에 증강과 무관한 불타는 향로가 들어가 증강 몫이 균형보다 줄어든다.
-// 원인 후보: 아군 강화를 지속시간 전부로 세는 P1 가정 2, allysupport → HEALSHIELD 1.0 태그 가중치 (P3).
-// 근거 없는 가중치·발동률로 숨기지 않는다. 고쳐지면 todo 를 떼서 일반 테스트로 바꾼다.
+// 럭스·소나 몰빵에 증강과 무관한 불타는 향로가 들어가 증강 몫이 균형보다 줄던 장면 (P1 뒤 생김, P2로 안 풀림, docs/v0.1.93_P2_적용.md).
+// P3 E2(회복·보호막 특성 1.0 고정 → 스킬 수 규칙)로 풀린 장면은 일반 테스트로 지킨다.
+// 남은 장면은 todo: 원인 후보는 아군 강화를 지속시간 전부로 세는 P1 가정 2와 Riot 역할 '서포터' 기본값 (P4 후속).
+// 근거 없는 가중치·발동률로 숨기지 않는다. 고쳐지면 todo 를 떼서 위로 옮긴다.
+const hasCenser = (id, augName) => {
+  const d = require(path.join(WEB, "data.json"));
+  const c = d.champions.find((x) => x.id === id), a = d.augments.find((x) => x.name === augName);
+  const pick = S.buildConcepts(d.items, S.profile(c, d.tags), [a], [], d.rules, c, {}, ["augment"])[0].pick.map((p) => p.item.name);
+  return [pick.includes("불타는 향로"), pick.join(", ")];
+};
 for (const [id, augName] of [["Lux", "징수의 총 업그레이드"], ["Sona", "묵직한 한 방"]]) {
-  test(`${id} + ${augName}: 몰빵에 불타는 향로가 없다`, { todo: "P1 가정 2·P3 에서 다룸" }, () => {
-    const d = require(path.join(WEB, "data.json"));
-    const c = d.champions.find((x) => x.id === id), a = d.augments.find((x) => x.name === augName);
-    const pick = S.buildConcepts(d.items, S.profile(c, d.tags), [a], [], d.rules, c, {}, ["augment"])[0].pick.map((p) => p.item.name);
-    assert.ok(!pick.includes("불타는 향로"), pick.join(", "));
-  });
+  test(`${id} + ${augName}: 몰빵에 불타는 향로가 없다 (P3 E2로 풀림)`, () => { const [has, list] = hasCenser(id, augName); assert.ok(!has, list); });
 }
+for (const [id, augName] of [["Lux", "묵직한 한 방"], ["Sona", "불사르기 업그레이드"], ["Sona", "징수의 총 업그레이드"]]) {
+  test(`${id} + ${augName}: 몰빵에 불타는 향로가 없다`, { todo: "P4: 아군 강화 지속시간 가정" }, () => { const [has, list] = hasCenser(id, augName); assert.ok(!has, list); });
+}
+
+// v0.1.93 P3 E2: 데이터의 회복·보호막 특성(build_data.py ally_healshield_trait)이 엔진 계산으로 센 값과 같다
+test("아군 지원 챔피언 회복·보호막 특성 = 지원 수치가 나오는 스킬·패시브 수 × 0.4 (데이터 = 엔진 계산)", () => {
+  const d = require(path.join(WEB, "data.json"));
+  const { healShieldTrait } = require("../tools/exp_env.js");
+  const ally = d.champions.filter((c) => c.spells && (c.features || []).includes("allysupport"));
+  assert.ok(ally.length > 30);
+  for (const c of ally) assert.equal(c.traits.HEALSHIELD || 0, healShieldTrait(Stats, c), c.id);
+  assert.ok(ally.some((c) => c.traits.HEALSHIELD < 1), "1.0 고정이 아님");
+});
