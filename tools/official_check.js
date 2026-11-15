@@ -6,6 +6,7 @@ const path = require("path");
 const WEB = path.join(__dirname, "..", "web");
 global.Stats = require(path.join(WEB, "stats.js"));
 const S = require(path.join(WEB, "scoring.js"));
+require("./exp_env")(S, global.Stats);  // 실험 설정 (tools/exp_env.js)
 
 function measure(d, withOfficial) {
   const rows = [];
