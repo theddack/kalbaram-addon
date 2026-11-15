@@ -548,6 +548,11 @@ def redact_eog(eog):
 EOG_DISPLAY_NUMS = {3176}
 
 
+def eog_aug_slots(stats):
+    """경기 결과에서 채워진 증강 칸 수 (표시용 번호도 한 칸을 쓴다). 칸은 6개가 끝이다"""
+    return sum(1 for i in range(1, 7) if stats.get(f"playerAugment{i}"))
+
+
 def eog_aug_names(stats, name_of_num, client_ids):
     """경기 결과 playerAugment1~6 → 고른 증강 이름 (고른 칸 순서). 이름 없는 표시용 증강(펜타킬 Generic)은 뺀다.
     모르는 번호가 남으면 None (판정하지 않는다). 2026-11-08 쉬바나·사미라 판: 3176 때문에 대조를 통째로 건너뛰었다"""
@@ -1754,7 +1759,7 @@ def main():
         names = eog_aug_names(st, name_of_num, lw.augment_ids())
         if names is None:  # 클라이언트 번호표에도 없는 번호 → 판정하지 않는다
             return
-        eog_result(rec.end_of_game(names))  # 판 기록이 아직 안 끝났으면 끝날 때 맞춘다
+        eog_result(rec.end_of_game(names, eog_aug_slots(st)))  # 판 기록이 아직 안 끝났으면 끝날 때 맞춘다
 
     lw.on_eog = on_eog
 

@@ -99,21 +99,24 @@ class GameRecorder:
         """판을 끝낸다. 경기 결과가 먼저 와 있었으면 맞춰 본 결과(tidy)를 돌려준다"""
         with self._lock:
             self._finish_locked()
-            names, self._eog = self._eog, None
-        return self.end_of_game(names) if names else None
+            saved, self._eog = self._eog, None
+        if not saved:
+            return None
+        names, slots = saved if isinstance(saved, tuple) else (saved, None)
+        return self.end_of_game(names, slots)
 
-    def end_of_game(self, eog_names):
+    def end_of_game(self, eog_names, slots=None):
         """경기 결과(고른 증강 정답)가 오면 방금 끝난 판과 맞춰 본다 (tidy). 돌려주는 값: tidy 결과 또는 None.
         경기 결과가 판 끝 처리보다 먼저 올 수 있다 (2026-10-18 세나 판: 결과 09:07:10, 판 끝 09:07:14 → 대조를 건너뛰었다).
         그때는 기억해 두고 finish() 에서 맞춘다"""
         with self._lock:
             if self.dir:
-                self._eog = list(eog_names)
+                self._eog = (list(eog_names), slots)
                 return None
             d, self.last_dir = self.last_dir, None
             if not d or time.time() - self.last_end > 30 * 60:
                 return None
-        return tidy(d, eog_names)
+        return tidy(d, eog_names, slots)
 
     # ---- 안쪽
     def _add(self, kind, data, force=False):
@@ -157,11 +160,18 @@ class GameRecorder:
             pass
 
 
-def tidy(game_dir, eog_names):
+EOG_SLOTS = 6  # 경기 결과의 증강 칸 수 (playerAugment1~6). 이보다 많이 고르면 결과에 다 남지 않는다
+
+
+def tidy(game_dir, eog_names, slots=None):
     """경기 결과 파일(고른 증강 정답)로 끝난 판을 정리한다.
     고른 증강이 모두 맞았으면 맞게 읽은 화면 그림(카드 이름 줄·알아본 상점)은 지운다. 한 판 그림이 6~7MB 라 15판이면 200MB 가까이 쌓였다.
     하나라도 틀리면 그림을 그대로 둔다 (틀린 판의 그림이 고칠 때 필요하다). 못 알아본 상점(shopmiss)·증강 칸 그림은 늘 남긴다.
-    eog_names: 경기 결과의 증강 이름 (고른 순서). 돌려주는 값: (맞았나, 지운 그림 수) 또는 기록이 없으면 None"""
+    eog_names: 경기 결과의 증강 이름 (고른 순서) · slots: 경기 결과에서 채워진 증강 칸 수 (EOG_SLOTS 개가 끝)
+    돌려주는 값: (맞았나, 지운 그림 수) 또는 기록이 없으면 None
+
+    '칸 모자람'(shortfall): 경기 결과 칸이 꽉 찼고, 기록에만 있는 증강이 있고, 경기 결과에만 있는 증강은 없는 경우.
+    2026-11-15 미스 포츈 판: 표시용 칸(펜타킬 3176)이 한 칸을 써서 실제로 고른 증강 하나가 결과에 안 남았다 → 감지 실패가 아니다"""
     game_dir = Path(game_dir)
     try:
         events = json.loads((game_dir / "events.json").read_text(encoding="utf-8"))
@@ -170,6 +180,9 @@ def tidy(game_dir, eog_names):
     picked = [e.get("picked") for e in events if e.get("kind") == "picked"]
     # 고른 순서는 보지 않는다: 펜타킬 판은 경기 결과에서 펜타킬 증강이 앞쪽 칸에 온다 (2026-11-08 쉬바나 판)
     match = bool(eog_names) and sorted(map(str, picked)) == sorted(map(str, eog_names))
+    only_log = [n for n in picked if n not in (eog_names or [])]
+    only_game = [n for n in (eog_names or []) if n not in picked]
+    shortfall = bool(not match and slots is not None and slots >= EOG_SLOTS and only_log and not only_game)
     removed = []
     if match:
         for p in sorted(game_dir.glob("card_*.png")) + sorted(game_dir.glob("shop_*.png")):
@@ -179,7 +192,8 @@ def tidy(game_dir, eog_names):
             except OSError:
                 pass
     events.append({"t": events[-1].get("t", 0) if events else 0, "kind": "eog", "augments": list(eog_names),
-                   "picked": picked, "match": match, "removed": len(removed)})
+                   "picked": picked, "match": match, "removed": len(removed),
+                   **({"shortfall": True, "slots": slots, "onlyInLog": only_log} if shortfall else {})})
     try:
         (game_dir / "events.json").write_text(json.dumps(events, ensure_ascii=False, indent=1, default=str), encoding="utf-8")
         with zipfile.ZipFile(str(game_dir) + ".zip", "w", zipfile.ZIP_DEFLATED) as z:

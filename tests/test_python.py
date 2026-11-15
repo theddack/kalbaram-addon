@@ -2409,6 +2409,50 @@ class GameLog(unittest.TestCase):
         rec.finish()
         self.assertEqual(gamelog.tidy(folder, ["헤비", "궁극의 히드라"]), (True, 0))
 
+    def test_tidy_marks_slot_shortfall(self):
+        """경기 결과 증강 칸은 6개가 끝이라, 7개를 고른 판은 기록이 맞아도 '다름'이 됐다 (2026-11-15 미스 포츈 판).
+        칸이 꽉 찼고 기록에만 있는 증강이 있으면 '칸 모자람'으로 나눈다 (그림은 '다름'과 똑같이 남긴다)"""
+        import gamelog
+        base = pathlib.Path(tempfile.mkdtemp())
+        rec = gamelog.GameRecorder(base)
+        rec.start("MissFortune")
+        for n in ("전부 다 무너뜨려", "헤비", "조준경 부착", "과충전", "환영 무기", "스래시"):
+            rec.event("picked", {"picked": n})
+        folder = rec.dir
+        (folder / "card_01.png").write_bytes(b"x")
+        rec.finish()
+        eog = ["헤비", "전부 다 무너뜨려", "조준경 부착", "과충전", "환영 무기"]  # 표시용 칸(3176)이 한 칸을 써서 5개만 남음
+        self.assertEqual(gamelog.tidy(folder, eog, slots=6), (False, 0))
+        ev = json.loads((folder / "events.json").read_text(encoding="utf-8"))
+        self.assertEqual(ev[-1]["kind"], "eog")
+        self.assertFalse(ev[-1]["match"])
+        self.assertTrue(ev[-1]["shortfall"], "칸 모자람")
+        self.assertEqual(ev[-1]["onlyInLog"], ["스래시"])
+        self.assertEqual(sorted(p.name for p in folder.glob("*.png")), ["card_01.png"], "그림은 남긴다")
+
+    def test_tidy_real_mismatch_is_not_shortfall(self):
+        """경기 결과에만 있는 증강이 있으면 칸이 꽉 찼어도 진짜 '다름'이다"""
+        import gamelog
+        base = pathlib.Path(tempfile.mkdtemp())
+        rec = gamelog.GameRecorder(base)
+        rec.start("Lux")
+        for n in ("취약", "도취"):
+            rec.event("picked", {"picked": n})
+        folder = rec.dir
+        rec.finish()
+        self.assertEqual(gamelog.tidy(folder, ["취약", "무한 반복"], slots=6), (False, 0))
+        ev = json.loads((folder / "events.json").read_text(encoding="utf-8"))
+        self.assertFalse(ev[-1].get("shortfall"), "경기 결과에만 있는 증강(무한 반복)이 있다")
+        # 칸이 남았는데 기록에만 있으면 그것도 진짜 다름 (감지 실패)
+        self.assertEqual(gamelog.tidy(folder, ["취약"], slots=3), (False, 0))
+        ev = json.loads((folder / "events.json").read_text(encoding="utf-8"))
+        self.assertFalse(ev[-1].get("shortfall"), "칸이 남아 있으면 칸 모자람이 아니다")
+
+    def test_eog_slots_counts_filled(self):
+        self.assertEqual(desktop.eog_aug_slots({"playerAugment%d" % i: v for i, v in enumerate([3176, 3170, 3116, 1170, 2123, 1029], 1)}), 6)
+        self.assertEqual(desktop.eog_aug_slots({"playerAugment1": 1390, "playerAugment2": 0}), 1)
+        self.assertEqual(desktop.eog_aug_slots({}), 0)
+
     def test_eog_names_skip_pentakill_display_augment(self):
         # 2026-11-08 쉬바나·사미라 판: 경기 결과 첫 칸이 3176 (GoH_PentakillAug_Generic, 이름 없는 펜타킬 표시용) →
         # 모르는 번호라 대조를 통째로 건너뛰어 'eog' 기록이 빠졌다
