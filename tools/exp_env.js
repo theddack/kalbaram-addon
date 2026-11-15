@@ -8,8 +8,18 @@
 //   SKILL_SHARE=0.5        스킬 적중 빈도 비율 (기본 0.3)
 //   NORM=own               지표마다 자기 맨몸 값으로 나눔 (v0.1.92까지 = 기준선 A). 기본은 sharedAlly (v0.1.93 P2) · shared 는 모든 챔피언에 같은 분모
 //   TAG_DEDUP=effect       수치로 이미 계산되는 효과 태그(tools/tag_overlap.js '계산됨')를 아이템 태그 점수에서 뺌 (기본은 그대로)
+//   TAG_DEDUP=unique       TAG_DEDUP=effect 에서 기본 능력치로 계산되는 효과 태그(관통·가속·흡혈 = 능력치 선호)는 남기고, 고유 효과로 계산되는 태그만 뺌 (v0.1.93 P3)
+//   HS_TRAIT=computed      아군 지원 챔피언의 회복·보호막 특성(HEALSHIELD)을 '1.0 고정' 대신 다른 특성과 같은 규칙(지원 수치가 나오는 스킬 수 × 0.4, 최대 1)으로 (v0.1.93 P3 실험)
 // 쓰는 법: const label = require("./exp_env")(S, Stats);  → 건 설정을 글로 돌려준다 (없으면 "")
-module.exports = function apply(S, Stats, env = process.env) {
+// 지원 수치(회복·보호막·아군 강화)가 나오는 스킬 수 × 0.4 (최대 1) = build_data.py champion_traits 의 다른 특성과 같은 규칙.
+// 패시브·스킬마다 하나로 센다 (18레벨 맨몸 계산에서 값이 0보다 큰 것)
+function healShieldTrait(Stats, c) {
+  const m = Stats.evaluate(c, 18, [], [], {}).m, src = new Set();
+  for (const s of m.spells || []) if ((s.shield || 0) + (s.heal || 0) + (s.ally || 0) > 0) src.add(s.slot);
+  for (const r of m.effects || []) if (((r.kind === "shield" || r.kind === "heal") && (r.value || 0) > 0) || (r.ally || 0) > 0) src.add(r.slot || (String(r.src || "").startsWith("패시브") ? "P" : r.src));
+  return Math.min(1, Math.round(src.size * 0.4 * 100) / 100);
+}
+const apply = function apply(S, Stats, env = process.env) {
   const parts = [];
   const num = (k) => (env[k] != null && env[k] !== "" ? +env[k] : null);
   const oa = env.AUG_OFFICIAL === "0" ? 0 : env.AUG_OFFICIAL === "1" ? 1 : num("OFFICIAL_AUG"), ob = num("OFFICIAL_BAL");
@@ -26,18 +36,30 @@ module.exports = function apply(S, Stats, env = process.env) {
   if (num("SKILL_SHARE") != null) { exp.skillShare = num("SKILL_SHARE"); parts.push(`스킬 적중 ${exp.skillShare}`); }
   if (Object.keys(exp).length) { Stats.setExperiment(exp); S.clearMemo(); }
   if (env.NORM && env.NORM !== "sharedAlly") { S.setNormMode(env.NORM); parts.push(`기준값 ${env.NORM}`); }
-  if (env.TAG_DEDUP === "effect") {
+  if (env.HS_TRAIT === "computed") {
+    const path = require("path");
+    const d = JSON.parse(require("fs").readFileSync(path.join(__dirname, "..", "web", "data.json"), "utf8"));
+    const map = {};
+    for (const c of d.champions.filter((x) => x.spells && (x.features || []).includes("allysupport"))) {
+      map[c.id] = { ...(c.traits || {}), HEALSHIELD: healShieldTrait(Stats, c) };
+    }
+    S.setTraitOverride(map);
+    parts.push("HEALSHIELD 특성 = 지원 스킬 수 × 0.4");
+  }
+  if (env.TAG_DEDUP === "effect" || env.TAG_DEDUP === "unique") {
     const path = require("path");
     const d = JSON.parse(require("fs").readFileSync(path.join(__dirname, "..", "web", "data.json"), "utf8"));
     const rows = require("./tag_overlap.js").audit(d);
     const skip = {};
     for (const r of rows) {
       const it = d.items.find((i) => i.name === r.name);
-      const set = new Set(Object.entries(r.tags).filter(([, v]) => v.type === "효과" && v.computed).map(([t]) => t));
+      const set = new Set(Object.entries(r.tags).filter(([, v]) => v.type === "효과" && v.computed && (env.TAG_DEDUP === "effect" || v.how !== "능력치")).map(([t]) => t));
       if (it && set.size) skip[it.id] = set;
     }
     S.setTagSkip(skip);
-    parts.push("계산되는 효과 태그 뺌");
+    parts.push(env.TAG_DEDUP === "unique" ? "고유 효과로 계산되는 태그 뺌" : "계산되는 효과 태그 뺌");
   }
   return parts.join(" · ");
 };
+module.exports = apply;
+module.exports.healShieldTrait = healShieldTrait;

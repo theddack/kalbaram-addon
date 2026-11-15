@@ -120,7 +120,7 @@
     // 공격 속도가 고정인 챔피언(진): 추가 공격 속도는 공격력으로 조금(1%당 0.3%)만 바뀌고 공격 횟수는 늘지 않는다
     // → 공격 속도·적중 시 효과 비중을 낮추고 물리 관통을 올린다 (2026-10-18 진 판: 판 내내 윤 탈·루난·유령 무희를 권했다)
     if (champ.asFixed) { w.AS *= 0.3; w.ONHIT *= 0.3; w.LETHAL = Math.max(w.LETHAL, 0.7); }
-    for (const [t, v] of Object.entries(champ.traits || {})) if (t in w) w[t] += TRAIT_BOOST * v;
+    for (const [t, v] of Object.entries((TRAIT_OVERRIDE && TRAIT_OVERRIDE[champ.id]) || champ.traits || {})) if (t in w) w[t] += TRAIT_BOOST * v;
     if (champ.partype !== "마나") w.MANA = 0;
     for (const t of tags) w[t] = Math.min(1.5, round(w[t]));
     return w;
@@ -435,6 +435,9 @@
   // 실험 설정 (2026-11-15 태그·수치 중복 점검, tools/tag_overlap.js): {아이템 id: Set(태그)} 를 주면 그 태그는 태그 점수에서 뺀다.
   // 기본 null = 지금 그대로. 화면은 바꾸지 않는다 (tools 에서만 setTagSkip)
   let TAG_SKIP = null;
+  // 챔피언 특성(traits) 바꿔 끼우기 {챔피언 id: traits}. 기본 null = 데이터 그대로. 실험용 (tools/exp_env.js HS_TRAIT, v0.1.93 P3)
+  let TRAIT_OVERRIDE = null;
+  const setTraitOverride = (m) => { TRAIT_OVERRIDE = m || null; clearMemo(); };
   const setTagSkip = (m) => { TAG_SKIP = m || null; clearMemo(); };
   const setNormMode = (m) => { NORM_MODE = m || "sharedAlly"; clearMemo(); };  // 실험·비교용 (tools 에서만, NORM=own 이면 기준선 A)
   function scoreItem(item, iw, covered, opts = {}) {
@@ -1249,7 +1252,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, setNormMode, normOf, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, setTraitOverride, setNormMode, normOf, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;
