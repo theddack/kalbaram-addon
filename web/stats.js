@@ -402,7 +402,7 @@
 
   function spellTotals(effects, rank, L, t) {
     const { uniq, groups: planGroups, kinds, crit } = spellPlan(effects);
-    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}) }));
+    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.ally ? { ally: e.ally } : {}) }));
     const groups = new Map();
     for (const [k, idx] of planGroups) groups.set(k, idx.map((i) => vals[i]));
     const isCritV = new Map(vals.map((v, i) => [v, crit[i]]));
@@ -447,6 +447,12 @@
   // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
   // 추가 체력(BONUS_HP): 같은 173명 균형 빌드의 18레벨 추가 체력 중앙값 (tools/target_median.js). 상대 추가 체력 비례 효과(도미닉 경의 인사)에 쓴다
   const TARGET = { ARMOR: 113, MR: 63, HP: 3148, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600 };
+  // 기준 아군 (v0.1.93 P1 아군 지원): 아군 공격 속도·공격력·적중 시 피해·피해량 강화를 '아군이 더 넣는 피해'로 바꿀 때 쓴다.
+  // 원거리 딜러(첫 역할 Marksman, 원거리) 29명의 18레벨 균형 빌드(증강 없음) 지표 중앙값 (tools/ally_model.js, 기준 상대 TARGET 과 같은 방식).
+  // 원딜은 주문력 계수가 거의 없어 아군 주문력 버프(흐르는 물의 지팡이)는 기준 아군에선 0 이다 (메이지 아군이면 커짐, 미반영)
+  const ALLY = { autoDps: 891, skillDps: 86, AS: 2.04, asRatio: 0.656, AD: 324, HASTE: 10 };
+  // 아군 강화를 받는 아군 수: 회복·보호막을 아군 한 명에게 주는 지금 기준과 같다. 여러 아군에게 주는 효과도 1명 (근거 자료 없음, 미검증)
+  const ALLY_TARGETS = 1;
   // 골드 → 능력치: 위키 '골드 효율' 기준 가치 (공격력 35, 주문력 20, 체력 2.67, 방어력·마법 저항력 20골드)
   // 골드의 50%는 주 공격 능력치, 30% 체력, 20% 방어력·마법 저항력 반반으로 산다고 본다
   const GOLD_VALUE = { AD: 35, AP: 20, HP: 2.67, ARMOR: 20, MR: 20 };
@@ -486,6 +492,10 @@
       why: "위키 'ARAM: Mayhem' 모드 변경 사항이에요. 실제 경기 기록(베인·미스 포츈) 체력·공격력과 맞춰 봤어요." },
     { what: "레벨당 공격력은 위키 값", src: "data", why: "라이엇 Data Dragon(16.20)이 173명 모두 0으로 주고 있어요. 실제 경기 기록과 위키 값이 맞았어요." },
     { what: "상대 현재 체력 70% (잃은 체력 30%)", src: "assume", why: "한타가 한창일 때를 기준으로 했어요. 현재·잃은 체력 비례 피해와, 체력이 낮을 때만 커지는 효과(그림자불꽃: 40% 아래)에 쓰여요. 체력 조건 효과는 상대 체력이 100%에서 40%로 고르게 줄어든다고 봐서(평균 70%) 그림자불꽃은 기본 계산에서 발동하지 않아요. 상대를 끝까지 잡는 판이 많으면 더 커져요 (실게임 검증 필요)." },
+    { what: "기준 아군: 평타 초당 피해 891 · 공격 속도 2.04 · 공격력 324 · 스킬 초당 피해 86", src: "data",
+      why: "원거리 딜러 29명이 18레벨에 균형 빌드를 갖췄을 때의 중앙값이에요. 서포터가 주는 아군 공격 속도·공격력·추가 피해를 '이 아군이 더 넣는 피해'로 바꿀 때 써요." },
+    { what: "아군 강화: 서포터 기술 1번에 1번, 아군 1명, 더 넣는 피해 1 = 지원 1", src: "assume",
+      why: "회복·보호막을 세는 기준과 맞췄어요. 한타는 양쪽 체력 차이로 갈려서 적 체력 1을 더 깎는 것과 아군 체력 1을 지키는 것을 같게 봤어요. 여러 아군이 받거나 메이지 아군이면 더 커요 (실게임 검증 필요)." },
     { what: "받는 피해 초당 600", src: "assume", why: "무적·피해 감소 시간을 '버티는 힘'으로 바꿀 때만 써요. 18레벨 한타에서 집중을 받을 때 정도로 잡았어요." },
     { what: "콤보 = Q·W·E·R 각 1번, 4초", src: "assume", why: "스킬 4개를 한 번씩 쓰는 데 걸리는 시간이에요. 재사용 대기시간이 있는 효과는 4초 안에 발동하는 횟수만 세요." },
     { what: "초당 피해에 스킬 피해는 30%만 (스킬을 써야 터지는 증강·아이템 효과도 같이)", src: "assume", why: "스킬을 재사용 대기시간마다 계속 맞히는 일은 드물어서, 다 넣으면 너무 커져요. 스킬에 딸린 효과(주문 검·붐 앤 베이스 등)도 그 스킬을 써야 나오니 같은 비율이에요." },
@@ -516,9 +526,23 @@
     const end = Math.max(0, 2 * TARGET.CUR - 1);
     return Math.max(0, Math.min(1, (at - end) / (1 - end)));
   }
+  // 아군 강화 → 기준 아군(ALLY)이 지속시간 동안 더 넣는 피해. 서포터 기술 1번에 1번 (회복·보호막을 콤보 1번에 1번 세는 것과 같음).
+  // 아군이 더 넣는 피해 1 = 지원 1 (체력 단위)로 본다: 한타는 양쪽 체력 차이로 갈려서 적 체력 1을 더 깎는 것과 아군 체력 1을 지키는 것을 같게 (가정, 미검증)
+  //   allyAS 공격 속도 비율 · allyAD 공격력 · allyOnhit 적중 시 마법 피해(한 번) · allyHaste 스킬 가속 · allyAmp 피해량 비율 · allyAP 주문력(기준 아군 0)
+  function allyGain(kind, amt, sec, hits, cap = AS_CAP) {
+    const s = Math.min(sec || COMBO_WINDOW, AUTO_FIGHT_SEC);
+    if (kind === "allyAS") return ALLY.autoDps * (Math.min(cap, ALLY.AS + ALLY.asRatio * amt) / ALLY.AS - 1) * s;
+    if (kind === "allyAD") return ALLY.autoDps * amt / ALLY.AD * s;
+    if (kind === "allyOnhit") return amt * 100 / (100 + TARGET.MR) * Math.min(hits || Infinity, ALLY.AS * s);
+    if (kind === "allyHaste") return ALLY.skillDps * amt / (100 + ALLY.HASTE) * s;
+    if (kind === "allyAmp") return (ALLY.autoDps + ALLY.skillDps) * amt * s;
+    return 0;
+  }
+  const isAllyKind = (k) => typeof k === "string" && k.startsWith("ally");
   function metrics(champ, L, stats, opts = {}) {
     const { total: t, flags, aram } = stats;
     const cv = stats.conv || {};
+    const asCapOf = (champ.modeStats || {}).asCap || AS_CAP;  // 기준 아군도 같은 모드의 공격 속도 상한
     // 상대 추가 체력 비례 피해 증가 (도미닉 경의 인사 '거인 학살자': 추가 체력 1500에서 최대 15%) → 기준 상대 추가 체력으로
     const bonusHpAmp = cv.tgtBonusHpAmp ? cv.tgtBonusHpAmp * Math.min(1, TARGET.BONUS_HP / (cv.tgtBonusHpAt || 1500)) : 0;
     const dealt = (aram.dmg_dealt || 1) * (1 + flags.dmgDealtMult) * (1 + bonusHpAmp);
@@ -531,7 +555,7 @@
     const magMit = mitigation(TARGET.MR * (1 - Math.min(0.9, cv.mrShred || 0)), t.MPENP, t.MPEN) * (1 + (cv.magicDmgMult || 0) + lowAmp);
     const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
     const ranks = ranksAt(L, champ.spells);
-    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0 };
+    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0 };
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
     // 쿨의 f% 를 확률 p 로 돌려받음 → 남는 쿨 비율 (1 - pf). 여럿이면 곱한다 → 가속 100 × (1/Π(1-pf) - 1)
@@ -594,12 +618,14 @@
       const cd = !cdBase ? cdNormal : (ohwK || cobalt) ? eMult / Math.max(eRateMult, 1e-9) : cdNormal;
       if (!disabled && cdBase > 0) out.boundCastRate += eCobaltRate * weave;
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
-      let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0;
+      let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0, ally = 0;
       // 보석 건틀릿: 스킬도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값
       // 보석 팔찌(26.21): 궁극기만 치명타 (ultCritDmg)
       const critMul = cv.skillCritDmg || (sp.slot === "R" && cv.ultCritDmg) || 0;
       const skillCrit = critMul ? 1 + Math.min(1, t.CRIT) * (critMul + (t.CRITDMG - BASE_CRIT_DMG) - 1) : 1;
       for (const v of vals) {
+        // 아군이 넣는 추가 피해 (나미 E·소나 Q 멜로디·아이번 W, rules champions allyDealt): 서포터 자기 피해가 아니라 기준 아군의 적중 피해로
+        if (v.ally) { const g = allyGain("allyOnhit", v.value, v.ally.sec, v.ally.hits, asCapOf) * ALLY_TARGETS; out.allyDmg += g; ally += g; continue; }
         if (v.onhit && DMG_KINDS.includes(v.kind)) {
           // 스킬의 '기본 지속 효과' 적중 시 피해: 기본 공격마다 (초당 피해의 평타 쪽). 스킬 피해 증폭은 안 받는다
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
@@ -614,7 +640,7 @@
         } else if (v.kind === "shield") shield += v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0)) * (1 + (flags.slotHeal[sp.slot] || 0));
         else if (v.kind === "heal") heal += v.value * (aram.healing || 1) * (1 + t.HSP) * (1 + (flags.slotHeal[sp.slot] || 0));
       }
-      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit });
+      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit, ...(ally ? { ally } : {}) });
       out.spellOnhit += onhit;
       out.combo += dmg;
       out.comboRaw += raw;
@@ -683,6 +709,13 @@
       };
       const row = { src: e.src || "", kind: e.kind, value: v, trigger: tr.type, ...(critAlt ? { critAlt: true, full: critAlt.full, share: critAlt.share } : {}) };
       out.effects.push(row);
+      // 아군 강화 (룰루 W 공격 속도·잔나 E 공격력 …, 불타는 향로 아군 몫): 기준 아군이 더 넣는 피해 → 지원. 아이템 몫은 아군을 돕는 챔피언만 (needsAlly)
+      if (isAllyKind(e.kind)) {
+        if (e.needsAlly && !(champ.features || []).includes("allysupport")) { row.value = 0; continue; }
+        row.ally = allyGain(e.kind, v, e.sec, e.hits, asCapOf) * ALLY_TARGETS;
+        out.allyDmg += row.ally;
+        continue;
+      }
       if (e.kind === "shield" || e.kind === "heal") {
         const k = e.kind === "shield" ? (aram.shielding || 1) : (aram.healing || 1);
         const amt = v * k * (1 + t.HSP) * (tr.type === "cast" ? comboTimes(casts) : 1);
@@ -754,7 +787,7 @@
     out.control = control;
     // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 스킬 피해와 스킬에 딸린 효과는 SKILL_DPS_SHARE 만
     out.dps = out.autoDps * EXP.autoUptime + EXP.skillShare * out.skillDps + (out.augDps - out.castDps - out.atkDps) + out.atkDps * EXP.autoUptime + out.castDpsUsed;
-    out.support = out.shield + out.heal;
+    out.support = out.shield + out.heal + out.allyDmg;
     // 서포터 아이템: 아군을 돕는 챔피언(allysupport)이면 그 도움을 다른 아군에게 더 준다 (rules.json items).
     // 월석 재생기 연쇄(회복 30%·보호막 35%), 헬리아의 메아리(감소 전 피해 30% 충전 → 아군 회복, 최대 80~250).
     // 예전엔 수치로 안 잡혀 서포터 1위가 리치베인 같은 피해 아이템이었다 (2026-10-20 공식 추천 차이 분석)
@@ -778,7 +811,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt };
+  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);

@@ -512,11 +512,12 @@ function enemyThreats() {
   return { lines, shield, as };
 }
 const fmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("ko-KR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "고정 피해", shield: "보호막", heal: "회복" };
+const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "고정 피해", shield: "보호막", heal: "회복",
+  allyAS: "아군 공격 속도", allyAD: "아군 공격력", allyOnhit: "아군 적중 피해", allyHaste: "아군 스킬 가속", allyAP: "아군 주문력", allyAmp: "아군 피해량" };
 const TRIGGER_LABEL = { cast: "스킬마다", boundCast: "지정 스킬 + 기본 공격", onhit: "기본 공격마다", onattack: "기본 공격마다 (치명타 적용)", attacks: "기본 공격 N회마다", time: "주기적", once: "1회" };
 // 처음 하는 사람도 알 수 있게 쉬운 말로 (정확한 용어는 마우스를 올리면 보임)
-const METRIC_LABEL = { combo: "스킬 한 바퀴 피해", dps: "초당 피해", ehp: "버티는 힘", support: "회복·보호막", mobility: "기동성", control: "제어력" };
-const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력", support: "회복·보호막", mobility: "평균 이동 속도", control: "콤보당 CC 시간(둔화 30%)" };
+const METRIC_LABEL = { combo: "스킬 한 바퀴 피해", dps: "초당 피해", ehp: "버티는 힘", support: "아군 지원", mobility: "기동성", control: "제어력" };
+const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력", support: "회복·보호막 + 아군 강화(기준 아군이 더 넣는 피해)", mobility: "평균 이동 속도", control: "콤보당 CC 시간(둔화 30%)" };
 // 받침 따라 조사 고르기 (이/가, 을/를, 와/과)
 function josa(word, withBatchim, without) {
   const c = String(word).trim().slice(-1).charCodeAt(0);
@@ -761,14 +762,14 @@ function renderStatsNow() {
     + (Object.keys(state.anvil || {}).length && liveOn ? `<tr><td colspan="6" class="muted small">🔨 모루 능력치 (게임 실제 값으로 맞춤, 증강 칸에 들어 있어요): ${Object.entries(state.anvil).filter(([, v]) => v).map(([k, v]) => `${esc((St.ROWS.find((r) => r[0] === k) || [k, k])[1])} +${fmt(v)}`).join(" · ")}</td></tr>` : "")
     + (c.stackNow != null ? `<tr><td colspan="6" class="muted small">${esc(c.name)}의 쌓는 능력치는 게임 실제 값으로 지금 쌓인 만큼 맞췄어요 (게임 중반 평균의 ${fmt(c.stackNow * 100)}%). 추천 점수는 평균 그대로예요.</td></tr>` : "");
   const effRows = m.effects.map((e) => `<tr><td>${esc(e.src)}</td><td><span class="chip k-${esc(e.kind)}">${esc(KIND_LABEL[e.kind] || e.kind)}</span></td>
-      <td>${fmt(e.value)}</td><td>${e.hit != null ? fmt(e.hit) : "-"}</td><td class="muted">${esc(TRIGGER_LABEL[e.trigger] || e.trigger)}</td></tr>`).join("");
+      <td>${fmt(e.value)}</td><td>${e.ally != null ? `아군 +${fmt(e.ally)}` : e.hit != null ? fmt(e.hit) : "-"}</td><td class="muted">${esc(TRIGGER_LABEL[e.trigger] || e.trigger)}</td></tr>`).join("");
   $("#skills").innerHTML = (effRows ? `<table class="eff-table"><tr><th>패시브·아이템·증강 효과</th><th>종류</th><th>1회</th><th>방어 적용</th><th>발동</th></tr>${effRows}</table>
       <p class="muted small">콤보에는 4초 동안 발동 횟수만큼(쿨다운·기본 공격 횟수 제한) 들어가고, DPS에는 초당 발동 횟수로 들어가요.
       상대 체력 비례 피해는 상대 최대 체력 ${St.TARGET.HP}, 현재 체력 ${St.TARGET.CUR * 100}% 기준이에요.</p>` : "")
     + `<div class="skill"><b>패시브 · ${esc(c.passive.name)}</b><div class="desc">${c.passive.desc}</div></div>`
     + c.spells.map((sp, i) => {
       const ms = m.spells[i];
-      const vals = ms.values.map((v) => `<span class="chip k-${esc(v.kind)}">${esc(KIND_LABEL[v.kind] || v.kind)} ${fmt(v.value)}</span>`).join("");
+      const vals = ms.values.map((v) => `<span class="chip k-${esc(v.kind)}">${v.ally ? "아군 " : ""}${esc(KIND_LABEL[v.kind] || v.kind)} ${fmt(v.value)}</span>`).join("");
       return `<div class="skill ${ms.disabled ? "off" : ""}"><b>${esc(sp.slot)} · ${esc(sp.name)}</b>
         <span class="muted small">랭크 ${ms.rank}/${sp.ranks} · 재사용 ${fmt(ms.cd, 1)}초</span>
         ${ms.disabled ? `<span class="chip bad">${ms.rank === 0 ? "아직 안 배움" : "궁극기 봉인"}</span>` : ""}

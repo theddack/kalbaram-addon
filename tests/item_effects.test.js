@@ -139,3 +139,35 @@ test("마나 회복 수치는 피해가 아니다 (유미 E manarestore)", () =>
   const e = champ("Yuumi").spells.find((s) => s.slot === "E").effects;
   assert.ok(!e.some((x) => /mana(restore|refund)/i.test(x.name) && ["magic", "physical", "true", "adaptive"].includes(x.kind)), JSON.stringify(e.map((x) => x.name)));
 });
+
+// v0.1.93 P1 아군 지원: 아군 강화 → 기준 아군(stats.js ALLY)이 지속시간 동안 더 넣는 피해 = 지원
+test("아군 강화는 기준 아군이 더 넣는 피해로 지원에 들어간다 (룰루 W 공격 속도·잔나 E 공격력)", () => {
+  const A = St.ALLY, m = (id, l = []) => St.evaluate(champ(id), 18, l, [], {}).m;
+  const lulu = m("Lulu").effects.find((e) => e.src === "W 변덕쟁이");
+  const as2 = A.AS + A.asRatio * 0.3;
+  near(lulu.ally, A.autoDps * (as2 / A.AS - 1) * 4, 1e-6, "룰루 W: 공격 속도 30% 4초");
+  const janna = m("Janna").effects.find((e) => e.src === "E 폭풍의 눈");
+  near(janna.ally, A.autoDps * 30 / A.AD * 4, 1e-6, "잔나 E: 공격력 30 4초 (주문력 0)");
+  const jAp = m("Janna", [item("라바돈의 죽음모자")]).effects.find((e) => e.src === "E 폭풍의 눈");
+  assert.ok(jAp.ally > janna.ally, "주문력 10% 계수");
+  assert.ok(m("Lulu").support - m("Lulu").shield - m("Lulu").heal >= lulu.ally - 1e-9, "지원 지표에 더해짐");
+});
+
+test("아군이 넣는 추가 피해(나미 E)는 서포터 자기 콤보에서 빠지고 기준 아군의 적중 3번으로 옮겨진다 (두 번 세지 않음)", () => {
+  const c = champ("Nami"), e = c.spells.find((s) => s.slot === "E").effects.find((x) => x.name === "totaldamage");
+  assert.deepEqual(e.ally, { hits: 3, sec: 6 });
+  const m = St.evaluate(c, 18, [], [], {}).m, sp = m.spells.find((s) => s.slot === "E");
+  near(sp.dmg, 0, 1e-9, "나미 E 자기 피해 0");
+  near(sp.ally, 80 * 100 / (100 + St.TARGET.MR) * 3, 1e-6, "80 마법 피해 × 3번 (기준 상대 마법 저항력)");
+});
+
+test("아이템 아군 버프(불타는 향로)는 아군을 돕는 챔피언만, 기준 아군 몫이 지원에 들어간다", () => {
+  const it = item("불타는 향로");
+  const gain = (id) => St.evaluate(champ(id), 18, [it], [], {}).m.allyDmg - St.evaluate(champ(id), 18, [], [], {}).m.allyDmg;
+  assert.ok(gain("Soraka") > 0, "소라카 (아군 지원)");
+  near(gain("Garen"), 0, 1e-9, "가렌 (아군 지원 아님)");
+  const A = St.ALLY;
+  near(gain("Soraka"), St.allyGain("allyAS", 0.25, 6, null, 5) + St.allyGain("allyOnhit", 20, 6, null, 5), 1e-6, "공격 속도 25% + 적중 20, 6초");
+  near(St.allyGain("allyAP", 40, 6), 0, 1e-12, "기준 아군(원딜)은 주문력 계수 0");
+  assert.ok(A.autoDps > 0 && A.AS > 0);
+});
