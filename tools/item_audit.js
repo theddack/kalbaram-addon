@@ -25,9 +25,9 @@ const STAT_LABEL = {
 // 고유 효과 문장에서 효과 종류 찾기
 const KIND_WORDS = [
   ["dmg", /피해를 입|추가 (물리|마법|고정) 피해|피해를 줍|피해가 증가|피해량이 .*증가|입히는 피해|폭발/],
-  ["heal", /회복/], ["shield", /보호막|피해를 흡수/], ["defense", /받는 피해|피해량 감소|방어력|마법 저항력|체력이 증가|최대 체력/],
+  ["heal", /회복/], ["shield", /보호막|피해를 흡수/], ["defense", /받는 피해|피해량 감소|방어력|마법 저항력|체력이 증가|최대 체력|공격 속도를 [\d.]+%만큼 감소/],
   ["ms", /이동 속도/], ["haste", /스킬 가속|재사용 대기시간/], ["cc", /둔화|기절|속박|경직|공중에|정화|무적|경직/],
-  ["stat", /공격력|주문력|공격 속도|치명타/], ["ally", /아군/],
+  ["stat", /공격력|주문력|공격 속도(?!를 [\d.]+%만큼 감소)|치명타/], ["ally", /아군/],
 ];
 const COND = /이하|미만|이상일|처치|중첩|전투 중|최대|\d+초 동안|일정 시간|매초/;
 // 규칙(rules items stats) 키 → 효과 종류
@@ -37,6 +37,8 @@ const RULE_KIND = {
   allyHealMult: "heal", allyShieldMult: "shield", dmgToAllyHeal: "heal", allyHealCap: "heal", allyActiveHeal: "heal", allyActiveShield: "shield",
   allyBuffAP: "ally", allyBuffHaste: "ally", allyBuffAS: "ally", MS: "ms", MSP: "ms", MR: "defense", CRIT: "stat", AS: "stat",
   ultHasteAdd: "haste", basicHaste: "haste", onhitRemainingPct: "haste", controlPerCast: "cc", rampAS: "stat", rampMax: "stat", onhitRepeat: "dmg",
+  magicDmgMult: "dmg", lowHpMagicTrueAmp: "dmg", lowHpAt: "dmg", trueDmgMult: "dmg", physDmgMult: "dmg", tgtBonusHpAmp: "dmg", tgtBonusHpAt: "dmg", mrShred: "defense", bonusHPtoAD: "stat",
+  MP5PtoHSP: "heal", MP5PtoAP: "stat", selfHealMult: "heal", HP: "defense", MANA: "stat", AP: "stat",
 };
 const strip = (h) => (h || "").replace(/<br\s*\/?>/g, "\n").replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'");
 
