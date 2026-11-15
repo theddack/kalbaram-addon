@@ -12,7 +12,7 @@ global.Stats = global.Stats || require(path.join(ROOT, "web", "stats.js"));
 const S = require(path.join(ROOT, "web", "scoring.js"));
 require("./exp_env")(S, global.Stats);
 
-const FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };  // scoring.METRIC_FLOOR
+const FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };  // 지표 이름 목록용 (기준값은 S.normOf)
 const REFS = ["Jinx", "Garen", "Lux", "Leona", "Zed", "Nami"];  // 원딜·전사·메이지·탱커·암살자·서포터
 // 설명 능력치 이름 → 계산 키 (비율은 % 로 적힘). 계산에 안 쓰는 능력치는 null
 const STAT_LABEL = {
@@ -118,7 +118,7 @@ function contribution(d, it) {
     const w = S.profile(c, d.tags);
     const mw = S.conceptMetricWeights(w, [], d.rules, c, null, {});
     const e0 = Stats.evaluate(c, 18, [], [], {}).m;
-    const norm = Object.fromEntries(Object.keys(FLOOR).map((k) => [k, Math.max(e0[k] || 0, FLOOR[k])]));
+    const norm = S.normOf(e0, c);  // 엔진과 같은 기준값 (v0.1.93 P2)
     const val = (m) => Object.keys(mw).reduce((v, k) => v + mw[k] * (m[k] || 0) / norm[k], 0);
     const v0 = val(e0), vb = val(Stats.evaluate(c, 18, [bare], [], {}).m), vf = val(Stats.evaluate(c, 18, [it], [], {}).m);
     res[cid] = { base: +((vb - v0) * 100).toFixed(1), unique: +((vf - vb) * 100).toFixed(1) };

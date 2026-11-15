@@ -63,11 +63,13 @@
   const AUG_GAIN_MIN = 0.02;  // 증강 몰빵이 균형보다 증강 몫(맨몸 대비 %p)을 이만큼은 늘려야 다른 빌드로 (tools/augment_fit.js NONE 과 같음)  // 계산(계수·발동·변환)으로만 찾은 입력 능력치의 lift 세기 = 설명 키워드 태그 세기 (build_data tag_text)
   const TAG_K = 0.4;
   const METRIC_FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };
-  // 지표 기준값: 맨몸 지표(최소 METRIC_FLOOR). 지표 상대 증가율의 분모. 모든 기준값 계산은 이 함수 하나로 (v0.1.93 P2 실험을 한 곳에서 바꾸려고)
-  //   NORM_MODE "own"(기본) 지표마다 자기 맨몸 값
-  //             "shared"     한타 피해와 지원을 같은 분모(맨몸 한타 피해 + 맨몸 지원)로 (P2 실험, tools 에서만)
-  //             "sharedAlly" 같은 분모를 아군을 돕는 챔피언(allysupport)에만
-  let NORM_MODE = "own";
+  // 지표 기준값: 맨몸 지표(최소 METRIC_FLOOR). 지표 상대 증가율의 분모. 엔진·화면 이유 문장·점검 도구(augment_fit·item_audit·augment_classify)가 모두 이 함수를 쓴다.
+  //   NORM_MODE "sharedAlly"(기본, v0.1.93 P2) 아군을 돕는 챔피언(allysupport)은 한타 피해와 지원을 같은 분모(맨몸 한타 피해 + 맨몸 지원)로.
+  //               근거: P1부터 두 지표가 같은 단위(적 체력 1 = 아군 체력 1)인데 분모가 따로라, 맨몸 한타 피해가 작은 회복형 서포터는
+  //               같은 체력 1을 공격으로 얻을 때 3~4배 높게 쳤다 (잔나 균형 빌드 가치의 공격 몫 76%). docs/v0.1.93_P2_분석.md
+  //             "own"    지표마다 자기 맨몸 값 (v0.1.92까지, 비교 기준선 A: tests/data/p2/)
+  //             "shared" 같은 분모를 모든 챔피언에 (자기 보호막이 큰 전사까지 바뀌어 쓰지 않음, 실험용)
+  let NORM_MODE = "sharedAlly";
   function normOf(m0, champ) {
     const n = {};
     for (const k of Object.keys(METRIC_FLOOR)) n[k] = Math.max(m0[k] || 0, METRIC_FLOOR[k]);
@@ -434,7 +436,7 @@
   // 기본 null = 지금 그대로. 화면은 바꾸지 않는다 (tools 에서만 setTagSkip)
   let TAG_SKIP = null;
   const setTagSkip = (m) => { TAG_SKIP = m || null; clearMemo(); };
-  const setNormMode = (m) => { NORM_MODE = m || "own"; clearMemo(); };  // P2 실험 (tools 에서만, 화면 기본값은 own)
+  const setNormMode = (m) => { NORM_MODE = m || "sharedAlly"; clearMemo(); };  // 실험·비교용 (tools 에서만, NORM=own 이면 기준선 A)
   function scoreItem(item, iw, covered, opts = {}) {
     const ctx = opts.ctx;
     const view = tagView(item.tags, ctx && ctx.convert);

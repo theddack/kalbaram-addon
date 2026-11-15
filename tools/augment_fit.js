@@ -21,15 +21,14 @@ const EXP_LABEL = require("./exp_env")(S, global.Stats);
 
 const REPS = { Marksman: ["Jinx", "Vayne", "Caitlyn"], Mage: ["Lux", "Annie", "Viktor"], Tank: ["Malphite", "Sion", "Leona"],
   Fighter: ["Garen", "Darius", "Irelia"], Assassin: ["Zed", "Akali", "Kayn"], Support: ["Sona", "Nami", "Lulu"] };
-const FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };  // scoring.METRIC_FLOOR 와 같게
-const KEYS = Object.keys(FLOOR);
+const KEYS = Object.keys(S.normOf({}, null));  // 지표 기준값은 엔진과 같은 S.normOf (v0.1.93 P2)
 const NONE = 0.02;  // 상한 − 기본이 이보다 작으면 아이템 무관
 
 function setup(d, c, aug) {
   const cc = S.withChosenFeatures(c, [aug], d.rules);
   const A = S.augStatsOf([aug], d.rules, cc);
   const empty = Stats.evaluate(cc, 18, [], [], {}).m;
-  const norm = Object.fromEntries(KEYS.map((k) => [k, Math.max(empty[k] || 0, FLOOR[k])]));
+  const norm = S.normOf(empty, cc);
   const eff = (items) => {
     const m0 = Stats.evaluate(cc, 18, items, [], {}).m, m1 = Stats.evaluate(cc, 18, items, A, {}).m;
     let v = 0;
