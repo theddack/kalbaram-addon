@@ -1578,3 +1578,26 @@ test("성장 능력치: 증강을 고르지 않았으면 추정하지 않는다"
   const r = p.w.statCheck();
   assert.equal(r.grow, undefined, "성장 출처가 없으면 그대로 (주문력 차이는 모루·버프일 수 있다)");
 });
+
+// v0.1.93: 같은 능력치를 건드리는 증강이 둘이면 성장 몫을 나눌 수 없다 (탱크 엔진 최대 체력 % + 영혼의 포식자 체력)
+test("성장 능력치: 같은 능력치 출처가 둘이면 추정하지 않는다", async () => {
+  const p = await loadPage({ simple: true });
+  const real = Date.now();
+  let clock = real;
+  p.w.Date.now = () => clock;
+  const live = (hp) => p.w.applyLive({ enabled: true, inGame: true, champion: "Leona", level: 11, items: [],
+    stats: { moveSpeed: 335, maxHealth: hp, attackDamage: 80, abilityPower: 0, attackSpeed: 0.7, critChance: 0,
+      armor: 90, magicResist: 60, abilityHaste: 0, lifeSteal: 0 } });
+  live(2000);
+  p.w.applyAug({ offers: null, seq: 1, picked: "영혼의 포식자", pickSeq: 1 });
+  clock = real + 10000; live(2600); p.w.statCheck();
+  clock = real + 20000; live(2600);
+  const one = p.w.statCheck();
+  assert.ok(one.grow && one.grow.HP > 0, `출처가 하나면 맞춘다: ${JSON.stringify(one.grow)}`);
+  p.w.applyAug({ offers: null, seq: 2, picked: "탱크 엔진", pickSeq: 2 });  // 최대 체력 % 증강이 더해짐
+  clock = real + 30000; live(3300); p.w.statCheck();
+  clock = real + 40000; live(3300);
+  const two = p.w.statCheck();
+  assert.equal(JSON.stringify(two.grow), JSON.stringify(one.grow), "둘이 되면 더 바꾸지 않는다");
+  p.w.Date.now = () => Date.now();
+});

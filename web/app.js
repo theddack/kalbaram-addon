@@ -147,6 +147,20 @@ function liveStat(key) {
   if ((key === "CRIT" || key === "LS") && v > 1) v /= 100;
   return v;
 }
+// 같은 능력치를 가정값으로 건드리는 다른 증강이 있으면 성장 몫을 나눌 수 없다 (탱크 엔진 최대 체력 % + 영혼의 포식자 체력 등)
+const OTHER_KEY = { HPmult: "HP", bonusADmult: "AD", APmult: "AP", ASmult: "AS", adaptive: null };
+function growBlocked(key, src) {
+  for (const a of state.chosen || []) {
+    if (a.name === src) continue;
+    const rule = S.ruleOf(state.data.rules, a);
+    const st = rule.statsResolved || rule.stats || {};
+    for (const k of Object.keys(st)) {
+      if (k === key || OTHER_KEY[k] === key) return true;
+      if (k === "adaptive" && (key === "AD" || key === "AP")) return true;
+    }
+  }
+  return false;
+}
 function trackGrow() {
   if (!liveOn || !state.champ || !state.data || !state.liveStats || !Number(state.liveStats.moveSpeed)) return false;
   if (state.liveLevel != null && state.liveLevel !== state.level) return false;
@@ -168,7 +182,7 @@ function trackGrow() {
   } finally { state.grow = keep; }
   let changed = false;
   for (const [k, list] of Object.entries(byKey)) {
-    if (list.length > 1 || anvilKeys.has(k)) { delete growCand[k]; continue; }  // 나눌 수 없음
+    if (list.length > 1 || anvilKeys.has(k) || growBlocked(k, list[0].src)) { delete growCand[k]; continue; }  // 나눌 수 없음
     const real = liveStat(k);
     if (real == null) { delete growCand[k]; continue; }
     const cap = list[0].cap;
