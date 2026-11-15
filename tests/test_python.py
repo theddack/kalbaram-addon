@@ -174,24 +174,36 @@ class AllyHealShieldTrait(unittest.TestCase):
     def test_count_rule(self):
         import build_data as B
         sp = lambda slot, *effects: {"slot": slot, "effects": list(effects)}
-        heal = {"kind": "heal", "base": [50, 100]}
-        zero = {"kind": "shield", "base": [0, 0]}
-        lv = {"kind": "heal", "base": [0], "lvl": [35, 100]}
-        one = {"spells": [sp("W", {"kind": "shield", "base": [90]}), sp("Q", {"kind": "magic", "base": [80]})], "passive": {"effects": []}}
-        self.assertEqual(B.ally_healshield_trait(one), 0.4, "보호막 스킬 하나")
+        heal = {"kind": "heal", "base": [50, 100], "target": "ally"}
+        zero = {"kind": "shield", "base": [0, 0], "target": "ally"}
+        lv = {"kind": "heal", "base": [0], "lvl": [35, 100], "target": "allies"}
+        own = {"kind": "shield", "base": [300], "target": "self"}
+        one = {"spells": [sp("W", {"kind": "shield", "base": [90], "target": "ally"}), sp("Q", {"kind": "magic", "base": [80]})], "passive": {"effects": []}}
+        self.assertEqual(B.ally_healshield_trait(one), 0.4, "아군 보호막 스킬 하나")
         self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", zero)], "passive": {"effects": []}}), 0, "수치 0 은 세지 않음")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", own), sp("W", own)], "passive": {"effects": []}}), 0, "자기 보호막은 세지 않음 (v0.1.93 P4-A)")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", {**own, "target": "selfAndAllies"})], "passive": {"effects": []}}), 0.4, "자신과 아군이 함께 받으면 셈")
         self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", heal), sp("W", heal), sp("R", heal)], "passive": {"effects": [lv]}}), 1.0, "최대 1")
         self.assertEqual(B.ally_healshield_trait({"spells": [sp("W", {"kind": "magic", "base": [80], "ally": {"hits": 1}})], "passive": {"effects": [lv]}}), 0.8,
                          "아군이 넣는 피해(ally) 와 레벨 비례 패시브")
         rule = {"spells": [], "passive": {"effects": []}, "fightStats": {"_effects": [{"src": "W 변덕쟁이", "kind": "allyAS", "base": [0.3]}, {"src": "패시브 영향력", "kind": "allyOnhit", "base": [0]}]}}
         self.assertEqual(B.ally_healshield_trait(rule), 0.8, "규칙 효과는 출처마다, 아군 강화 종류는 수치 없이도 셈")
 
+    def test_ally_support_classification(self):
+        """아군 지원 분류도 계산되는 아군 몫으로 (설명에만 '아군'이 있는 챔피언은 빠진다, v0.1.93 P4-A)"""
+        d = json.loads((Path(__file__).resolve().parent.parent / "web" / "data.json").read_text(encoding="utf-8"))
+        feat = {c["id"]: c.get("features") or [] for c in d["champions"]}
+        for cid in ("Soraka", "Lulu", "Janna", "Nunu"):
+            self.assertIn("allysupport", feat[cid], cid)
+        for cid in ("Nilah", "Lucian", "Hecarim", "Galio", "Kled", "Yorick"):
+            self.assertNotIn("allysupport", feat[cid], cid)
+
     def test_data_has_no_fixed_one(self):
         d = json.loads((Path(__file__).resolve().parent.parent / "web" / "data.json").read_text(encoding="utf-8"))
         lux = next(c for c in d["champions"] if c["id"] == "Lux")
         soraka = next(c for c in d["champions"] if c["id"] == "Soraka")
         self.assertEqual(lux["traits"]["HEALSHIELD"], 0.4)
-        self.assertEqual(soraka["traits"]["HEALSHIELD"], 1.0)
+        self.assertEqual(soraka["traits"]["HEALSHIELD"], 0.8, "Q 는 자기 회복이라 W·R 만 셈 (v0.1.93 P4-A)")
 
 
 class RemovedAugments(unittest.TestCase):

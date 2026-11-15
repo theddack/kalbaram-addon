@@ -62,3 +62,34 @@ test("아군 지원 챔피언 회복·보호막 특성 = 지원 수치가 나오
   for (const c of ally) assert.equal(c.traits.HEALSHIELD || 0, healShieldTrait(Stats, c), c.id);
   assert.ok(ally.some((c) => c.traits.HEALSHIELD < 1), "1.0 고정이 아님");
 });
+
+// v0.1.93 P4-A: 회복·보호막의 대상(게임 규칙)과 쓰는 상황(사용 시나리오)을 나눈다.
+test("대상별 몫: self 는 자기 생존, ally·allies 는 지원, selfAndAllies 는 둘 다", () => {
+  const d = require(path.join(WEB, "data.json"));
+  const ev = (id) => { const c = d.champions.find((x) => x.id === id); return Stats.evaluate(c, 18, [], [], {}).m; };
+  const garen = ev("Garen");  // W 자기 보호막
+  assert.equal(garen.support, 0, "자기 보호막은 지원이 아니에요");
+  assert.ok(garen.selfShield > 0);
+  const soraka = ev("Soraka");  // Q 자기 회복 · W·R 아군 회복
+  assert.ok(soraka.heal > 0 && soraka.selfHeal > 0);
+  const taric = ev("Taric");  // R 우주의 광휘: 자신과 주변 아군
+  assert.ok(taric.selfShield > 0 && taric.shield > 0, "selfAndAllies 는 자기·아군 둘 다");
+});
+
+test("자기 회복·보호막은 버티는 힘으로 (지원 지표에 두 번 세지 않는다)", () => {
+  const d = require(path.join(WEB, "data.json"));
+  const c = d.champions.find((x) => x.id === "DrMundo");
+  const m = Stats.evaluate(c, 18, [], [], {}).m;
+  assert.equal(m.support, 0);
+  assert.ok(m.selfHeal > 1000, "R 자기 회복");
+  const bare = Stats.evaluate({ ...c, spells: c.spells.map((s) => ({ ...s, effects: [] })) }, 18, [], [], {}).m;
+  assert.ok(m.ehp > bare.ehp, "자기 회복이 버티는 힘을 늘려요");
+});
+
+test("아군 지원 분류: 아군에게 가는 몫이 계산되는 챔피언만", () => {
+  const d = require(path.join(WEB, "data.json"));
+  const has = (id) => (d.champions.find((x) => x.id === id).features || []).includes("allysupport");
+  for (const id of ["Soraka", "Lulu", "Janna", "Nunu"]) assert.ok(has(id), id);
+  // 설명에만 '아군'이 있고 아군 몫이 계산되지 않는 챔피언은 빠진다 (v0.1.93 P4-A)
+  for (const id of ["Nilah", "Lucian", "Hecarim", "Galio", "Kled", "Yorick"]) assert.ok(!has(id), id);
+});
