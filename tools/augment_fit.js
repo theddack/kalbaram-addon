@@ -131,6 +131,7 @@ function markdown(rows, sum, d) {
 
 if (require.main === module) {
   const d = JSON.parse(fs.readFileSync(path.join(ROOT, "web", "data.json"), "utf8"));
+  require("./exp_env").patchData(d);  // 데이터를 고치는 실험 설정(ZHONYA 등)도 반영
   S.attachSimilar(d.champions, null, d.items);
   const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : null; };
   const champs = arg("--champs") ? arg("--champs").split(",") : Object.values(REPS).flat();

@@ -71,6 +71,7 @@ function markdown(rows, d) {
 
 if (require.main === module) {
   const d = JSON.parse(fs.readFileSync(path.join(ROOT, "web", "data.json"), "utf8"));
+  require("./exp_env").patchData(d);  // 데이터를 고치는 실험 설정(ZHONYA 등)도 반영
   S.attachSimilar(d.champions, null, d.items);
   const rows = run(d);
   const n = rows.filter((r) => r.flags.length).length;
