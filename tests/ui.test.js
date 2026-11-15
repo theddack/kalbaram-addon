@@ -1490,3 +1490,91 @@ test("증강 목록: 이 챔피언에게 효과가 없는 증강은 '효과 없�
   assert.match(p.augRow(tagOnly.id).textContent, /수치 계산 없음/);
   assert.deepEqual(p.errors, []);
 });
+
+// v0.1.93 성장 능력치: 게임이 지날수록 커지는 몫(윤 탈 치명타·극악무도 주문력)은 '지금 능력치'만 게임 값으로 맞추고,
+// 추천 점수(18레벨 완성 빌드)는 다 쌓인 값(가정) 그대로 쓴다. 2026-11-15 미스 포츈 판: 윤 탈을 산 뒤 2분 반 동안 계산 치명타가 높았다
+test("성장 능력치: 윤 탈 치명타는 게임 값으로 맞추고, 추천 점수는 다 쌓인 값 그대로", async () => {
+  const p = await loadPage({ simple: true });
+  const yun = p.data.items.find((i) => i.name === "윤 탈 야생화살");
+  const boots = p.data.items.find((i) => i.name === "광전사의 군화");
+  const real = Date.now();
+  let clock = real;
+  p.w.Date.now = () => clock;  // 시간을 앞으로 돌려 본다 (성장 추정은 아이템이 바뀐 뒤 쉬었다가, 같은 값이 이어질 때만 반영)
+  const live = (crit) => p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 11,
+    items: [yun.id, boots.id], stats: { moveSpeed: 370, maxHealth: 1800, attackDamage: 160, abilityPower: 0,
+      attackSpeed: 1.2, critChance: crit, armor: 60, magicResist: 45, abilityHaste: 0, lifeSteal: 0 } });
+  live(0);
+  const first = p.w.statCheck();
+  assert.equal(first.rows.CRIT[1], 0, "게임이 알려 준 치명타 0");
+  assert.ok(first.rows.CRIT[0] >= 0.25, `산 직후에는 가정값 그대로: ${first.rows.CRIT[0]}`);
+  assert.equal(first.grow, undefined, "산 직후에는 추정하지 않는다");
+  clock = real + 10000;   // 아이템이 바뀐 지 10초 (GROW_SETTLE 지남)
+  p.w.statCheck();        // 후보로 기억
+  clock = real + 20000;   // 같은 값이 이어짐 (GROW_HOLD 지남)
+  const now = p.w.statCheck();
+  assert.equal(now.grow.CRIT, 0, "게임 값으로 맞춘 성장 몫");
+  assert.equal(now.rows.CRIT[0], 0, "지금 능력치 계산도 0");
+  // 추천 점수(18레벨 완성)는 그대로: 윤 탈의 치명타 25% 를 그대로 쓴다
+  const champ = p.data.champions.find((c) => c.id === "Jinx");
+  assert.ok(p.w.Stats.computeStats(champ, 18, [yun], [], { aram: true }).total.CRIT >= 0.25, "추천 점수용 계산은 다 쌓인 값");
+  p.w.Date.now = () => Date.now();
+});
+
+test("성장 능력치: 값이 흔들리면 반영하지 않는다 (잠깐 켜지는 효과 제외)", async () => {
+  const p = await loadPage({ simple: true });
+  const yun = p.data.items.find((i) => i.name === "윤 탈 야생화살");
+  const real = Date.now();
+  let clock = real;
+  p.w.Date.now = () => clock;
+  const live = (crit) => p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 11, items: [yun.id],
+    stats: { moveSpeed: 370, maxHealth: 1800, attackDamage: 160, abilityPower: 0, attackSpeed: 1.2, critChance: crit,
+      armor: 60, magicResist: 45, abilityHaste: 0, lifeSteal: 0 } });
+  live(0);
+  clock = real + 10000;
+  live(0.05); p.w.statCheck();
+  clock = real + 20000;
+  live(0.2); const r = p.w.statCheck();   // 값이 크게 바뀜 → 다시 후보로
+  assert.equal(r.grow, undefined, "한 번만 튀는 값은 반영하지 않는다");
+  clock = real + 30000;
+  live(0.2); const r2 = p.w.statCheck();  // 같은 값이 두 번
+  assert.ok(r2.grow && Math.abs(r2.grow.CRIT - 0.2) < 0.03, `이어지는 값은 반영: ${JSON.stringify(r2.grow)}`);
+  p.w.Date.now = () => Date.now();
+});
+
+// v0.1.93 누적형 증강(극악무도: 스킬로 때릴 때마다 주문력 영구 +1)도 같은 구조로 맞춘다.
+// 2026-11-15 바드 판: 가정값 60 고정이라 초반엔 계산이 높고(26초 60 vs 0) 후반엔 낮았다(891초 585 vs 639.6)
+test("성장 능력치: 극악무도 주문력도 게임 값으로, 상한을 넘지 않는다", async () => {
+  const p = await loadPage({ simple: true });
+  const real = Date.now();
+  let clock = real;
+  p.w.Date.now = () => clock;
+  const live = (ap) => p.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 11, items: [],
+    stats: { moveSpeed: 340, maxHealth: 1700, attackDamage: 70, abilityPower: ap, attackSpeed: 0.7, critChance: 0,
+      armor: 55, magicResist: 45, abilityHaste: 0, lifeSteal: 0 } });
+  live(0);
+  p.w.applyAug({ offers: null, seq: 1, picked: "극악무도", pickSeq: 1 });
+  clock = real + 10000;
+  live(20); p.w.statCheck();
+  clock = real + 20000;
+  live(20);
+  const r = p.w.statCheck();
+  assert.ok(r.grow && Math.abs(r.grow.AP - 20) < 5, `게임 값(20)으로 맞춤: ${JSON.stringify(r.grow)}`);
+  assert.ok(Math.abs(r.rows.AP[0] - 20) < 5, `지금 능력치도 20 안팎: ${r.rows.AP[0]}`);
+  // 상한(가정값 60의 4배 = 240)을 넘는 차이는 다 담지 않는다
+  clock = real + 30000;
+  live(900); p.w.statCheck();
+  clock = real + 40000;
+  live(900);
+  const big = p.w.statCheck();
+  assert.ok(big.grow.AP <= 240 + 1e-6, `상한 안: ${big.grow.AP}`);
+  p.w.Date.now = () => Date.now();
+});
+
+test("성장 능력치: 증강을 고르지 않았으면 추정하지 않는다", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 11, items: [],
+    stats: { moveSpeed: 340, maxHealth: 1700, attackDamage: 70, abilityPower: 200, attackSpeed: 0.7, critChance: 0,
+      armor: 55, magicResist: 45, abilityHaste: 0, lifeSteal: 0 } });
+  const r = p.w.statCheck();
+  assert.equal(r.grow, undefined, "성장 출처가 없으면 그대로 (주문력 차이는 모루·버프일 수 있다)");
+});

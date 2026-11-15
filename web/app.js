@@ -28,6 +28,7 @@ const nowAugStats = () => {
     const rule = S.ruleOf(state.data.rules, state.chosen[i]);
     const o = dropKeys(s.goldValue ? { ...s, goldValue: 0 } : s, rule.uptime);
     for (const [k, v] of Object.entries(rule.perTakedown || {})) o[k] = (o[k] || 0) + v * (state.takedowns || 0);
+    for (const [k, g] of Object.entries(rule.grow || {})) if (o[k] != null) o[k] = growValue(k, o[k], g);  // 성장 능력치: 지금 값
     return o;
   }), ...anvil];
 };
@@ -81,8 +82,15 @@ const partItems = () => (state.inventory || []).map((id) => {
 // 지금 능력치에 넣을 아이템: 완성 아이템 + 부품. 아이템 고유 효과 중 가동률로 셈한 것(윤 탈 광풍 공속 등)은 뺀다
 // (2026-10-17 트리스타나 판: 공격 속도가 계속 0.1 높았다)
 const nowItems = () => [...state.items.map((it) => {
-  const up = ((state.data.rules.items || {})[it.name] || {}).uptime;
-  return up && it.passiveStats ? { ...it, passiveStats: dropKeys(it.passiveStats, up) } : it;
+  const rule = (state.data.rules.items || {})[it.name] || {};
+  let ps = it.passiveStats;
+  if (rule.uptime && ps) ps = dropKeys(ps, rule.uptime);
+  // 성장 능력치(윤 탈 치명타 등)는 게임이 알려 준 지금 값으로 (없으면 다 쌓인 값 그대로)
+  for (const [k, g] of Object.entries(rule.grow || {})) {
+    if (ps && ps[k] != null) ps = { ...ps, [k]: growValue(k, ps[k], g) };
+    else if ((it.stats || {})[k] != null) ps = { ...(ps || {}), [k]: growValue(k, it.stats[k], g) - it.stats[k] };
+  }
+  return ps === it.passiveStats ? it : { ...it, passiveStats: ps };
 }), ...partItems()];
 
 // 중첩형 패시브(세나 안개·베이가 극악·쓰레쉬 영혼 …)는 계산에 게임 중반 평균 중첩으로 들어간다. 게임 중 '지금 능력치'는
@@ -90,6 +98,94 @@ const nowItems = () => [...state.items.map((it) => {
 // 규칙 stats 의 첫 능력치(세나 공격력)로 배율을 찾고 나머지(치명타)도 같은 배율로. stackStep 은 계단식(세나 치명타 20개마다 10%).
 // 추천 점수(18레벨 완성)는 평균 중첩 그대로 둔다. 킨드레드 공속은 화살 세례 뒤에만 붙어 지금 값으로 못 맞춘다
 const STACK_MAX = 5;  // 평균의 5배까지만 (다른 이유의 차이를 중첩으로 몰아넣지 않게)
+
+// ---- 성장 능력치 (v0.1.93): 게임이 지날수록 커지는 몫. 아이템 윤 탈 야생화살 '연습이 치명타를 낳는다'(치명타 0 → 25%),
+// 증강 극악무도(스킬로 때릴 때마다 주문력 +1) 같은 것. 규칙의 grow {능력치: 다 쌓였을 때 값} 으로 적는다.
+//   추천 점수(18레벨 완성 빌드)는 '다 쌓인 값' 그대로 쓴다 — 사자마자 낮다고 가치를 깎지 않는다.
+//   게임 중 '지금 능력치'와 다음 구매만 게임이 알려 준 값으로 맞춘다 (관측 추정값, 정확한 중첩이 아님).
+// 섞임 막기 (2026-11-15 바드 판: 아이템을 산 직후 역산이 중첩 107 → 51 로 튀었다):
+//   · 아이템·레벨이 바뀐 뒤 GROW_SETTLE 초 안에는 재지 않는다
+//   · 같은 값이 GROW_HOLD 초 넘게 이어질 때만 반영한다 (잠깐 켜지는 버프 제외)
+//   · 한 능력치에 성장 출처가 둘이면 나누지 못하니 건너뛴다
+//   · 모루 능력치를 추정 중인 능력치(ANVIL_KEYS, 모루가 있는 판)는 건드리지 않는다
+const GROW_SETTLE = 5;   // 초
+const GROW_HOLD = 4;     // 초
+const GROW_MAX = 4;      // 상한이 없는 성장은 가정값의 이만큼까지만 (중첩 역산 STACK_MAX 와 같은 까닭)
+let growCand = {};
+const growNow = () => Date.now() / 1000;
+function resetGrow() { growCand = {}; state.grow = {}; state.growAt = 0; }
+// 규칙의 grow 값: 숫자면 '다 쌓인 값'(상한도 같음, 윤 탈 치명타 25%), {max: n} 이면 상한만 (극악무도처럼 끝이 없는 것).
+// 상한을 두는 까닭은 챔피언 중첩 역산(STACK_MAX)과 같아요: 다른 이유의 차이를 성장 몫으로 다 몰아넣지 않으려고요.
+const growCap = (g, assume) => (typeof g === "number" ? g : g && g.max != null ? g.max : assume * GROW_MAX);
+// 지금 빌드의 성장 출처: [{key, cap, src}] (assume = 지금 계산에 들어 있는 값)
+function growSources() {
+  const out = [];
+  const items = (state.data.rules.items || {});
+  for (const it of state.items || []) {
+    const rule = items[it.name] || {};
+    for (const [k, g] of Object.entries(rule.grow || {})) {
+      const assume = (it.passiveStats || {})[k] ?? (it.stats || {})[k] ?? 0;
+      out.push({ key: k, cap: growCap(g, assume), src: it.name });
+    }
+  }
+  for (const a of state.chosen || []) {
+    const rule = S.ruleOf(state.data.rules, a);
+    const st = (S.augStatsOf([a], state.data.rules, state.champ) || [])[0] || {};
+    for (const [k, g] of Object.entries(rule.grow || {})) out.push({ key: k, cap: growCap(g, st[k] || 0), src: a.name });
+  }
+  return out;
+}
+// 게임 중에는 관측 추정값, 아니면 가정값(assume) 그대로
+const growValue = (key, assume, g) => (liveOn && state.grow && state.grow[key] != null
+  ? Math.max(0, Math.min(growCap(g, assume), state.grow[key])) : assume);
+// 게임이 알려 준 값 (statRows 와 같은 단위)
+function liveStat(key) {
+  const s = state.liveStats, lk = LIVE_STAT[key];
+  if (!s || !lk) return null;
+  let v = Number(s[lk]);
+  if (!Number.isFinite(v)) return null;
+  if ((key === "CRIT" || key === "LS") && v > 1) v /= 100;
+  return v;
+}
+function trackGrow() {
+  if (!liveOn || !state.champ || !state.data || !state.liveStats || !Number(state.liveStats.moveSpeed)) return false;
+  if (state.liveLevel != null && state.liveLevel !== state.level) return false;
+  const srcs = growSources();
+  if (!srcs.length) { growCand = {}; return false; }
+  const now = growNow();
+  if (now - (state.growAt || 0) < GROW_SETTLE) return false;  // 아이템·레벨이 막 바뀜
+  const anvilKeys = state.anvilSeen ? new Set(ANVIL_KEYS) : new Set();
+  const byKey = {};
+  for (const g of srcs) (byKey[g.key] = byKey[g.key] || []).push(g);
+  // 성장 몫을 0 으로 둔 계산 = 성장 말고 다른 것들의 합
+  const zero = { ...(state.grow || {}) };
+  for (const k of Object.keys(byKey)) zero[k] = 0;
+  const keep = state.grow;
+  state.grow = zero;
+  let base;
+  try {
+    base = St.computeStats(nowChampBase(), state.level, nowItems(), nowAugStats(), { ...statOpts(), now: true }).total;
+  } finally { state.grow = keep; }
+  let changed = false;
+  for (const [k, list] of Object.entries(byKey)) {
+    if (list.length > 1 || anvilKeys.has(k)) { delete growCand[k]; continue; }  // 나눌 수 없음
+    const real = liveStat(k);
+    if (real == null) { delete growCand[k]; continue; }
+    const cap = list[0].cap;
+    const v = Math.max(0, Math.min(cap, real - (base[k] || 0)));
+    const tol = Math.max(Math.abs(cap) * 0.02, k === "CRIT" || k === "AS" || k === "LS" ? 0.02 : 1);
+    const c = growCand[k];
+    if (!c || Math.abs(c.v - v) > tol) { growCand[k] = { v, since: now }; continue; }
+    if (now - c.since >= GROW_HOLD && Math.abs(((state.grow || {})[k] ?? cap) - v) > tol) {
+      state.grow = { ...(state.grow || {}), [k]: v };
+      changed = true;
+    }
+  }
+  return changed;
+}
+// 중첩 역산을 하지 않은 챔피언 (성장 능력치 추정이 중첩 역산과 서로 물고 돌지 않게)
+const nowChampBase = () => state.champ && S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
+
 function nowChamp() {
   const c = state.champ && S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
   const s = state.liveStats, ss = c && c.stackStats;
@@ -134,13 +230,16 @@ function statRows() {
   return { rows, stackKey: c && c.stackNow != null ? Object.keys(c.stackStats || {})[0] : null };
 }
 function statCheck() {
+  // 성장 능력치(윤 탈 치명타·극악무도 주문력 …)를 게임 값으로 먼저 맞춘다
+  if (trackGrow()) return statCheck();
   const sr = statRows();
   if (!sr) return null;
   const rows = sr.rows;
   // 모루 능력치를 새로 정했으면 한 번 더 계산 (다음 비교부터 차이가 없어진다)
   if (trackAnvil(rows, sr.stackKey)) return statCheck();
   return { level: state.level, items: state.items.map((i) => i.id), augs: state.chosen.map((a) => a.id), rows,
-    anvil: Object.keys(state.anvil || {}).length ? { ...state.anvil } : undefined };
+    anvil: Object.keys(state.anvil || {}).length ? { ...state.anvil } : undefined,
+    grow: Object.keys(state.grow || {}).length ? { ...state.grow } : undefined };
 }
 // 5% 넘게 다르면 (아주 작은 값은 반올림 차이를 빼려고 최소 폭: 비율·공속 0.02, 나머지 1)
 const statOff = ([calc, real], k) => Math.abs(calc - real) > Math.max(Math.abs(real) * STAT_OFF, ["AS", "CRIT", "LS"].includes(k) ? 0.02 : 1);
@@ -2188,6 +2287,7 @@ function applyLive(L) {
     augTimers = {};
     state.chosen = [];
     resetAnvil();
+    resetGrow();
     state.tierMode = "auto";
     clearOffers();
     // 지난 판 마지막 다음 구매와 비교해 새 판 첫 갱신에 근거 없는 '🔁 바뀜'이 뜨지 않게 (2026-10-23 점검)
@@ -2315,6 +2415,8 @@ function applyLive(L) {
     clearOffers();
     renderChamps();
   }
+  if (level !== state.level || items.length !== (state.items || []).length
+      || items.some((it, i) => it.id !== (state.items[i] || {}).id)) state.growAt = growNow();  // 바뀐 직후엔 성장 추정을 쉰다
   state.level = level;
   $("#level").value = level;
   $("#level-val").textContent = level;
