@@ -3,6 +3,7 @@
 //   OFFICIAL_AUG=0.5       증강 몰빵 공식 가산 배율
 //   OFFICIAL_BAL=0.5       균형 빌드 공식 가산 배율
 //   AUG_DELTA=0.2          증강 몰빵 = 증강 몫 최대 (전체 전투 가치 ≥ (1 − δ) × 균형)
+//   AUG_FOCUS=2            증강 몰빵 목표의 증강 몫 세기 (scoring CONCEPTS[0].focus, 기본 1. v0.1.93 P3-R 실험)
 //   AUTO_UPTIME=0.7        한타 중 기본 공격을 실제로 치는 시간 비율 (기본 1)
 //   FIGHT_SEC=4            평타를 이어 치는 한타 시간(초, 기본 6)
 //   SKILL_SHARE=0.5        스킬 적중 빈도 비율 (기본 0.3)
@@ -29,6 +30,7 @@ const apply = function apply(S, Stats, env = process.env) {
     if (oa != null) parts.push(`몰빵 공식 ×${oa}`);
     if (ob != null) parts.push(`균형 공식 ×${ob}`);
   }
+  if (num("AUG_FOCUS") != null) { S.CONCEPTS[0].focus = num("AUG_FOCUS"); S.clearMemo(); parts.push(`몰빵 focus ${num("AUG_FOCUS")}`); }
   const dl = num("AUG_DELTA");
   if (dl != null) { S.setAugmentDelta(dl); parts.push(`δ ${dl}`); }
   const exp = {};
