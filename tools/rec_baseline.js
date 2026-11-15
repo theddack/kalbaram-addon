@@ -12,6 +12,7 @@ const path = require("path");
 const WEB = path.join(__dirname, "..", "web");
 global.Stats = global.Stats || require(path.join(WEB, "stats.js"));
 const S = require(path.join(WEB, "scoring.js"));
+require("./exp_env")(S, global.Stats);  // 실험 설정 (tools/exp_env.js)
 const FILE = path.join(__dirname, "..", "tests", "data", "rec_baseline.json");
 const GAMES = path.join(__dirname, "..", "tests", "data", "games");
 
@@ -213,7 +214,7 @@ function report(sum, base, now) {
   return lines.join("\n");
 }
 
-const load = () => JSON.parse(fs.readFileSync(path.join(WEB, "data.json"), "utf8"));
+const load = () => require("./exp_env").patchData(JSON.parse(fs.readFileSync(path.join(WEB, "data.json"), "utf8")));  // 실험 설정도 반영
 
 if (require.main === module) {
   const t0 = Date.now();

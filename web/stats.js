@@ -821,6 +821,13 @@
     out.control = control;
     // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 스킬 피해와 스킬에 딸린 효과는 SKILL_DPS_SHARE 만
     out.dps = out.autoDps * EXP.autoUptime + EXP.skillShare * out.skillDps + (out.augDps - out.castDps - out.atkDps) + out.atkDps * EXP.autoUptime + out.castDpsUsed;
+    // 행동 불가 시간 (존야 '시간 정지' 같은 무적): 그동안 공격을 못 하니 한타 시간에서 그만큼 초당 피해를 뺀다.
+    // 콤보(스킬 한 바퀴)는 빼지 않는다 — 멈춘 동안 못 쓴 스킬은 사라지는 게 아니라 뒤로 밀리니까 (한타가 끝나면 잃지만, 그 비율을 정할 근거가 없다).
+    // 쓰는 시점·적 공격 집중도는 모르니 '한타 내내 한 번 쓴다'는 가정이에요 (실게임 미검증)
+    if (cv.stopSec) {
+      out.stopLoss = out.dps * Math.min(1, cv.stopSec / AUTO_FIGHT_SEC);
+      out.dps -= out.stopLoss;
+    }
     out.support = out.shield + out.heal + out.allyDmg;
     // 서포터 아이템: 아군을 돕는 챔피언(allysupport)이면 그 도움을 다른 아군에게 더 준다 (rules.json items).
     // 월석 재생기 연쇄(회복 30%·보호막 35%), 헬리아의 메아리(감소 전 피해 30% 충전 → 아군 회복, 최대 80~250).

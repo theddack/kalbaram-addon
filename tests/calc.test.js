@@ -1199,3 +1199,18 @@ test("증강 효과는 같은 계산식·같은 발동 방식이 두 번 들어�
   // 전부 다 무너뜨려는 기본 공격 적중·스킬 적중을 따로 센다 (같은 계산식, 다른 발동)
   assert.equal(aug("TakeemDownDownDown").effects.filter((e) => e.name === "Calc_Damage_Hit").length, 2);
 });
+
+// v0.1.93 P4-B 1단계 실험 구조: 행동 불가 시간(stopSec)은 그동안 공격을 못 하는 몫만큼 초당 피해를 깎는다.
+// 콤보(스킬 한 바퀴)는 깎지 않는다 — 멈춘 동안 못 쓴 스킬은 뒤로 밀릴 뿐이라서. 기본 데이터에는 쓰는 아이템이 없다 (실험 설정에서만)
+test("행동 불가 시간: 초당 피해만 그 비율만큼 줄고 콤보는 그대로", () => {
+  const c = champ("Lux");
+  const plain = { id: "zz", name: "가짜", kind: "legendary", stats: { AP: 100 }, tags: {} };
+  const stop = { ...plain, passiveStats: { stopSec: 3 } };
+  const a = St.evaluate(c, 18, [plain], [], {}).m;
+  const b = St.evaluate(c, 18, [stop], [], {}).m;
+  assert.equal(Math.round(b.combo), Math.round(a.combo), "콤보는 그대로");
+  const close = (x, y, msg) => assert.ok(Math.abs(x - y) <= Math.max(1, Math.abs(y) * 0.02), `${msg}: ${x} vs ${y}`);
+  close(b.dps, a.dps * (1 - 3 / 6), "한타 6초 중 3초 멈추면 초당 피해 절반");
+  close(b.stopLoss, a.dps * 0.5, "줄어든 양을 따로 남긴다");
+  assert.equal(St.evaluate(c, 18, [plain], [], {}).m.stopLoss, undefined, "없는 아이템은 그대로");
+});

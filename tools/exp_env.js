@@ -3,6 +3,8 @@
 //   OFFICIAL_AUG=0.5       증강 몰빵 공식 가산 배율
 //   OFFICIAL_BAL=0.5       균형 빌드 공식 가산 배율
 //   AUG_DELTA=0.2          증강 몰빵 = 증강 몫 최대 (전체 전투 가치 ≥ (1 − δ) × 균형)
+//   ZHONYA=ehpOnly|both    존야의 모래시계 '시간 정지'(2.5초 무적)를 계산에 넣는 실험 (v0.1.93 P4-B 1단계).
+//                          ehpOnly = 안 받는 피해만 · both = 그 위에 무적 동안 못 넣는 피해까지. 기본(없음)은 지금처럼 계산 안 함
 //   AUG_FOCUS=2            증강 몰빵 목표의 증강 몫 세기 (scoring CONCEPTS[0].focus, 기본 1. v0.1.93 P3-R 실험)
 //   AUTO_UPTIME=0.7        한타 중 기본 공격을 실제로 치는 시간 비율 (기본 1)
 //   FIGHT_SEC=4            평타를 이어 치는 한타 시간(초, 기본 6)
@@ -22,6 +24,10 @@ function healShieldTrait(Stats, c) {
   for (const r of m.effects || []) if ((r.toAlly || 0) > 0 || (r.ally || 0) > 0) src.add(r.slot || (String(r.src || "").startsWith("패시브") ? "P" : r.src));
   return Math.min(1, Math.round(src.size * 0.4 * 100) / 100);
 }
+// 데이터(web/data.json)를 고치는 실험: 도구마다 따로 읽은 사본에도 적용할 수 있게 함수로 남긴다 (tools/rec_baseline.js 처럼)
+const DATA_PATCH = [];
+function patchData(d) { for (const f of DATA_PATCH) f(d); return d; }
+
 const apply = function apply(S, Stats, env = process.env) {
   const parts = [];
   const num = (k) => (env[k] != null && env[k] !== "" ? +env[k] : null);
@@ -39,6 +45,17 @@ const apply = function apply(S, Stats, env = process.env) {
   if (num("FIGHT_SEC") != null) { exp.fightSec = num("FIGHT_SEC"); parts.push(`한타 ${exp.fightSec}초`); }
   if (num("SKILL_SHARE") != null) { exp.skillShare = num("SKILL_SHARE"); parts.push(`스킬 적중 ${exp.skillShare}`); }
   if (Object.keys(exp).length) { Stats.setExperiment(exp); S.clearMemo(); }
+  if (env.ZHONYA === "ehpOnly" || env.ZHONYA === "both") {
+    // 설명 수치: 2.5초 동안 경직(무적). 무적 → 버티는 힘 환산은 기존 공통 기준(받는 피해 초당 × 시간 ÷ 2)을 그대로 쓴다.
+    // both 는 무적 동안 공격을 못 하는 몫(stopSec)까지 (stats.js)
+    DATA_PATCH.push((d) => {
+      const it = (d.items || []).find((i) => i.name === "존야의 모래시계");
+      if (it) it.passiveStats = { ...(it.passiveStats || {}), invulnSec: 2.5, ...(env.ZHONYA === "both" ? { stopSec: 2.5 } : {}) };
+    });
+    patchData(require(require("path").join(__dirname, "..", "web", "data.json")));  // 도구들이 함께 쓰는 객체
+    parts.push(`존야 ${env.ZHONYA}`);
+    S.clearMemo();
+  }
   if (env.NORM && env.NORM !== "sharedAlly") { S.setNormMode(env.NORM); parts.push(`기준값 ${env.NORM}`); }
   if (env.HS_TRAIT === "fixed") {
     const path = require("path");
@@ -67,3 +84,4 @@ const apply = function apply(S, Stats, env = process.env) {
 };
 module.exports = apply;
 module.exports.healShieldTrait = healShieldTrait;
+module.exports.patchData = patchData;
