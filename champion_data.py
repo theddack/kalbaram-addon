@@ -20,6 +20,8 @@ EFFECT_TAGS = {
 # 챔피언 상대 피해·회복이 아닌 값: 몬스터·미니언 전용, 소환물 체력
 NOT_CHAMPION = re.compile(r"monster|minion|ghoul|turret|tower|structure|jungle|nonchamp", re.I)
 # 자리표시자 바로 뒤가 '의 공격력을 얻습니다'처럼 능력치 획득이면 피해가 아니다 (베인 R 등)
+# 마나 회복·반환 수치: 원본 설명이 피해 태그로 감싸도 피해가 아니다 (유미 E manarestore, 2026-11-15 v0.1.93 발견)
+MANA_RESTORE = re.compile(r"mana_?(restore|refund|regen|gain)|restore_?mana", re.I)
 STAT_GRANT = re.compile(r"^\s*(의\s*)?(추가\s*)?(공격력|주문력|방어력|마법 저항력|공격 속도|이동 속도)(을|를)?\s*(얻|증가|획득)")
 
 
@@ -27,6 +29,8 @@ def skip_effect(kind, name, after):
     if NOT_CHAMPION.search(name):
         return True
     if kind == "heal" and name.lower().endswith("health"):
+        return True
+    if kind in ("magic", "physical", "true", "adaptive") and MANA_RESTORE.search(name):
         return True
     return kind in ("magic", "physical", "true", "adaptive") and bool(STAT_GRANT.search(after))
 

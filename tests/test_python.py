@@ -159,6 +159,16 @@ class GameFileSources(unittest.TestCase):
         self.assertEqual(C.game_as_ratio(bin_json, "Garen"), 0.625)
 
 
+class ManaRestoreNotDamage(unittest.TestCase):
+    """v0.1.93: 마나 회복 수치(유미 E manarestore)가 마법 피해 태그 안에 있어도 피해로 세지 않는다"""
+    def test_skip_mana_restore(self):
+        import champion_data as C
+        self.assertTrue(C.skip_effect("magic", "manarestore", " 회복시킵니다"))
+        self.assertTrue(C.skip_effect("magic", "ManaRefund", ""))
+        self.assertFalse(C.skip_effect("magic", "totaldamage", "의 마법 피해를 입힙니다"))
+        self.assertFalse(C.skip_effect("magic", "maxmanadamage", "의 마법 피해"), "최대 마나 비례 피해는 피해")
+
+
 class RemovedAugments(unittest.TestCase):
     def test_removed_carried_within_patch(self):
         prev = {"augments": [{"id": "A", "name": "가"}, {"id": "B", "name": "나", "rarityName": "프리즘"}], "removedAugs": []}

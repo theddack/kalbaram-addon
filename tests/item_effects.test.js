@@ -133,3 +133,9 @@ test("세릴다의 원한 '매서운 추위': 대상 체력 50% 아래 조건을
   St.TARGET.CUR = 0.5;
   try { near(ctl(), 0.3 * 0.5, 1e-9, "처치까지 가는 경로면 절반 (예전 고정값 0.15와 같은 경우)"); } finally { St.TARGET.CUR = cur; }
 });
+
+// v0.1.93 발견: 유미 E '슈우우웅'의 마나 회복(20~36)이 마법 피해로 콤보에 들어가 있었다
+test("마나 회복 수치는 피해가 아니다 (유미 E manarestore)", () => {
+  const e = champ("Yuumi").spells.find((s) => s.slot === "E").effects;
+  assert.ok(!e.some((x) => /mana(restore|refund)/i.test(x.name) && ["magic", "physical", "true", "adaptive"].includes(x.kind)), JSON.stringify(e.map((x) => x.name)));
+});
