@@ -1,0 +1,115 @@
+[
+ {
+  "t": 0,
+  "kind": "start",
+  "champion": "Lux",
+  "mode": "KIWI",
+  "enemies": [
+   "Garen"
+  ],
+  "version": "0.0.0-test"
+ },
+ {
+  "t": 1,
+  "kind": "statcheck",
+  "level": 3,
+  "items": [],
+  "augs": [],
+  "rows": {
+   "HP": [
+    790.73,
+    790.73
+   ],
+   "AD": [
+    58.87,
+    58.87
+   ],
+   "AP": [
+    0,
+    0
+   ],
+   "AS": [
+    0.7,
+    0.7
+   ],
+   "ARMOR": [
+    28.67,
+    28.67
+   ],
+   "MR": [
+    31.92,
+    31.92
+   ]
+  }
+ },
+ {
+  "t": 10,
+  "kind": "picked",
+  "picked": "극악무도",
+  "from": [
+   "극악무도",
+   "부식",
+   null
+  ],
+  "by": "click"
+ },
+ {
+  "t": 20,
+  "kind": "items",
+  "items": [
+   "6655"
+  ],
+  "level": 6,
+  "gold": 100,
+  "gameTime": 22
+ },
+ {
+  "t": 30,
+  "kind": "statcheck",
+  "level": 6,
+  "items": [
+   "6655"
+  ],
+  "augs": [
+   "ARAM_PhenomenalEvil"
+  ],
+  "rows": {
+   "HP": [
+    1102.81,
+    1102.81
+   ],
+   "AD": [
+    67.04,
+    67.04
+   ],
+   "AP": [
+    160,
+    200
+   ],
+   "AS": [
+    0.74,
+    0.74
+   ],
+   "ARMOR": [
+    41.54,
+    41.54
+   ],
+   "MR": [
+    35.14,
+    35.14
+   ]
+  }
+ },
+ {
+  "t": 40,
+  "kind": "eog",
+  "augments": [
+   "극악무도"
+  ],
+  "picked": [
+   "극악무도"
+  ],
+  "match": true,
+  "removed": 0
+ }
+]
