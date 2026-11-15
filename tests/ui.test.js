@@ -1601,3 +1601,48 @@ test("성장 능력치: 같은 능력치 출처가 둘이면 추정하지 않는
   assert.equal(JSON.stringify(two.grow), JSON.stringify(one.grow), "둘이 되면 더 바꾸지 않는다");
   p.w.Date.now = () => Date.now();
 });
+
+// v0.1.93: 성장 능력치 역산은 '지금 능력치'에만 쓰고, 추천(아이템 순위·다음 구매·증강 등급)은 가정값 그대로 쓴다.
+// 추천은 '앞으로 남은 게임'을 보는 값이라, 지금 덜 쌓였다고 아이템 가치를 깎지 않는다 (미래 기대 ↔ 현재 관측 분리)
+test("성장 능력치: 추천(아이템 순위·다음 구매)은 역산값에 흔들리지 않는다", async () => {
+  const p = await loadPage({ simple: true });
+  const yun = p.data.items.find((i) => i.name === "윤 탈 야생화살");
+  const real = Date.now();
+  let clock = real;
+  p.w.Date.now = () => clock;
+  const live = (crit) => p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 13, items: [yun.id],
+    gold: 3000, stats: { moveSpeed: 370, maxHealth: 1900, attackDamage: 180, abilityPower: 0, attackSpeed: 1.3,
+      critChance: crit, armor: 65, magicResist: 48, abilityHaste: 0, lifeSteal: 0 } });
+  live(0.25);
+  const rankBefore = p.w.itemRanking().slice(0, 6).map((r) => r.item.name).join(",");
+  const buyBefore = JSON.stringify(p.w.buyNowCurrent() || null);
+  clock = real + 10000; live(0); p.w.statCheck();
+  clock = real + 20000; live(0);
+  const sc = p.w.statCheck();
+  assert.equal(sc.grow.CRIT, 0, "지금 능력치는 게임 값(치명타 0)");
+  assert.equal(p.w.itemRanking().slice(0, 6).map((r) => r.item.name).join(","), rankBefore, "아이템 순위는 그대로");
+  assert.equal(JSON.stringify(p.w.buyNowCurrent() || null), buyBefore, "지금 골드로 살 것도 그대로");
+  p.w.Date.now = () => Date.now();
+});
+
+test("성장 능력치: 중첩이 늘면 추정값도 따라 올라간다", async () => {
+  const p = await loadPage({ simple: true });
+  const real = Date.now();
+  let clock = real;
+  p.w.Date.now = () => clock;
+  const live = (ap) => p.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 12, items: [],
+    stats: { moveSpeed: 340, maxHealth: 1800, attackDamage: 72, abilityPower: ap, attackSpeed: 0.72, critChance: 0,
+      armor: 58, magicResist: 46, abilityHaste: 0, lifeSteal: 0 } });
+  live(0);
+  p.w.applyAug({ offers: null, seq: 1, picked: "극악무도", pickSeq: 1 });
+  const seen = [];
+  for (const [t, ap] of [[10, 25], [20, 25], [30, 60], [40, 60], [50, 110], [60, 110]]) {
+    clock = real + t * 1000;
+    live(ap);
+    const r = p.w.statCheck();
+    if (r && r.grow) seen.push(Math.round(r.grow.AP));
+  }
+  assert.ok(seen.length >= 3, `세 번 이상 맞춰야 해요: ${seen}`);
+  assert.ok(seen[seen.length - 1] > seen[0], `중첩이 늘면 추정값도 늘어요: ${seen}`);
+  p.w.Date.now = () => Date.now();
+});

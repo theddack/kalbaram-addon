@@ -68,12 +68,35 @@ function timeline(g) {
 
 const statOff = ([calc, real], k) => Math.abs(calc - real) > Math.max(Math.abs(real) * STAT_OFF, SMALL[k] || 1);
 
+// ---- 성장 능력치 되감기 (v0.1.93): 기록된 능력치 대조 줄을 순서대로 보며 화면(app.js trackGrow)과 같은 규칙으로 추정한다.
+//   · 아이템·레벨이 바뀐 줄은 건너뛴다 (산 직후 값이 섞인다)  · 같은 값이 두 줄 이어질 때만 반영  · 상한 안에서만
+// 화면은 초 단위로 더 자주 재지만 기록은 바뀔 때만 남아, 여기 추정은 화면보다 느리게 따라간다 (그래서 '되감기'는 참고값이다)
+function growOf(rules, champ, items, chosen) {
+  const out = [];
+  for (const it of items) {
+    const rule = (rules.items || {})[it.name] || {};
+    for (const [k, g] of Object.entries(rule.grow || {})) {
+      const assume = (it.passiveStats || {})[k] ?? (it.stats || {})[k] ?? 0;
+      out.push({ key: k, assume, cap: typeof g === "number" ? g : g.max, src: it.name });
+    }
+  }
+  for (const a of chosen) {
+    const rule = S.ruleOf(rules, a);
+    const st = (S.augStatsOf([a], rules, champ) || [])[0] || {};
+    for (const [k, g] of Object.entries(rule.grow || {})) out.push({ key: k, assume: st[k] || 0, cap: typeof g === "number" ? g : g.max, src: a.name });
+  }
+  return out;
+}
+
 // ---- 능력치 재계산 (지금 엔진으로)
 function recheck(g) {
   const champ = d.champions.find((c) => c.id === g.champion);
   const rows = [];
   if (!champ) return rows;
+  const cand = {}, est = {}, one = {}, held = {};
+  let lastKey = null;
   for (const e of g.events.filter((x) => x.kind === "statcheck")) {
+    const key = JSON.stringify([e.level, [...(e.items || [])].sort(), [...(e.augs || [])].sort()]);
     const chosen = (e.augs || []).map(augById).filter(Boolean);
     const c = S.withChosenFeatures(champ, chosen, d.rules);
     const items = (e.items || []).map(byId).filter(Boolean);
@@ -89,11 +112,37 @@ function recheck(g) {
     });
     const anvil = e.anvil && Object.keys(e.anvil).length ? [{ ...e.anvil }] : [];
     const t = Stats.computeStats(c, e.level, items, [...augStats, ...anvil], opts).total;
+    // 성장 능력치 되감기: 같은 입력에서 성장 몫을 0 으로 둔 값과 실제를 견줘 지금 쌓인 양을 짐작한다
+    const grows = growOf(d.rules, champ, items, chosen);
+    const changed = key !== lastKey;
+    lastKey = key;
+    const withGrow = { ...t };
+    for (const gr of grows) {
+      if (grows.filter((x) => x.key === gr.key).length > 1) continue;
+      const real = (e.rows || {})[gr.key] ? e.rows[gr.key][1] : null;
+      if (real == null) continue;
+      const base = (t[gr.key] || 0) - gr.assume;  // 성장 몫을 뺀 값 (근사: 비율 증가가 있으면 조금 다름)
+      const v = Math.max(0, Math.min(gr.cap, real - base));
+      const tol = Math.max(Math.abs(gr.cap) * 0.02, ["CRIT", "AS", "LS"].includes(gr.key) ? 0.02 : 1);
+      const c0 = cand[gr.key];
+      if (changed) { cand[gr.key] = null; one[gr.key] = v; continue; }  // 아이템·레벨이 막 바뀐 줄 (참고값만)
+      one[gr.key] = v;
+      if (!c0 || Math.abs(c0 - v) > tol) { cand[gr.key] = v; continue; }
+      est[gr.key] = v;
+      held[gr.key] = (held[gr.key] || 0) + 1;
+    }
+    for (const gr of grows) if (est[gr.key] != null) withGrow[gr.key] = (t[gr.key] || 0) - gr.assume + est[gr.key];
+    // 참고: 한 번 읽은 값만으로 맞춘 경우 (화면 규칙은 같은 값이 두 번 이어질 때만 쓴다)
+    const withOne = { ...t };
+    for (const gr of grows) if (one[gr.key] != null) withOne[gr.key] = (t[gr.key] || 0) - gr.assume + one[gr.key];
     for (const [k, v] of Object.entries(e.rows || {})) {
       const [oldCalc, real] = v;
       const now = Math.round((t[k] || 0) * 100) / 100;
-      rows.push({ t: e.t, level: e.level, stat: k, real, old: oldCalc, now,
-        oldOff: statOff([oldCalc, real], k), nowOff: statOff([now, real], k),
+      const grown = Math.round((withGrow[k] || 0) * 100) / 100;
+      const grownOne = Math.round((withOne[k] || 0) * 100) / 100;
+      rows.push({ t: e.t, level: e.level, stat: k, real, old: oldCalc, now, grown, grownOne,
+        oldOff: statOff([oldCalc, real], k), nowOff: statOff([now, real], k), grownOff: statOff([grown, real], k),
+        grownOneOff: statOff([grownOne, real], k),
         items: (e.items || []).length, augs: (e.augs || []).map((a) => (augById(a) || {}).name || a) });
     }
   }
@@ -157,13 +206,15 @@ function run(inputs, eogDir) {
     const rc = recheck(g);
     const stats = {};
     for (const r of rc) {
-      const s = (stats[r.stat] = stats[r.stat] || { n: 0, oldOff: 0, nowOff: 0, worst: null });
-      s.n++; s.oldOff += r.oldOff ? 1 : 0; s.nowOff += r.nowOff ? 1 : 0;
+      const s = (stats[r.stat] = stats[r.stat] || { n: 0, oldOff: 0, nowOff: 0, grownOff: 0, worst: null });
+      s.n++; s.oldOff += r.oldOff ? 1 : 0; s.nowOff += r.nowOff ? 1 : 0; s.grownOff += r.grownOff ? 1 : 0;
+      s.grownOneOff = (s.grownOneOff || 0) + (r.grownOneOff ? 1 : 0);
       const gap = Math.abs(r.now - r.real) / Math.max(1e-9, Math.abs(r.real));
       if (r.nowOff && (!s.worst || gap > Math.abs(s.worst.now - s.worst.real) / Math.max(1e-9, Math.abs(s.worst.real)))) s.worst = r;
     }
+    const held = rc.filter((r) => r.grown !== r.now).length;
     return { name: g.name, champion: g.champion, version: g.version, enemies: g.enemies, events: g.events.length,
-      timeline: timeline(g), aug: augmentCheck(g, eogDir), stats, rows: rc };
+      timeline: timeline(g), aug: augmentCheck(g, eogDir), stats, rows: rc, growHeld: held };
   });
 }
 
@@ -176,11 +227,12 @@ if (require.main === module) {
   if (arg("--json")) fs.writeFileSync(arg("--json"), JSON.stringify(res, null, 1));
   if (arg("--md")) fs.writeFileSync(arg("--md"), markdown(res));
   for (const g of res) {
-    const off = Object.entries(g.stats).filter(([, s]) => s.nowOff).map(([k, s]) => `${k} ${s.nowOff}/${s.n}`);
+    const off = Object.entries(g.stats).filter(([, s]) => s.nowOff).map(([k, s]) => `${k} ${s.nowOff}→${s.grownOff}(참고 ${s.grownOneOff})/${s.n}`);
     console.log(`${g.champion} (${g.name}) · 애드온 ${g.version} · 기록 ${g.events}개`);
     console.log(`  증강: 클릭 ${g.aug.picked.length}개 · 경기 결과 ${(g.aug.eogNames || []).length}개 → ${g.aug.match ? "같음" : "다름"}${g.aug.unknown.length ? ` · 모르는 번호 ${g.aug.unknown.join(",")}` : ""}`);
     if (g.aug.onlyInLog && g.aug.onlyInLog.length) console.log(`         기록에만: ${g.aug.onlyInLog.join(", ")} · 경기 결과에만: ${(g.aug.onlyInGame || []).join(", ") || "없음"}`);
-    console.log(`  지금 엔진 능력치 어긋남: ${off.join(" · ") || "없음"}`);
+    console.log(`  지금 엔진 능력치 어긋남 (성장 되감기 전→후, 괄호는 한 번 읽은 값 참고): ${off.join(" · ") || "없음"}`);
+    if (!g.growHeld) console.log("  ※ 되감기 반영 0회: 능력치 대조 기록은 레벨·아이템·증강이 바뀔 때만 남아, '같은 값 두 번' 규칙을 채우지 못해요 (화면은 1초마다 재요)");
   }
 }
 module.exports = { run, gameDirs, statOff };
