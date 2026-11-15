@@ -18,7 +18,7 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
-from champion_data import (augment_effects, game_as_ratio, item_spell, mode_cooldown, parse_lua_table, passive_spell,
+from champion_data import (augment_effects, effect_target, game_as_ratio, item_spell, mode_cooldown, parse_lua_table, passive_spell,
                            process_champion, spell_cc_seconds, text_effects, wiki_extras, wiki_growth_fix)
 from lol_calc import Calc, Expr, Node, expr_json, fmt_expr_ranks
 from patch_check import check_augment, check_champion
@@ -364,13 +364,42 @@ def _positive(e):
     return any(isinstance(v, (int, float)) and v > 0 for v in vals)
 
 
+ALLY_TARGETS_KINDS = ("ally", "allies", "selfAndAllies", "selfOrAlly")  # 아군이 받을 수 있는 대상 (v0.1.93 P4-A)
+
+
+def _supports_ally(e):
+    """이 효과가 아군에게 가는 몫이 있나 (회복·보호막은 대상, 그 밖에는 아군 강화 종류)"""
+    if e.get("kind") in ("shield", "heal"):
+        return _positive(e) and e.get("target") in ALLY_TARGETS_KINDS
+    return bool(e.get("ally")) or str(e.get("kind", "")).startswith("ally")
+
+
+def ally_support_sources(c):
+    """아군을 돕는 효과가 나오는 곳 (스킬 칸·패시브·규칙 효과). 엔진 계산과 같은 단위로 센다."""
+    src = set()
+    for sp in c.get("spells") or []:
+        if any(_supports_ally(e) for e in sp.get("effects") or []):
+            src.add(sp["slot"])
+    if any(_supports_ally(e) for e in (c.get("passive") or {}).get("effects") or []):
+        src.add("P")
+    for e in ((c.get("fightStats") or {}).get("_effects") or []):
+        if _supports_ally(e):
+            s = str(e.get("src") or "")
+            src.add("P" if s.startswith("패시브") else s)
+    return src
+
+
 def ally_healshield_trait(c):
-    """아군을 돕는 챔피언의 회복·보호막 특성 = 지원 수치(회복·보호막·아군 강화)가 나오는 스킬·패시브 수 × 0.4 (최대 1).
+    """아군을 돕는 챔피언의 회복·보호막 특성 = 아군을 돕는 효과가 나오는 스킬·패시브 수 × 0.4 (최대 1).
 
     다른 특성(champion_traits)과 같은 규칙. 예전엔 '아군' + '회복·보호막' 문장이 하나라도 있으면 1.0 으로 고정해서,
     맨몸 지원 몫이 12%인 럭스와 83%인 소라카가 같은 값을 받았다 (v0.1.93 P3 E2, docs/v0.1.93_P3_분석.md).
-    세는 단위는 엔진(stats.js) 계산과 같다: 스킬은 칸(Q·W·E·R), 패시브는 하나, 규칙 효과(fightStats._effects)는 출처마다 하나.
+    v0.1.93 P4-A 부터는 자기 회복·보호막(대상 self)은 세지 않는다.
     tests/scale.test.js 가 엔진 계산(tools/exp_env.js healShieldTrait)과 같은지 본다."""
+    return round(min(1.0, len(ally_support_sources(c)) * 0.4), 2)
+
+
+def _old_ally_healshield_trait(c):
     support = lambda e: (e.get("kind") in ("shield", "heal") and _positive(e)) or bool(e.get("ally")) or str(e.get("kind", "")).startswith("ally")
     src = set()
     for sp in c.get("spells") or []:
@@ -1656,7 +1685,7 @@ def main():
             continue
         d = details[cid]
         traits, magic_share, features = champion_traits(d)
-        spells, unresolved = process_champion(cid, d, bins[cid])
+        spells, unresolved = process_champion(cid, d, bins[cid], c["name"])
         p_spell, p_key = passive_spell(bins[cid], cid)
         p_raw = expand_templates(strings.get((p_key or "").lower(), ""), strings)
         p_effects, p_html = [], None
@@ -1664,6 +1693,9 @@ def main():
             p_text, _ = resolve_values(p_raw, p_spell)
             p_html, p_plain, _ = to_html(p_text)
             p_effects = text_effects(p_raw, p_spell, p_plain)
+            for e in p_effects:  # 패시브 회복·보호막의 대상 (v0.1.93 P4-A)
+                if e["kind"] in ("heal", "shield"):
+                    e["target"] = effect_target("", p_plain, c["name"])
             passive_found += 1
         spell_unresolved += unresolved
         for i, sp in enumerate(spells):
@@ -1756,6 +1788,15 @@ def main():
             c["asFixed"] = rc["asFixed"]
         if rc and rc.get("fight"):  # 한타 기준 능력치·스킬 효과 (게임 계산식에 없는 설명 수치): 추천 점수에만
             c["fightStats"] = rc["fight"]
+        if rc and rc.get("effectTarget"):  # 설명에서 읽은 회복·보호막 대상이 틀린 경우 덮어쓰기 (v0.1.93 P4-A, basis 에 근거)
+            for slot, names in rc["effectTarget"].items():
+                src = c["passive"]["effects"] if slot == "P" else (next((s for s in c["spells"] if s["slot"] == slot), {}) or {}).get("effects") or []
+                for nm, tgt in names.items():
+                    hit = [e for e in src if e.get("name") == nm]
+                    if not hit:
+                        stack_warn.append(f"{c['name']}: effectTarget {slot} '{nm}' 효과가 없음")
+                    for e in hit:
+                        e["target"] = tgt
         if rc and rc.get("allyDealt"):  # 아군이 넣는 추가 피해 (나미 E 등): 서포터 자기 피해가 아니라 기준 아군의 적중 피해로 센다 (v0.1.93 P1)
             for slot, names in rc["allyDealt"].items():
                 sp = next((s for s in c["spells"] if s["slot"] == slot), None)
@@ -1773,6 +1814,8 @@ def main():
             c["fightBasis"] = rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if buff_basis:
             c["fightBasis"] = (c.get("fightBasis") or []) + buff_basis
+        if rc and rc.get("effectTarget") and not (rc.get("fight") or rc.get("rangeAt18")):
+            c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("allyBasis"):  # 아군이 넣는 추가 피해(allyDealt)의 근거
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc["allyBasis"]}, {}, "", stack_warn, c["name"])
         if rc and rc.get("aramOff") and c.get("aram"):  # 실게임 능력치 대조로 증강 모드에 없다고 확인한 일반 칼바람 보정
@@ -1784,8 +1827,17 @@ def main():
             c["stacks"] = rc.get("stacks", 0)
             text = c["passive"]["desc"] + " ".join(sp["tooltip"] for sp in c["spells"])
             c["stackBasis"] = rule_basis(rc, c["stackStats"], text, stack_warn, c["name"])
-        if "allysupport" in c["features"]:  # 스킬·패시브·규칙 효과가 모두 붙은 뒤에 센다
+        # 아군 지원 분류와 회복·보호막 특성: 스킬·패시브·규칙 효과가 모두 붙은 뒤에, 계산되는 효과로 정한다 (v0.1.93 P4-A).
+        # 예전 기준은 '설명 한 줄에 아군 + 회복·보호막'이라, 아군 몫이 계산에 없는 챔피언(닐라·루시안·헤카림)도 들어왔다.
+        if ally_support_sources(c):
+            if "allysupport" not in c["features"]:
+                c["features"] = sorted(c["features"] + ["allysupport"])
             c["traits"]["HEALSHIELD"] = ally_healshield_trait(c)
+        elif "allysupport" in c["features"]:
+            c["features"] = [f for f in c["features"] if f != "allysupport"]
+            c["traits"]["HEALSHIELD"] = min(c["traits"].get("HEALSHIELD", 0), 0.4)  # 자기 회복만 있으면 약하게 (champion_traits 와 같게)
+            if not c["traits"]["HEALSHIELD"]:
+                c["traits"].pop("HEALSHIELD", None)
     out_champs.sort(key=lambda c: c["name"])
 
     # --- 아이콘

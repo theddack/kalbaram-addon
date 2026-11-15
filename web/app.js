@@ -517,7 +517,7 @@ const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "�
 const TRIGGER_LABEL = { cast: "스킬마다", boundCast: "지정 스킬 + 기본 공격", onhit: "기본 공격마다", onattack: "기본 공격마다 (치명타 적용)", attacks: "기본 공격 N회마다", time: "주기적", once: "1회" };
 // 처음 하는 사람도 알 수 있게 쉬운 말로 (정확한 용어는 마우스를 올리면 보임)
 const METRIC_LABEL = { combo: "스킬 한 바퀴 피해", dps: "초당 피해", ehp: "버티는 힘", support: "아군 지원", mobility: "기동성", control: "제어력" };
-const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력", support: "회복·보호막 + 아군 강화(기준 아군이 더 넣는 피해)", mobility: "평균 이동 속도", control: "콤보당 CC 시간(둔화 30%)" };
+const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력 (자기 회복·보호막 포함)", support: "아군에게 주는 회복·보호막 + 아군 강화(기준 아군이 더 넣는 피해). 자기 회복·보호막은 버티는 힘", mobility: "평균 이동 속도", control: "콤보당 CC 시간(둔화 30%)" };
 // 받침 따라 조사 고르기 (이/가, 을/를, 와/과)
 function josa(word, withBatchim, without) {
   const c = String(word).trim().slice(-1).charCodeAt(0);

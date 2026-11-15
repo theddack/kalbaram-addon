@@ -402,7 +402,7 @@
 
   function spellTotals(effects, rank, L, t) {
     const { uniq, groups: planGroups, kinds, crit } = spellPlan(effects);
-    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.ally ? { ally: e.ally } : {}) }));
+    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.ally ? { ally: e.ally } : {}), ...(e.target ? { target: e.target } : {}) }));
     const groups = new Map();
     for (const [k, idx] of planGroups) groups.set(k, idx.map((i) => vals[i]));
     const isCritV = new Map(vals.map((v, i) => [v, crit[i]]));
@@ -539,6 +539,22 @@
     return 0;
   }
   const isAllyKind = (k) => typeof k === "string" && k.startsWith("ally");
+
+  // 회복·보호막의 대상 (v0.1.93 P4-A). 게임 규칙(누가 받을 수 있나)과 사용 시나리오(실제로 누구에게 쓰나)를 나눈다.
+  //   self 자기만 · ally 아군 하나 · allies 주변 아군 여럿 · selfAndAllies 자신과 아군이 함께 · selfOrAlly 자신 또는 아군 중 하나
+  // 돌려주는 값은 {self: 자기 몫 배수, ally: 아군 몫 배수}. selfAndAllies 는 게임에서 둘 다 받으니 둘 다 1 (중복 계산이 아님).
+  // selfOrAlly 는 둘 중 하나라서 사용 시나리오로 가른다: 아군을 돕는 챔피언이면 아군에게, 아니면 자신에게 (가정, 실게임 미검증).
+  function targetShare(target, helps) {
+    switch (target) {
+      case "self": return { self: 1, ally: 0 };
+      case "ally": return { self: 0, ally: 1 };
+      case "allies": return { self: 0, ally: ALLY_TARGETS };
+      case "selfAndAllies": return { self: 1, ally: ALLY_TARGETS };
+      case "selfOrAlly": return helps ? { self: 0, ally: 1 } : { self: 1, ally: 0 };
+      // 대상을 못 읽은 효과: 예전처럼 아군을 돕는 챔피언이면 지원, 아니면 자기 생존으로 (rules.json effectTarget 으로 정해 주면 없어진다)
+      default: return helps ? { self: 0, ally: 1 } : { self: 1, ally: 0 };
+    }
+  }
   function metrics(champ, L, stats, opts = {}) {
     const { total: t, flags, aram } = stats;
     const cv = stats.conv || {};
@@ -555,7 +571,8 @@
     const magMit = mitigation(TARGET.MR * (1 - Math.min(0.9, cv.mrShred || 0)), t.MPENP, t.MPEN) * (1 + (cv.magicDmgMult || 0) + lowAmp);
     const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
     const ranks = ranksAt(L, champ.spells);
-    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0 };
+    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0 };
+    const helps = (champ.features || []).includes("allysupport");
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
     // 쿨의 f% 를 확률 p 로 돌려받음 → 남는 쿨 비율 (1 - pf). 여럿이면 곱한다 → 가속 100 × (1/Π(1-pf) - 1)
@@ -618,7 +635,7 @@
       const cd = !cdBase ? cdNormal : (ohwK || cobalt) ? eMult / Math.max(eRateMult, 1e-9) : cdNormal;
       if (!disabled && cdBase > 0) out.boundCastRate += eCobaltRate * weave;
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
-      let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0, ally = 0;
+      let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0, ally = 0, selfShield = 0, selfHeal = 0;
       // 보석 건틀릿: 스킬도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값
       // 보석 팔찌(26.21): 궁극기만 치명타 (ultCritDmg)
       const critMul = cv.skillCritDmg || (sp.slot === "R" && cv.ultCritDmg) || 0;
@@ -637,16 +654,25 @@
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
-        } else if (v.kind === "shield") shield += v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0)) * (1 + (flags.slotHeal[sp.slot] || 0));
-        else if (v.kind === "heal") heal += v.value * (aram.healing || 1) * (1 + t.HSP) * (1 + (flags.slotHeal[sp.slot] || 0));
+        } else if (v.kind === "shield" || v.kind === "heal") {
+          // 회복·보호막: 대상(게임 규칙)에 따라 자기 생존과 아군 지원으로 나눈다 (v0.1.93 P4-A)
+          const amt = v.kind === "shield"
+            ? v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0)) * (1 + (flags.slotHeal[sp.slot] || 0))
+            : v.value * (aram.healing || 1) * (1 + t.HSP) * (1 + (flags.slotHeal[sp.slot] || 0));
+          const sh = targetShare(v.target, helps);
+          if (v.kind === "shield") { shield += amt * sh.ally; selfShield += amt * sh.self; }
+          else { heal += amt * sh.ally; selfHeal += amt * sh.self; }
+        }
       }
-      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit, ...(ally ? { ally } : {}) });
+      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit, ...(ally ? { ally } : {}), ...(selfShield || selfHeal ? { selfShield, selfHeal } : {}) });
       out.spellOnhit += onhit;
       out.combo += dmg;
       out.comboRaw += raw;
       out.shield += shield;
       out.heal += heal;
-      out.kitShield += shield;
+      out.selfShield += selfShield;
+      out.selfHeal += selfHeal;
+      out.kitShield += shield;  // 서포터 아이템 발동(향로·월석)은 아군에게 준 몫만 (자기 보호막으로는 발동하지 않는다)
       out.kitHeal += heal;
       // 원래 재사용 대기시간이 아주 짧은 스킬(징크스 Q 같은 전환형)은 DPS에서 제외, 가속으로 짧아진 건 0.5초까지만
       if (cdBase > 0.5) out.skillDps += dmg / Math.max(cd, 0.5);
@@ -724,9 +750,15 @@
         // 2026-11-14 예전엔 '회복·보호막(지원)' 지표에 넣어, 지원 기준값(600)이 작은 탓에 메이지·서포터 계산 최적이 스테락·케이닉·워모그가 됐고
         // (공식 추천 가산이 가리고 있었음), 레오나 + 탱크 엔진의 점검표 증강 효과 2/3가 스테락 보호막 증가분이었다
         if (e.item) { out.itemSelfHp += amt; continue; }
-        if (e.kind === "shield") out.shield += amt; else out.heal += amt;
-        // 챔피언 자기 기술(패시브)의 회복·보호막만 아군에게 줄 수 있다고 본다 (아이템·증강 효과의 보호막은 자기 자신에게만: 스테락·케이닉 루컨)
-        if (!itemOrAugFx(e)) { if (e.kind === "shield") out.kitShield += amt; else out.kitHeal += amt; }
+        // 챔피언 기술(패시브·규칙 효과)의 회복·보호막만 아군에게 줄 수 있다 (아이템·증강 효과는 자기 자신에게만: 스테락·케이닉 루컨)
+        const sh = itemOrAugFx(e) ? { self: 1, ally: 0 } : targetShare(e.target, helps);
+        row.toSelf = amt * sh.self;
+        row.toAlly = amt * sh.ally;
+        if (sh.self) { if (e.kind === "shield") out.selfShield += row.toSelf; else out.selfHeal += row.toSelf; }
+        if (sh.ally) {
+          if (e.kind === "shield") { out.shield += row.toAlly; out.kitShield += row.toAlly; }
+          else { out.heal += row.toAlly; out.kitHeal += row.toAlly; }
+        }
         continue;
       }
       const kind = e.kind === "adaptive" ? (apMain(champ) ? "magic" : "physical") : e.kind;
@@ -771,7 +803,8 @@
     const autoCombo = out.autoDps * COMBO_WINDOW;
     out.vampHeal = ((t.LS || 0) * autoCombo + (t.OMNIVAMP || 0) * (autoCombo + out.combo)) * (aram.healing || 1);
     // 정령의 형상 '무한한 활력': 자신이 받는 회복·보호막 증가 → 자기 회복(생명선·흡혈·아이템 자기 회복·보호막)에 곱한다
-    const extraHp = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHp) * (1 + (cv.selfHealMult || 0)) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
+    // 챔피언 기술의 자기 회복·보호막(out.selfHeal·selfShield)도 버티는 힘으로 (v0.1.93 P4-A, 예전엔 지원 지표에 들어갔다)
+    const extraHp = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHp + out.selfHeal + out.selfShield) * (1 + (cv.selfHealMult || 0)) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
     out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
     out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100)) / taken;
     if (cv.ehpMult) { out.ehpPhys *= 1 + cv.ehpMult; out.ehpMag *= 1 + cv.ehpMult; }  // 상대 피해량 감소 (감쇠 광선)

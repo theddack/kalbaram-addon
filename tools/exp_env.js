@@ -17,8 +17,9 @@
 // 데이터 생성(build_data.py ally_healshield_trait)과 같은지 tests/scale.test.js 가 본다. 패시브·스킬마다 하나로 센다 (18레벨 맨몸 계산에서 값이 0보다 큰 것)
 function healShieldTrait(Stats, c) {
   const m = Stats.evaluate(c, 18, [], [], {}).m, src = new Set();
+  // 아군에게 가는 몫만 센다 (v0.1.93 P4-A: 스킬의 shield·heal 은 아군 몫, 자기 몫은 selfShield·selfHeal)
   for (const s of m.spells || []) if ((s.shield || 0) + (s.heal || 0) + (s.ally || 0) > 0) src.add(s.slot);
-  for (const r of m.effects || []) if (((r.kind === "shield" || r.kind === "heal") && (r.value || 0) > 0) || (r.ally || 0) > 0) src.add(r.slot || (String(r.src || "").startsWith("패시브") ? "P" : r.src));
+  for (const r of m.effects || []) if ((r.toAlly || 0) > 0 || (r.ally || 0) > 0) src.add(r.slot || (String(r.src || "").startsWith("패시브") ? "P" : r.src));
   return Math.min(1, Math.round(src.size * 0.4 * 100) / 100);
 }
 const apply = function apply(S, Stats, env = process.env) {
