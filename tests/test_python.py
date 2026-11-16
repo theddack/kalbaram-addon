@@ -1051,6 +1051,34 @@ class AugOcr(unittest.TestCase):
         t.feed(None)
         self.assertEqual((t.state["picked"], t.state["pickSeq"], t.state["offers"]), ("영혼 흡수", 1, None))
 
+    def test_reroll_fill_keeps_click(self):
+        """새로고침한 칸 이름이 뒤늦게 읽혀도, 그 전에 다른 칸을 누른 클릭을 잃지 않는다.
+        (2026-11-17 파이크 판 9:36: 불여우(1번 칸) 클릭 0.3초 뒤 새로고침한 3번 칸 이름이 읽혀 클릭이 지워졌고,
+        카드가 닫힌 뒤의 화면 클릭 때문에 '대지의 영혼'으로 기록됐다. 경기 결과 정답은 불여우)"""
+        t = self.o.Tracker()
+        t.feed(["궁극의 반복", "불여우", "쌍둥이 불꽃"])
+        t.reroll(2)
+        t.click(1)                                        # 불여우를 누름
+        t.feed(["궁극의 반복", "불여우", "대지의 영혼"])   # 새로고침한 칸 이름이 뒤늦게 읽힘
+        self.assertEqual(t.state["offers"], ["궁극의 반복", "불여우", "대지의 영혼"])
+        t.click(2)                                        # 카드가 닫힌 뒤 화면 클릭
+        t.click(2)
+        for _ in range(self.o.Tracker.CLOSE_AFTER):
+            t.feed(None)
+        self.assertEqual(t.state["picked"], "불여우")
+
+    def test_new_screen_after_reroll_still_resets_click(self):
+        """새로고침한 칸 말고 다른 칸까지 바뀌면 다음 선택 화면이라 그 전 클릭은 버린다"""
+        t = self.o.Tracker()
+        t.feed(["궁극의 반복", "불여우", "쌍둥이 불꽃"])
+        t.reroll(2)
+        t.click(1)
+        t.feed(["도주 계획", "채널 고정", "대지의 영혼"])  # 세 칸이 다 다른 화면
+        t.click(0)
+        for _ in range(self.o.Tracker.CLOSE_AFTER):
+            t.feed(None)
+        self.assertEqual(t.state["picked"], "도주 계획")
+
     def test_hover_partial_names_keep_screen_open(self):
         # v0.1.13 실제 PC: 마우스를 올리자 이름이 잘려 읽혀 닫힘으로 착각 → 그 뒤 클릭을 못 잡았다
         t = self.o.Tracker()
@@ -3342,3 +3370,25 @@ class ReleaseCheck(unittest.TestCase):
         self.assertEqual(rc.version_problems(cur, (ROOT / "desktop.py").read_text(encoding="utf-8"),
                                              (ROOT / "업데이트내역.md").read_text(encoding="utf-8"),
                                              (ROOT / "web" / "changelog.html").read_text(encoding="utf-8")), [])
+
+
+class ItemRuleScope(unittest.TestCase):
+    """v0.1.93 P4-B 4단계: 아이템 규칙의 확인 문구(check)는 상점 설명 + 아이템 칸 설명 둘 다에서 찾는다"""
+    def test_check_also_looks_at_passive_html(self):
+        import json, re
+        data = json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))
+        it = next(i for i in data["items"] if i["name"] == "지평선의 초점")
+        plain_desc = re.sub(r"<[^>]+>", "", it["desc"])
+        plain_all = re.sub(r"<[^>]+>", "", (it.get("passiveHtml") or "") + it["desc"])
+        self.assertNotIn("10%", plain_desc, "상점 설명에는 피해 증폭 수치가 없다")
+        self.assertIn("10%", plain_all, "아이템 칸 설명에는 있다")
+        self.assertEqual(it.get("passiveStats"), {"dmgDealtMult": 0.1, "_farMark": 600}, "그래도 규칙이 붙어야 한다")
+        self.assertNotIn("미적용", (ROOT / "web" / "review.md").read_text(encoding="utf-8"))
+
+    def test_spell_range_in_data(self):
+        """'멀리서 맞히면' 조건 계산에 쓰는 스킬 사거리가 데이터에 있다"""
+        import json
+        data = json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))
+        lux = next(c for c in data["champions"] if c["id"] == "Lux")
+        self.assertEqual(next(s for s in lux["spells"] if s["slot"] == "Q")["range"], 1175)
+        self.assertTrue(all("range" in s for c in data["champions"] for s in c["spells"]), "모든 스킬에 사거리")
