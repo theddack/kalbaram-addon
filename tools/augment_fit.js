@@ -22,7 +22,10 @@ const EXP_LABEL = require("./exp_env")(S, global.Stats);
 const REPS = { Marksman: ["Jinx", "Vayne", "Caitlyn"], Mage: ["Lux", "Annie", "Viktor"], Tank: ["Malphite", "Sion", "Leona"],
   Fighter: ["Garen", "Darius", "Irelia"], Assassin: ["Zed", "Akali", "Kayn"], Support: ["Sona", "Nami", "Lulu"] };
 const KEYS = Object.keys(S.normOf({}, null));  // 지표 기준값은 엔진과 같은 S.normOf (v0.1.93 P2)
-const NONE = 0.02;  // 상한 − 기본이 이보다 작으면 아이템 무관
+// 상한 − 기본이 이보다 작으면 아이템 무관. eff() 가 비율에 100을 곱해 돌려주므로(퍼센트 포인트) 2 = 비율 0.02 다.
+// 2026-11-17 v0.1.93 P4-B: 0.02(비율 기준 값)로 적혀 있어 사실상 아무것도 '아이템 무관'이 되지 않았고,
+// 여지가 0.6 포인트뿐인 장면에서 달성률이 −3.05 처럼 튀어 '역행'으로 셌다 (징크스 + 징수의 총 업그레이드: 기본 20.1 → 상한 20.7)
+const NONE = 2;
 
 function setup(d, c, aug) {
   const cc = S.withChosenFeatures(c, [aug], d.rules);
