@@ -545,6 +545,7 @@ def redact_eog(eog):
 
 
 # 경기 결과에 나오지만 고르는 증강이 아닌 표시용 번호 (이름 없음). 3176 = GoH_PentakillAug_Generic
+STATCHECK_EVERY = 30  # 초: 레벨·아이템·증강이 그대로여도 이만큼마다 능력치 대조를 한 줄 남긴다 (성장 능력치 되짚기용)
 EOG_DISPLAY_NUMS = {3176}
 
 
@@ -952,7 +953,9 @@ class Api:
         # 선택지마다 단계별 (안정화 기획서 UX-02): 선택지 수 · 이름 3개 다 읽음 · 라벨 3개 다 보냄 · 평가 없음 카드 수
         self._cards = {"선택지": 0, "3장 읽음": 0, "라벨 3장": 0, "평가 없음": 0}
         self._cards_seq = None
-        self._statcheck_key = None  # 계산 vs 게임 실제 능력치: 레벨·아이템·증강이 바뀔 때만 기록
+        self._statcheck_key = None  # 계산 vs 게임 실제 능력치: 레벨·아이템·증강이 바뀔 때 + STATCHECK_EVERY 초마다
+        self._statcheck_at = 0.0
+        self._now = time.time  # 테스트에서 시간을 돌려 보려고
         self._lcu = lcu_watcher
         self._lock = threading.Lock()
         self._ui_beat = None  # 화면(JS)이 마지막으로 게임 상태를 물어본 시각 (3초마다). 멈추면 화면 쪽이 멈춘 것
@@ -1013,9 +1016,14 @@ class Api:
             # 계산한 능력치 vs 게임이 알려 준 실제 능력치 (계산이 틀린 곳 찾기: 데이터·룬·중첩).
             # 실제 값은 싸움 중 버프로 매번 흔들리니 레벨·아이템·증강이 바뀔 때만 남긴다
             key = (str(getattr(self._rec, "dir", "")), json.dumps([sc.get("level"), sc.get("items"), sc.get("augs")]))
-            if key != self._statcheck_key:
+            now = self._now()
+            # 같은 상태에서도 주기마다 한 줄 더 남긴다: 성장 능력치(윤 탈 치명타·극악무도 주문력) 추정을 나중에 되짚어 보려면
+            # '같은 상태에서 두 번 읽은 값'이 있어야 한다 (기록에는 능력치 숫자뿐이라 개인정보가 없다, 2026-11-16)
+            periodic = key == self._statcheck_key and now - self._statcheck_at >= STATCHECK_EVERY
+            if key != self._statcheck_key or periodic:
                 self._statcheck_key = key
-                self._rec.event("statcheck", sc)
+                self._statcheck_at = now
+                self._rec.event("statcheck", {**sc, **({"periodic": True} if periodic else {})})
         fix = payload.get("pickFix")
         if self._rec and isinstance(fix, dict):
             # 실제 능력치로 고른 증강을 바로잡음 (클릭 짐작이 틀렸을 때). 같은 것은 한 번만

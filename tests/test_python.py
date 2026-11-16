@@ -457,6 +457,30 @@ class Desktop(unittest.TestCase):
         checks = [d for k, d in got if k == "statcheck"]
         self.assertEqual([c["level"] for c in checks], [3, 4])
 
+    def test_statcheck_logged_periodically(self):
+        """성장 능력치(윤 탈 치명타·극악무도 주문력) 추정을 나중에 되짚어 보려면 '같은 상태에서 두 번 읽은 값'이 필요하다.
+        그래서 레벨·아이템·증강이 그대로여도 STATCHECK_EVERY 초마다 한 줄 남긴다 (2026-11-16, 기록은 능력치 숫자뿐이라 개인정보가 없다)"""
+        api = desktop.Api(Settings_stub())
+        got = []
+
+        class Rec:
+            dir = "g1"
+
+            def event(self, kind, data=None, dedupe=False):
+                got.append((kind, data))
+        api._rec = Rec()
+        sc = lambda ad: {"level": 9, "items": ["3031"], "augs": [], "rows": {"AD": [100, ad]}}
+        now = [1000.0]
+        api._now = lambda: now[0]
+        api.set_overlay({"statCheck": sc(100)})
+        now[0] += 5
+        api.set_overlay({"statCheck": sc(101)})  # 아직 주기 전 → 안 남김
+        now[0] += desktop.STATCHECK_EVERY
+        api.set_overlay({"statCheck": sc(102)})  # 주기가 지나 한 줄 더
+        checks = [d for k, d in got if k == "statcheck"]
+        self.assertEqual([c["rows"]["AD"][1] for c in checks], [100, 102])
+        self.assertTrue(checks[1].get("periodic"), "주기 기록은 표시해 둔다")
+
     def test_pickfix_logged_once(self):
         # 화면이 실제 능력치로 고른 증강을 바로잡으면 그 판 기록에 한 번만 남긴다 (매번 보내는 화면 정보에 같이 실려 온다)
         api = desktop.Api(Settings_stub())

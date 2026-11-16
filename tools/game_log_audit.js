@@ -213,8 +213,9 @@ function run(inputs, eogDir) {
       if (r.nowOff && (!s.worst || gap > Math.abs(s.worst.now - s.worst.real) / Math.max(1e-9, Math.abs(s.worst.real)))) s.worst = r;
     }
     const held = rc.filter((r) => r.grown !== r.now).length;
+    const periodic = g.events.some((e) => e.kind === "statcheck" && e.periodic);
     return { name: g.name, champion: g.champion, version: g.version, enemies: g.enemies, events: g.events.length,
-      timeline: timeline(g), aug: augmentCheck(g, eogDir), stats, rows: rc, growHeld: held };
+      timeline: timeline(g), aug: augmentCheck(g, eogDir), stats, rows: rc, growHeld: held, periodic };
   });
 }
 
@@ -232,7 +233,7 @@ if (require.main === module) {
     console.log(`  증강: 클릭 ${g.aug.picked.length}개 · 경기 결과 ${(g.aug.eogNames || []).length}개 → ${g.aug.match ? "같음" : "다름"}${g.aug.unknown.length ? ` · 모르는 번호 ${g.aug.unknown.join(",")}` : ""}`);
     if (g.aug.onlyInLog && g.aug.onlyInLog.length) console.log(`         기록에만: ${g.aug.onlyInLog.join(", ")} · 경기 결과에만: ${(g.aug.onlyInGame || []).join(", ") || "없음"}`);
     console.log(`  지금 엔진 능력치 어긋남 (성장 되감기 전→후, 괄호는 한 번 읽은 값 참고): ${off.join(" · ") || "없음"}`);
-    if (!g.growHeld) console.log("  ※ 되감기 반영 0회: 능력치 대조 기록은 레벨·아이템·증강이 바뀔 때만 남아, '같은 값 두 번' 규칙을 채우지 못해요 (화면은 1초마다 재요)");
+    if (!g.growHeld) console.log(`  ※ 되감기 반영 0회: '같은 값 두 번' 규칙을 채우지 못했어요${g.periodic ? "" : " (이 기록에는 주기 능력치 줄이 없어요 — v0.1.93부터 30초마다 남겨요)"}`);
   }
 }
 module.exports = { run, gameDirs, statOff };
