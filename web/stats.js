@@ -804,9 +804,15 @@
     out.vampHeal = ((t.LS || 0) * autoCombo + (t.OMNIVAMP || 0) * (autoCombo + out.combo)) * (aram.healing || 1);
     // 정령의 형상 '무한한 활력': 자신이 받는 회복·보호막 증가 → 자기 회복(생명선·흡혈·아이템 자기 회복·보호막)에 곱한다
     // 챔피언 기술의 자기 회복·보호막(out.selfHeal·selfShield)도 버티는 힘으로 (v0.1.93 P4-A, 예전엔 지원 지표에 들어갔다)
-    const extraHp = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHp + out.selfHeal + out.selfShield) * (1 + (cv.selfHealMult || 0)) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
-    out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
-    out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100)) / taken;
+    const extraHp = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHp + out.selfHeal + out.selfShield) * (1 + (cv.selfHealMult || 0));
+    // 무적·피해 감소(존야 시간 정지·천상의 구원 …): 그동안 '안 받는 피해'는 저항을 지난 뒤 단위(받는 피해 초당)예요.
+    // 버티는 힘은 맞을 수 있는 생피해 단위라, 바꿀 때 기준 상대의 저항 배수를 써요. 내 저항으로 곱하면 방어력이 높을수록
+    // 무적이 커져 탱커가 최대 2.5배 과대평가됐어요 (2026-11-16 존야 실험에서 드러남, docs/v0.1.93_P4B_1단계_존야.md).
+    // 여러 효과가 겹쳐도 한타 길이(AUTO_FIGHT_SEC)를 넘지 않아요. ÷2 는 '위험할 때 쓴다'는 기존 가정 그대로예요.
+    out.avoidSec = Math.min(AUTO_FIGHT_SEC, (cv.invulnSec || 0) + (cv.drSec || 0));
+    const avoided = out.avoidSec * TARGET.DPS_TAKEN / 2;
+    out.ehpPhys = ((t.HP + extraHp) * (1 + t.ARMOR / 100) + avoided * (1 + TARGET.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
+    out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100) + avoided * (1 + TARGET.MR / 100)) / taken;
     if (cv.ehpMult) { out.ehpPhys *= 1 + cv.ehpMult; out.ehpMag *= 1 + cv.ehpMult; }  // 상대 피해량 감소 (감쇠 광선)
     // 받는 피해의 마법 비율: 게임 중이면 적 구성(라이엇 주 피해 유형)으로, 모르면 반반
     const mag = opts && typeof opts.enemyMagic === "number" ? opts.enemyMagic : 0.5;

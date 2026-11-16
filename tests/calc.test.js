@@ -1214,3 +1214,39 @@ test("행동 불가 시간: 초당 피해만 그 비율만큼 줄고 콤보는 �
   close(b.stopLoss, a.dps * 0.5, "줄어든 양을 따로 남긴다");
   assert.equal(St.evaluate(c, 18, [plain], [], {}).m.stopLoss, undefined, "없는 아이템은 그대로");
 });
+
+// v0.1.93 P4-B: 무적·피해 감소로 '안 받는 피해'는 저항을 지난 뒤 단위(받는 피해)라, 버티는 힘(생피해) 단위로 바꿀 때
+// 기준 상대의 저항 배수를 써야 한다. 내 저항으로 곱하면 방어력이 높을수록 무적이 커져 탱커가 과대평가된다 (2026-11-16 존야 실험).
+test("무적 환산: 내 방어력이 달라도 같은 값만큼 버티는 힘이 는다", () => {
+  // 칼바람 받는 피해 보정이 없는 챔피언끼리 (보정이 있으면 그 배수만큼 달라지는 게 맞다)
+  const squishy = champ("Orianna"), tank = champ("Malphite");
+  assert.ok(!squishy.aram && !tank.aram, "보정 없는 챔피언으로 비교");
+  const inv = { id: "zz", name: "가짜무적", kind: "legendary", stats: {}, tags: {}, passiveStats: { invulnSec: 2.5 } };
+  const gain = (c) => St.evaluate(c, 18, [inv], [], {}).m.ehp - St.evaluate(c, 18, [], [], {}).m.ehp;
+  const a = gain(squishy), b = gain(tank);
+  assert.ok(Math.abs(a - b) < Math.max(a, b) * 0.02, `무적 2.5초는 누구에게나 같은 양: 오리아나 ${Math.round(a)} vs 말파이트 ${Math.round(b)}`);
+  // 크기: 받는 피해 초당 600 × 2.5초 ÷ 2 (위험할 때 쓴다 가정) × 기준 상대 저항 배수
+  const T = St.TARGET;
+  const want = 2.5 * T.DPS_TAKEN / 2 * ((1 + T.ARMOR / 100) * 0.5 + (1 + T.MR / 100) * 0.5);
+  assert.ok(Math.abs(a - want) < want * 0.05, `기준 상대 저항으로 환산: ${Math.round(a)} vs ${Math.round(want)}`);
+});
+
+test("무적·피해 감소가 겹쳐도 한타 길이를 넘지 않는다", () => {
+  const c = champ("Leona");
+  const mk = (ps) => ({ id: "zz", name: "가짜", kind: "legendary", stats: {}, tags: {}, passiveStats: ps });
+  const base = St.evaluate(c, 18, [], [], {}).m.ehp;
+  const long = St.evaluate(c, 18, [mk({ invulnSec: 5, drSec: 5 })], [], {}).m.ehp - base;
+  const cap = St.evaluate(c, 18, [mk({ invulnSec: 6 })], [], {}).m.ehp - base;
+  assert.ok(Math.abs(long - cap) < cap * 0.02, `합쳐도 한타 ${6}초까지만: ${Math.round(long)} vs ${Math.round(cap)}`);
+});
+
+// v0.1.93: 타릭 R '우주의 광휘'(자신과 주변 아군 무적)는 자기 몫을 무적 공통 경로로, 아군 몫만 보호막으로 센다.
+// 예전엔 자기 몫도 보호막이라 내 방어력·마법 저항력을 곱해, 탱커 빌드 타릭에서 2.4배로 잡혔다 (2026-11-16)
+test("타릭 R: 자기 몫은 무적 경로, 아군 몫만 지원 지표", () => {
+  const c = champ("Taric");
+  const m = St.evaluate(c, 18, [], [], {}).m;
+  assert.equal(Math.round(m.selfShield), 0, "자기 보호막으로 세지 않는다");
+  assert.ok(m.shield > 700, `아군 보호막은 그대로: ${Math.round(m.shield)}`);
+  const bare = { ...c, fightStats: { ...(c.fightStats || {}), invulnSec: 0 } };
+  assert.ok(St.evaluate(c, 18, [], [], {}).m.ehp > St.evaluate(bare, 18, [], [], {}).m.ehp, "무적은 버티는 힘으로");
+});
