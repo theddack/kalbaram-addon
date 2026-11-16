@@ -72,8 +72,10 @@ test("대상별 몫: self 는 자기 생존, ally·allies 는 지원, selfAndAll
   assert.ok(garen.selfShield > 0);
   const soraka = ev("Soraka");  // Q 자기 회복 · W·R 아군 회복
   assert.ok(soraka.heal > 0 && soraka.selfHeal > 0);
-  const taric = ev("Taric");  // R 우주의 광휘: 자신과 주변 아군
-  assert.ok(taric.selfShield > 0 && taric.shield > 0, "selfAndAllies 는 자기·아군 둘 다");
+  // selfAndAllies: 케일 W '천상의 축복'(자신과 아군 챔피언 회복) — 자기 몫과 아군 몫이 둘 다 잡힌다
+  const kayle = ev("Kayle");
+  assert.ok(kayle.selfHeal > 0 && kayle.heal > 0, `selfAndAllies 는 자기·아군 둘 다: 자기 ${Math.round(kayle.selfHeal)} 아군 ${Math.round(kayle.heal)}`);
+  // 타릭 R 은 2026-11-16 부터 자기 몫을 무적 경로로 옮겨 자기 보호막이 0 이다 (tests/calc.test.js 에서 따로 본다)
 });
 
 test("자기 회복·보호막은 버티는 힘으로 (지원 지표에 두 번 세지 않는다)", () => {
