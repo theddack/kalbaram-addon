@@ -6,6 +6,7 @@
 //   ZHONYA=ehpOnly|both    존야의 모래시계 '시간 정지'(2.5초 무적)를 계산에 넣는 실험 (v0.1.93 P4-B 1단계).
 //                          ehpOnly = 안 받는 피해만 · both = 그 위에 무적 동안 못 넣는 피해까지. 기본(없음)은 지금처럼 계산 안 함
 //   AUG_FOCUS=2            증강 몰빵 목표의 증강 몫 세기 (scoring CONCEPTS[0].focus, 기본 1. v0.1.93 P3-R 실험)
+//   ALLY_UPTIME=0.7        아군이 강화를 실제로 쓰는 비율 (기본 1 = 한타 내내 때린다는 가정, v0.1.93 P4-B 2단계 민감도)
 //   AUTO_UPTIME=0.7        한타 중 기본 공격을 실제로 치는 시간 비율 (기본 1)
 //   FIGHT_SEC=4            평타를 이어 치는 한타 시간(초, 기본 6)
 //   SKILL_SHARE=0.5        스킬 적중 빈도 비율 (기본 0.3)
@@ -42,6 +43,7 @@ const apply = function apply(S, Stats, env = process.env) {
   if (dl != null) { S.setAugmentDelta(dl); parts.push(`δ ${dl}`); }
   const exp = {};
   if (num("AUTO_UPTIME") != null) { exp.autoUptime = num("AUTO_UPTIME"); parts.push(`평타 가동 ${exp.autoUptime}`); }
+  if (num("ALLY_UPTIME") != null) { exp.allyUptime = num("ALLY_UPTIME"); parts.push(`아군 가동 ${exp.allyUptime}`); }
   if (num("FIGHT_SEC") != null) { exp.fightSec = num("FIGHT_SEC"); parts.push(`한타 ${exp.fightSec}초`); }
   if (num("SKILL_SHARE") != null) { exp.skillShare = num("SKILL_SHARE"); parts.push(`스킬 적중 ${exp.skillShare}`); }
   if (Object.keys(exp).length) { Stats.setExperiment(exp); S.clearMemo(); }

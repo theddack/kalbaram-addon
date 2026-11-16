@@ -190,7 +190,7 @@
     // 라이즈 패시브: 주문력 100당 최대 마나 10% (게임 데이터 PercentManaIncrease 10 · APAmount 100)
     if (conv.APtoManaPct && t.MANA) { const m = t.MANA * t.AP * conv.APtoManaPct; t.MANA += m; t.bonusMANA += m; }
     // 서포터 아이템 버프 (흐르는 물의 지팡이·불타는 향로): 아군을 회복·보호막으로 도울 때 자신도 받는 버프. 아군을 돕는 챔피언만 (rules items)
-    const helps = (champ.features || []).includes("allysupport");
+    const helps = canProcAllyItem(champ);
     if (helps && conv.allyBuffAP) t.AP += conv.allyBuffAP * (1 + mult.APmult);
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
     if (helps && conv.allyBuffHaste) t.HASTE += conv.allyBuffHaste;
@@ -470,7 +470,8 @@
   //   autoUptime  한타 중 기본 공격을 실제로 치는 시간 비율 (평타·적중·기본 공격 시 효과의 초당 피해, 구인수 중첩 평타 수에 곱함)
   //   fightSec    평타를 이어 치는 한타 시간(초, 구인수 중첩 평균)
   //   skillShare  SKILL_DPS_SHARE 대신 쓸 값
-  const EXP_DEFAULT = { autoUptime: 1, fightSec: AUTO_FIGHT_SEC, skillShare: SKILL_DPS_SHARE };
+  //   allyUptime  아군 강화가 실제로 쓰이는 비율 (아군이 그 시간 동안 때리고 있을 비율). 기본 1 = 한타 내내 때린다는 지금 가정
+  const EXP_DEFAULT = { autoUptime: 1, fightSec: AUTO_FIGHT_SEC, skillShare: SKILL_DPS_SHARE, allyUptime: 1 };
   const EXP = { ...EXP_DEFAULT };
   function setExperiment(e) { Object.assign(EXP, EXP_DEFAULT, e || {}); }
   const CAST_MIN_CD = 2; // '스킬 사용 시' 효과: 한 스킬은 최대 2초에 1번 (토글·충전형 스킬이 발동을 부풀리지 않게)
@@ -529,16 +530,32 @@
   // 아군 강화 → 기준 아군(ALLY)이 지속시간 동안 더 넣는 피해. 서포터 기술 1번에 1번 (회복·보호막을 콤보 1번에 1번 세는 것과 같음).
   // 아군이 더 넣는 피해 1 = 지원 1 (체력 단위)로 본다: 한타는 양쪽 체력 차이로 갈려서 적 체력 1을 더 깎는 것과 아군 체력 1을 지키는 것을 같게 (가정, 미검증)
   //   allyAS 공격 속도 비율 · allyAD 공격력 · allyOnhit 적중 시 마법 피해(한 번) · allyHaste 스킬 가속 · allyAmp 피해량 비율 · allyAP 주문력(기준 아군 0)
+  // 아군 강화 → 기준 아군이 더 넣는 피해. 평타에 붙는 강화(공격 속도·공격력·적중 시)는 아군이 그동안 실제로 때리고 있어야 들어가서
+  // 아군 평타 가동률(EXP.allyUptime, 기본 1)을 곱한다. 우리 자신 평타에 EXP.autoUptime 을 쓰는 것과 같은 자리예요 (v0.1.93 P4-B 2단계).
   function allyGain(kind, amt, sec, hits, cap = AS_CAP) {
     const s = Math.min(sec || COMBO_WINDOW, AUTO_FIGHT_SEC);
-    if (kind === "allyAS") return ALLY.autoDps * (Math.min(cap, ALLY.AS + ALLY.asRatio * amt) / ALLY.AS - 1) * s;
-    if (kind === "allyAD") return ALLY.autoDps * amt / ALLY.AD * s;
-    if (kind === "allyOnhit") return amt * 100 / (100 + TARGET.MR) * Math.min(hits || Infinity, ALLY.AS * s);
+    const up = EXP.allyUptime;
+    if (kind === "allyAS") return ALLY.autoDps * (Math.min(cap, ALLY.AS + ALLY.asRatio * amt) / ALLY.AS - 1) * s * up;
+    if (kind === "allyAD") return ALLY.autoDps * amt / ALLY.AD * s * up;
+    if (kind === "allyOnhit") return amt * 100 / (100 + TARGET.MR) * Math.min(hits || Infinity, ALLY.AS * s * up);
     if (kind === "allyHaste") return ALLY.skillDps * amt / (100 + ALLY.HASTE) * s;
     if (kind === "allyAmp") return (ALLY.autoDps + ALLY.skillDps) * amt * s;
     return 0;
   }
   const isAllyKind = (k) => typeof k === "string" && k.startsWith("ally");
+  // 서포터 아이템(불타는 향로·흐르는 물의 지팡이) 발동 조건: '아군을 치유하거나 보호막을 씌워 주면' (아이템 설명).
+  // 아군에게 가는 회복·보호막 기술이 있어야 터진다. 분류만 아군 지원인 챔피언(누누 — 아군 공격 속도 버프)은 못 터뜨린다 (v0.1.93 P4-B 2단계)
+  const ALLY_TARGET_KINDS = ["ally", "allies", "selfAndAllies", "selfOrAlly"];
+  const CAN_PROC = new WeakMap();
+  function canProcAllyItem(champ) {
+    if (!champ || !(champ.features || []).includes("allysupport")) return false;
+    if (CAN_PROC.has(champ)) return CAN_PROC.get(champ);
+    const rows = [...(champ.spells || []).flatMap((s) => s.effects || []), ...((champ.passive || {}).effects || []),
+      ...(((champ.fightStats || {})._effects) || [])];
+    const ok = rows.some((e) => (e.kind === "heal" || e.kind === "shield") && ALLY_TARGET_KINDS.includes(e.target));
+    CAN_PROC.set(champ, ok);
+    return ok;
+  }
 
   // 회복·보호막의 대상 (v0.1.93 P4-A). 게임 규칙(누가 받을 수 있나)과 사용 시나리오(실제로 누구에게 쓰나)를 나눈다.
   //   self 자기만 · ally 아군 하나 · allies 주변 아군 여럿 · selfAndAllies 자신과 아군이 함께 · selfOrAlly 자신 또는 아군 중 하나
@@ -737,7 +754,7 @@
       out.effects.push(row);
       // 아군 강화 (룰루 W 공격 속도·잔나 E 공격력 …, 불타는 향로 아군 몫): 기준 아군이 더 넣는 피해 → 지원. 아이템 몫은 아군을 돕는 챔피언만 (needsAlly)
       if (isAllyKind(e.kind)) {
-        if (e.needsAlly && !(champ.features || []).includes("allysupport")) { row.value = 0; continue; }
+        if (e.needsAlly && !canProcAllyItem(champ)) { row.value = 0; continue; }
         // ofAllyAD: 받는 아군의 공격력 비례 (밀리오 패시브 '아군 공격력의 15%')
         row.ally = allyGain(e.kind, v + (e.ofAllyAD || 0) * ALLY.AD, e.sec, e.hits, asCapOf) * ALLY_TARGETS;
         out.allyDmg += row.ally;
@@ -831,7 +848,10 @@
     // 콤보(스킬 한 바퀴)는 빼지 않는다 — 멈춘 동안 못 쓴 스킬은 사라지는 게 아니라 뒤로 밀리니까 (한타가 끝나면 잃지만, 그 비율을 정할 근거가 없다).
     // 쓰는 시점·적 공격 집중도는 모르니 '한타 내내 한 번 쓴다'는 가정이에요 (실게임 미검증)
     if (cv.stopSec) {
-      out.stopLoss = out.dps * Math.min(1, cv.stopSec / AUTO_FIGHT_SEC);
+      // 멈춰 있는 동안에도 '시간마다' 들어가는 피해(지속 피해·소환물·장판: 리안드리 화상, 모르가나 W, 자이라 식물 …)는 계속 들어간다.
+      // 그래서 평타·스킬 쪽 초당 피해에서만 뺀다 (v0.1.93, 존야 실험)
+      const keepDps = out.augDps - out.castDps - out.atkDps;  // 시간 발동(time) 몫
+      out.stopLoss = Math.max(0, out.dps - keepDps) * Math.min(1, cv.stopSec / AUTO_FIGHT_SEC);
       out.dps -= out.stopLoss;
     }
     out.support = out.shield + out.heal + out.allyDmg;

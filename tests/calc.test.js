@@ -1250,3 +1250,41 @@ test("타릭 R: 자기 몫은 무적 경로, 아군 몫만 지원 지표", () =>
   const bare = { ...c, fightStats: { ...(c.fightStats || {}), invulnSec: 0 } };
   assert.ok(St.evaluate(c, 18, [], [], {}).m.ehp > St.evaluate(bare, 18, [], [], {}).m.ehp, "무적은 버티는 힘으로");
 });
+
+// v0.1.93 P4-B 2단계: 아군 강화는 아군이 그 시간 동안 때리고 있어야 들어간다 (아군 평타 가동률, 기본 1 = 지금 가정).
+// 우리 자신 평타에 autoUptime 을 쓰는 것과 같은 자리. 스킬 가속 강화는 평타가 아니라 그대로
+test("아군 강화: 평타에 붙는 몫만 아군 가동률을 받는다", () => {
+  const c = champ("Lux");
+  const censer = item("불타는 향로"), staff = item("흐르는 물의 지팡이");
+  const at = (up, it) => { St.setExperiment({ allyUptime: up }); const m = St.evaluate(c, 18, [it], [], {}).m; St.setExperiment({}); return m.allyDmg; };
+  const full = at(1, censer), half = at(0.5, censer);
+  assert.ok(Math.abs(half - full * 0.5) < full * 0.05, `공격 속도·적중 시 강화는 절반으로: ${Math.round(full)} → ${Math.round(half)}`);
+  const s1 = at(1, staff), s2 = at(0.5, staff);
+  assert.ok(Math.abs(s1 - s2) < 1, `스킬 가속 강화는 가동률과 무관: ${Math.round(s1)} vs ${Math.round(s2)}`);
+  assert.equal(St.evaluate(c, 18, [censer], [], {}).m.allyDmg > 0, true, "기본값(1)은 지금과 같다");
+});
+
+// 존야 '시간 정지' 중에도 지속 피해·소환물은 계속 들어간다 → 멈춤 손실에서 뺀다 (실험 설정에서만 쓰는 구조)
+test("행동 불가: 시간마다 들어가는 피해는 멈춤 손실에서 빠진다", () => {
+  const c = champ("Garen");
+  const stop = { id: "zz", name: "가짜멈춤", kind: "legendary", stats: {}, tags: {}, passiveStats: { stopSec: 3 } };
+  // '시간마다'(time) 들어가는 피해를 가진 가짜 아이템: 멈춰 있어도 계속 들어간다 (지속 피해·소환물)
+  const dot = { id: "zy", name: "가짜지속", kind: "legendary", stats: {}, tags: {},
+    effects: [{ kind: "magic", name: "DotPerSec", base: [200], trigger: { type: "time", sec: 1 } }] };
+  const loss = (items) => { const a = St.evaluate(c, 18, items, [], {}).m, b = St.evaluate(c, 18, [...items, stop], [], {}).m; return (a.dps - b.dps) / a.dps; };
+  const plain = loss([]), withDot = loss([dot]);
+  assert.ok(plain > 0.45, `지속 피해가 없으면 절반 가까이 잃는다: ${(plain * 100).toFixed(0)}%`);
+  assert.ok(withDot < plain - 0.05, `지속 피해가 있으면 덜 잃는다: ${(withDot * 100).toFixed(0)}% < ${(plain * 100).toFixed(0)}%`);
+});
+
+// v0.1.93 P4-B 2단계: 불타는 향로·흐르는 물의 지팡이는 '아군을 치유하거나 보호막을 씌워 주면' 발동한다 (아이템 설명).
+// 아군을 회복·보호막으로 돕는 기술이 없으면 발동할 수 없다 — 누누는 아군 공격 속도 버프라 분류만 아군 지원이다
+test("향로·흐르는 물: 아군 회복·보호막이 있는 챔피언만 발동한다", () => {
+  const censer = item("불타는 향로"), staff = item("흐르는 물의 지팡이");
+  const gain = (id, it) => { const c = champ(id); return St.evaluate(c, 18, [it], [], {}).m.allyDmg - St.evaluate(c, 18, [], [], {}).m.allyDmg; };
+  assert.ok(gain("Soraka", censer) > 400, "아군 회복이 있으면 발동");
+  assert.ok(gain("Lux", censer) > 400, "아군 보호막이 있으면 발동");
+  assert.equal(Math.round(gain("Nunu", censer)), 0, "아군 회복·보호막이 없으면 발동 안 함");
+  assert.equal(Math.round(gain("Nunu", staff)), 0, "흐르는 물의 지팡이도 같음");
+  assert.equal(Math.round(gain("Jinx", censer)), 0, "아군 지원 챔피언이 아니면 그대로 0");
+});
