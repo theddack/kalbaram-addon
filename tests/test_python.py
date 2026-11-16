@@ -2433,6 +2433,18 @@ class GameLog(unittest.TestCase):
         rec.finish()
         self.assertEqual(gamelog.tidy(folder, ["헤비", "궁극의 히드라"]), (True, 0))
 
+    def test_augment_self_heal_not_support_tag(self):
+        """자기 회복·보호막 증강에는 '회복·보호막'(HEALSHIELD) 태그를 달지 않는다 — 아이템과 같은 규칙.
+        2026-11-16 파이크 판: '바다의 영혼'(자기 체력·마나 재생)이 이 태그 때문에 구원을 1순위로 끌어올렸다"""
+        import build_data as B
+        ally = B.augment_tags("아군에게 사용하는 체력 회복 및 보호막 효과가 30% 증가합니다.", [])
+        self.assertIn("HEALSHIELD", ally, "아군을 돕는 증강은 그대로")
+        own = B.augment_tags("적에게 피해를 입힌 후 높은 체력 및 마나 재생 효과를 얻는 바다의 영혼을 획득합니다.", [])
+        self.assertNotIn("HEALSHIELD", own, "자기 재생은 서포터 태그가 아니다")
+        self.assertIn("MANA", own, "다른 태그는 그대로")
+        shield = B.augment_tags("전투에서 벗어나면 잠시 동안 보호막을 획득합니다.", [])
+        self.assertNotIn("HEALSHIELD", shield, "자기 보호막도 마찬가지")
+
     def test_tidy_marks_slot_shortfall(self):
         """경기 결과 증강 칸은 6개가 끝이라, 7개를 고른 판은 기록이 맞아도 '다름'이 됐다 (2026-11-15 미스 포츈 판).
         칸이 꽉 찼고 기록에만 있는 증강이 있으면 '칸 모자람'으로 나눈다 (그림은 '다름'과 똑같이 남긴다)"""

@@ -414,6 +414,17 @@ def _old_ally_healshield_trait(c):
     return round(min(1.0, len(src) * 0.4), 2)
 
 
+def augment_tags(plain, names):
+    """증강 설명 → 태그. 자기 회복·보호막만 주는 증강은 '회복·보호막'(HEALSHIELD) 태그를 달지 않는다.
+    이 태그는 '아군을 회복·보호막으로 돕는 성향'이라 서포터 아이템(구원·월석 재생기 …) 점수를 끌어올린다.
+    아이템 태그에는 이미 같은 규칙이 있었는데 증강에는 빠져 있었다 (2026-11-16 파이크 판: 자기 재생 증강 '바다의 영혼'이
+    구원을 1순위로 올렸다). 아군을 돕는 증강(너만을 위해·음속 폭발 …)은 그대로 둔다."""
+    tags = tag_text(plain, names)
+    if "HEALSHIELD" in tags and "아군" not in plain:
+        tags.pop("HEALSHIELD")
+    return tags
+
+
 def champion_traits(detail):
     """패시브 + 스킬 4개 설명에서 특성 태그와 피해 유형 비율을 뽑는다.
 
@@ -1620,7 +1631,7 @@ def main():
               "rarity": a.get("rarity", 0),
               "rarityName": rarity_name.get(a.get("rarity", 0), "?"),
               "desc": ('<span class="muted small">미리 보기: 아직 정식 데이터가 없어 PBE(테스트 서버) 값이에요. 실제와 다를 수 있어요.</span><br>' + html) if preview else html,
-              "tags": tag_text(plain, names),
+              "tags": augment_tags(plain, names),
               "category": augment_category(plain),
               "unresolved": len(unresolved),
               "_icon": icon,
@@ -1927,6 +1938,11 @@ def main():
         for e in item["effects"]:  # 발동 방식 바로잡기 (루난의 허리케인 탄환: '적중 시'가 아니라 '기본 공격 시', 위키)
             if e.get("name") in (ir.get("effectTrigger") or {}):
                 e["trigger"] = dict(ir["effectTrigger"][e["name"]])
+            # 한 번 터질 때 몇 번 들어가는지 (지크의 융합 폭풍: 5초 동안 매초 → 5번). 게임 데이터 Duration 으로 정한다
+            if e.get("name") in (ir.get("effectTicks") or {}):
+                e["ticks"] = ir["effectTicks"][e["name"]]
+        for n in set(ir.get("effectTicks") or {}) - {e.get("name") for e in item["effects"]}:
+            rule_warn.append(f"아이템 {item['name']}: effectTicks '{n}' 에 해당하는 효과가 없음")
         for n in set(ir.get("effectTrigger") or {}) - {e.get("name") for e in item["effects"]}:
             rule_warn.append(f"아이템 {item['name']}: effectTrigger '{n}' 에 해당하는 효과가 없음")
         if not ir.get("stats"):

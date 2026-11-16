@@ -177,3 +177,23 @@ test("받는 아군 공격력 비례 효과(밀리오 패시브)와 아군이 �
   near(row("Milio", "패시브 타오르는 힘").ally, 0.15 * St.ALLY.AD * 100 / (100 + St.TARGET.MR), 1e-6, "아군 공격력 15% 마법 피해 1번");
   near(row("Renata", "패시브 영향력").ally, 0.033 * St.TARGET.HP * 100 / (100 + St.TARGET.MR), 1e-6, "최대 체력 3.3% 마법 피해 1번");
 });
+
+// v0.1.93 P4-B 3단계 지크의 융합 (게임 데이터 3050: Duration 5 · SlowAmount 0.3 · DamagePerSecond 30 · UltimateHaste 15 · Cooldown 45)
+test("지크의 융합: 폭풍 피해 5번·둔화 1.5초·궁극기 가속 15", () => {
+  const it = item("지크의 융합"), c = champ("Leona");
+  const a = ev(c, [bare(it)]).m, b = ev(c, [it]).m;
+  near(b.control - a.control, 1.5, 0.01, "30% 둔화 5초 = 제어력 1.5초 (라일라이와 같은 기준)");
+  // 폭풍 피해: 매초 30 × 5초 (전에는 1초치만 셌다)
+  const eff = (it.effects || []).find((e) => e.name === "DamagePerSecond");
+  assert.equal(eff.ticks, 5, "5번");
+  const noFx = { ...it, effects: [] };
+  const one = { ...it, effects: [{ ...eff, ticks: 1 }] };
+  const gain5 = ev(c, [it]).m.combo - ev(c, [noFx]).m.combo, gain1 = ev(c, [one]).m.combo - ev(c, [noFx]).m.combo;
+  assert.ok(Math.abs(gain5 - gain1 * 5) < gain1 * 0.05, `폭풍 피해가 5배: ${Math.round(gain1)} → ${Math.round(gain5)}`);
+  // 궁극기 가속은 궁극기 재사용 대기시간에만
+  const r1 = ev(c, [bare(it)]).stats, r2 = ev(c, [it]).stats;
+  assert.equal(r2.conv.ultHasteAdd, 15);
+  const ult = (m) => (m.spells.find((s) => s.slot === "R") || {}).cd;
+  assert.ok(ult(b) < ult(a), `궁극기만 짧아진다: ${ult(a).toFixed(1)} → ${ult(b).toFixed(1)}`);
+  assert.equal(Math.round((b.spells.find((s) => s.slot === "Q") || {}).cd * 10), Math.round((a.spells.find((s) => s.slot === "Q") || {}).cd * 10), "기본 스킬은 그대로");
+});
