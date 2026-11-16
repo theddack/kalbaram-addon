@@ -1947,7 +1947,9 @@ def main():
             rule_warn.append(f"아이템 {item['name']}: effectTrigger '{n}' 에 해당하는 효과가 없음")
         if not ir.get("stats"):
             continue
-        plain = re.sub(r"<[^>]+>", "", item["desc"])
+        # 패치로 수치가 바뀌었는지 보는 확인 문구: 상점 설명(desc)에 없고 아이템 칸 설명(passiveHtml)에만 적힌 수치가 있다
+        # (지평선의 초점 '10% 증가한 피해'). 근거 표시(rule_basis)가 보는 범위와 같게 둘 다 본다
+        plain = re.sub(r"<[^>]+>", "", (item.get("passiveHtml") or "") + item["desc"])
         if ir.get("check") and ir["check"] not in plain:
             rule_warn.append(f"아이템 {item['name']}: 설명에 '{ir['check']}' 없음 (패치로 수치 변경?) → 미적용")
             continue

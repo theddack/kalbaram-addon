@@ -111,9 +111,11 @@
       const rScale = (!champ.melee && s && s.rangedScale) || {};
       // '대상 체력 X% 아래' 조건 고유 효과 (rules _belowAt: 세릴다의 원한 둔화): 값 × 조건 아래 피해 비율 (targetBelowShare, 그림자불꽃과 같은 기준)
       const below = s && s._belowAt != null ? targetBelowShare(s._belowAt) : 1;
+      // '멀리서 맞히면' 조건 고유 효과 (rules _farMark: 지평선의 초점 600 밖에서 스킬 적중): 값 × 멀리서 맞힐 수 있는 몫 (farMarkShare)
+      const far = s && s._farMark != null ? farMarkShare(champ, s._farMark) : 1;
       for (const [k, raw0] of entriesOf(s)) {
-        if (k === "rangedScale" || k === "_belowAt") continue;
-        const raw = typeof raw0 === "number" ? (rScale[k] != null ? raw0 * rScale[k] : raw0) * below : raw0;
+        if (k === "rangedScale" || k === "_belowAt" || k === "_farMark") continue;
+        const raw = typeof raw0 === "number" ? (rScale[k] != null ? raw0 * rScale[k] : raw0) * below * far : raw0;
         // needsItem: 그 아이템을 가졌을 때만 터지는 증강 효과 (폭풍 쇄도 업그레이드: 폭풍 쇄도의 질풍이 폭발)
         if (k === "_effects") { effects.push(...raw.filter((e) => !e.needsItem || items.some((it) => it.name === e.needsItem))); continue; }
         if (REFUND_KEYS.includes(k)) continue;
@@ -446,7 +448,10 @@
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
   // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
   // 추가 체력(BONUS_HP): 같은 173명 균형 빌드의 18레벨 추가 체력 중앙값 (tools/target_median.js). 상대 추가 체력 비례 효과(도미닉 경의 인사)에 쓴다
-  const TARGET = { ARMOR: 113, MR: 63, HP: 3148, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600 };
+  // HEAL = 기준 상대가 한타 한 번에 자기 자신을 회복하는 양. 전 챔피언 18레벨 균형 빌드의 중앙값은 0 이다
+  // (173명 중 101명이 0 · 중앙값 0 · 평균 271). 그래서 상대를 모를 때 치유 감소(고통스러운 상처)의 값은 0 이고,
+  // 실제 판에서는 app.js 가 그 판 적들의 회복량 평균을 넣어 준다 (v0.1.93 P4-B 5단계)
+  const TARGET = { ARMOR: 113, MR: 63, HP: 3148, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600, HEAL: 0 };
   // 기준 아군 (v0.1.93 P1 아군 지원): 아군 공격 속도·공격력·적중 시 피해·피해량 강화를 '아군이 더 넣는 피해'로 바꿀 때 쓴다.
   // 원거리 딜러(첫 역할 Marksman, 원거리) 29명의 18레벨 균형 빌드(증강 없음) 지표 중앙값 (tools/ally_model.js, 기준 상대 TARGET 과 같은 방식).
   // 원딜은 주문력 계수가 거의 없어 아군 주문력 버프(흐르는 물의 지팡이)는 기준 아군에선 0 이다 (메이지 아군이면 커짐, 미반영)
@@ -459,7 +464,7 @@
   const DEFAULT_TARGET = { ...TARGET };
   // 기준 상대 바꾸기: {ARMOR, MR, HP} (실제 상대 챔피언의 18레벨 빌드 능력치 등). 인자 없으면 기본값
   function setTarget(t) {
-    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP, ...(t.bonusHP != null ? { BONUS_HP: t.bonusHP } : {}) } : {});
+    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP, ...(t.bonusHP != null ? { BONUS_HP: t.bonusHP } : {}), ...(t.HEAL != null ? { HEAL: t.HEAL } : {}) } : {});
   }
   // 초당 피해에 스킬을 써야 나오는 피해를 넣는 비율 (스킬을 재사용 대기시간마다 계속 맞히는 일은 드물다, ASSUMPTIONS).
   // 스킬에 딸린 효과(스킬 사용 시·지정 스킬 표식)는 '실제로 쓰여 맞는 스킬 빈도' = 시전 빈도 × 이 비율로 보고, 그다음 효과 자체의
@@ -523,6 +528,20 @@
   // 따로 발동률을 정하지 않고 기준 상대 현재 체력(TARGET.CUR, 현재·잃은 체력 비례 피해와 같은 가정)에서 끌어낸다:
   // 한타 동안 상대 체력이 100% → (2 × CUR − 1) 로 고르게 줄어든다 (CUR 70% → 100% → 40%, 평균 70%).
   // 이 가정에선 끝점(40%) 아래로는 내려가지 않아 40% 이하 조건은 0이다 — 처치까지 가는 몫은 근거가 없어 넣지 않았다 (미검증)
+  // '600 밖에서 스킬로 맞히면' 조건을 챔피언마다 얼마나 쓸 수 있는지 (지평선의 초점).
+  // 피해가 나오는 스킬 중 사거리 R 이 가장 긴 것을 기준으로, 그 사거리 안에서 600 보다 먼 자리가 차지하는 넓이 비율 = 1 − (600/R)².
+  // 자리를 고를 수 있다는 가정이 아니라 '그 거리에서 쓸 기회가 얼마나 되나'의 대용값이에요 (가정, 미검증).
+  // R < 600 이면 0 (가렌·다리우스처럼 멀리서 맞힐 스킬이 없는 챔피언은 이 효과를 못 쓴다)
+  const FAR_DMG = new Set(["physical", "magic", "true"]);
+  function farMarkShare(champ, need) {
+    let best = 0;
+    for (const sp of champ.spells || []) {
+      if (!(sp.effects || []).some((e) => FAR_DMG.has(e.kind))) continue;
+      best = Math.max(best, sp.range || 0);
+    }
+    if (best <= need) return 0;
+    return Math.round((1 - (need / best) ** 2) * 1e4) / 1e4;
+  }
   function targetBelowShare(at) {
     const end = Math.max(0, 2 * TARGET.CUR - 1);
     return Math.max(0, Math.min(1, (at - end) / (1 - end)));
@@ -809,6 +828,13 @@
       out.effects.push({ src: "회복 → 피해", kind: "magic", value: out.heal * cv.healToDamage, hit: hd, trigger: "once" });
     }
     out.combo += out.augCombo;
+    // 치유 감소(고통스러운 상처 40%): 상대가 한타에서 회복할 양 중 못 하게 막는 몫 = 그만큼 더 깎은 것과 같다 → 한타 피해에 더한다.
+    // 기준 상대의 회복량(TARGET.HEAL)은 상대를 모르면 0 이라 기본 추천에서는 값이 0 이다 (위 TARGET 설명)
+    if (cv.healCut && TARGET.HEAL > 0) {
+      out.healCut = TARGET.HEAL * Math.min(1, cv.healCut);
+      out.combo += out.healCut;
+      out.effects.push({ src: "치유 감소", kind: "true", value: out.healCut, hit: out.healCut, trigger: "once" });
+    }
     const critMul = 1 + (t.critAuto ?? t.CRIT) * (t.CRITDMG - 1);
     // 한 발에 두 놈: 치명타 평타는 적중 효과를 한 번 더 (conv.onhitOnCrit 번) → 적중 효과에 (1 + 치명타 확률 × 횟수)
     // 구인수의 격노검: 다 쌓인 뒤 세 번째 평타마다 적중 효과를 한 번 더 (t.onhitRepeat = 쌓는 동안까지 평균 낸 값)

@@ -197,3 +197,37 @@ test("지크의 융합: 폭풍 피해 5번·둔화 1.5초·궁극기 가속 15",
   assert.ok(ult(b) < ult(a), `궁극기만 짧아진다: ${ult(a).toFixed(1)} → ${ult(b).toFixed(1)}`);
   assert.equal(Math.round((b.spells.find((s) => s.slot === "Q") || {}).cd * 10), Math.round((a.spells.find((s) => s.slot === "Q") || {}).cd * 10), "기본 스킬은 그대로");
 });
+
+// v0.1.93 P4-B 4단계 지평선의 초점 (게임 데이터 4628: DamageAmp 0.1 · SnipeRange 600 · BuffDuration 6)
+test("지평선의 초점: 600 밖에서 맞힐 수 있는 몫만큼 모든 피해 +10%", () => {
+  const it = item("지평선의 초점");
+  assert.deepEqual(it.passiveStats, { dmgDealtMult: 0.1, _farMark: 600 }, "규칙이 붙어야 해요");
+  const DMG = new Set(["physical", "magic", "true"]);
+  const farR = (c) => Math.max(0, ...(c.spells || []).filter((s) => (s.effects || []).some((e) => DMG.has(e.kind))).map((s) => s.range || 0));
+  const share = (c) => (farR(c) <= 600 ? 0 : 1 - (600 / farR(c)) ** 2);
+  for (const id of ["Lux", "Xerath", "Annie"]) {
+    const c = champ(id), a = ev(c, [bare(it)]).m, b = ev(c, [it]).m;
+    near(b.combo / a.combo, 1 + 0.1 * share(c), 0.002, `${id} 한타 피해 (몫 ${share(c).toFixed(2)})`);
+  }
+  // 멀리서 맞힐 피해 스킬이 없는 챔피언은 값이 0 (가렌 가장 긴 피해 스킬 사거리 < 600)
+  const g = champ("Garen");
+  assert.ok(farR(g) < 600, `가렌 피해 스킬 사거리 ${farR(g)}`);
+  near(ev(g, [it]).m.combo, ev(g, [bare(it)]).m.combo, 1e-9, "가렌은 못 쓴다");
+});
+
+// v0.1.93 P4-B 5단계 고통스러운 상처 (상대 회복량이 근거라 상대를 모르면 0)
+test("치유 감소: 상대 회복량의 40%만큼 한타 피해, 상대를 모르면 0", () => {
+  const c = champ("Lux");
+  for (const n of ["모렐로노미콘", "필멸자의 운명", "화공 펑크 사슬검", "가시 갑옷"]) {
+    assert.deepEqual(item(n).passiveStats, { healCut: 0.4 }, `${n} 규칙`);
+  }
+  const it = item("모렐로노미콘");
+  assert.equal(St.TARGET.HEAL, 0, "기준 상대는 회복 0 (전 챔피언 균형 빌드 중앙값)");
+  near(ev(c, [it]).m.combo, ev(c, [bare(it)]).m.combo, 1e-9, "상대를 모르면 값이 없다");
+  const saved = St.TARGET.HEAL;
+  St.setTarget({ ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: 1000 });
+  try {
+    near(ev(c, [it]).m.combo - ev(c, [bare(it)]).m.combo, 400, 1e-6, "회복 1000 × 40%");
+    assert.equal(ev(c, [bare(it)]).m.healCut, undefined, "효과가 없는 아이템은 안 센다");
+  } finally { St.setTarget(null); St.TARGET.HEAL = saved; }
+});

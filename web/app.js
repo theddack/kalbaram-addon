@@ -352,7 +352,14 @@ function enemyTarget() {
     for (const k of Object.keys(sum)) sum[k] += (t[k] + empty * sb[k]) / b.length;
   }
   const r5 = (v) => Math.round(v / 5) * 5;  // 5 단위: 작은 차이로 계산을 전부 다시 하지 않게
-  return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50 };
+  // 적들이 한타 한 번에 자기 자신을 회복하는 양의 평균 (치유 감소 아이템 값의 근거, v0.1.93 P4-B 5단계).
+  // 기술 회복·생명력 흡수·아이템 자기 회복만 센다 (보호막은 고통스러운 상처가 안 막는다). 산 아이템만 본다 (안 산 칸은 0)
+  let heal = 0;
+  for (const e of b) {
+    const m = St.evaluate(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).m;
+    heal += ((m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHp || 0)) / b.length;
+  }
+  return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50, HEAL: Math.round(heal / 10) * 10 };
 }
 // 지금 상대 (실제 레벨 + 산 아이템만): '지금 수치'(능력치 패널)와 조언·기록에 쓴다.
 // 아이템·증강 순위는 '18레벨 완성' 기준이라 위의 예상 상대(enemyTarget)를 쓴다 (2026-10-15 검토: 둘을 섞지 않는다)
@@ -372,8 +379,8 @@ function enemyNow() {
 function withNowTarget(fn) {
   const now = !state.target && enemyNow();
   if (!now) return fn();
-  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP };
-  St.setTarget(now);
+  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: St.TARGET.HEAL };
+  St.setTarget({ ...now, HEAL: St.TARGET.HEAL });  // 회복량(치유 감소 근거)은 예상 상대 기준 그대로
   try { return fn(); } finally { St.setTarget(saved); }
 }
 // 적이 실제로 산 방어 아이템 수 (조언 근거: 예상 빌드가 아니라 산 것만)
@@ -389,14 +396,16 @@ function enemyResistItems() {
 const TARGET_STEP = 0.05;
 function applyEnemyTarget() {
   if (state.target) return false;  // 상대를 직접 골랐으면 그대로
-  const before = JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
+  const before = JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]);
   const next = enemyTarget();
   const T = St.TARGET;
   // 이미 적 기준으로 잡혀 있고, 새 값이 모든 항목에서 TARGET_STEP 안이면 그대로 (변화가 쌓여 넘으면 그때 바꾼다)
-  const small = next && state.targetFromEnemy && ["ARMOR", "MR", "HP"].every((k) => Math.abs(next[k] - T[k]) < Math.abs(T[k]) * TARGET_STEP);
+  // 회복량(HEAL)은 0에서 시작해 기준 비율로는 재기 어려워서 값이 바뀌면 바로 반영한다 (치유 감소 아이템 순위가 걸려 있다)
+  const small = next && state.targetFromEnemy && next.HEAL === T.HEAL
+    && ["ARMOR", "MR", "HP"].every((k) => Math.abs(next[k] - T[k]) < Math.abs(T[k]) * TARGET_STEP);
   if (!small) { St.setTarget(next); state.targetFromEnemy = !!next; }
   showTarget();
-  return JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]) !== before;
+  return JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]) !== before;
 }
 function showTarget() {
   const T = St.TARGET, id = state.target;
@@ -450,7 +459,7 @@ function enemyMoved() {
   return Object.keys(T_MOVED).some((k) => Math.abs(T[k] - D[k]) >= D[k] * T_MOVED[k]);
 }
 function atDefault(fn) {
-  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP };
+  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: St.TARGET.HEAL };
   St.setTarget(null);
   try { return fn(); } finally { St.setTarget(saved); }
 }
@@ -733,8 +742,12 @@ function setTargetChamp(id) {
   } else {
     St.setTarget(null);  // 상대의 빌드는 기준 상대로 계산 (앞에 고른 상대에 따라 달라지지 않게)
     const [b] = S.buildConcepts(d.items, S.profile(enemy, d.tags), [], [], d.rules, enemy, statOpts(), ["balanced"]);
-    const t = St.computeStats(enemy, 18, b.pick.map((p) => p.item), [], statOpts()).total;
-    St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP) });
+    const items = b.pick.map((p) => p.item);
+    const t = St.computeStats(enemy, 18, items, [], statOpts()).total;
+    // 그 챔피언이 한타에 자기를 회복하는 양 (치유 감소 아이템 값의 근거, enemyTarget 과 같은 계산)
+    const em = St.evaluate(enemy, 18, items, [], statOpts()).m;
+    const heal = (em.selfHeal || 0) + (em.vampHeal || 0) + (em.itemSelfHp || 0);
+    St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP), HEAL: Math.round(heal / 10) * 10 });
   }
   showTarget();
   if ($("#target-champ").value !== state.target) $("#target-champ").value = state.target;
@@ -2014,7 +2027,9 @@ function renderNextBuy(rows) {
   }
   // 조언(치유 감소·관통·보호막 감소·공속 대응)이 권한 아이템이 위 3개에 없으면 3번째 자리에 (이유를 붙여서).
   // 2026-10-17 지적: 조언 줄과 다음 구매가 따로 놀았다 (조언은 필멸자의 운명, 다음 구매엔 없음).
-  // 치유 감소·보호막 감소·공속 대응 효과는 점수 계산에 없어 순위가 안 오른다 → 순위와 상관없이. 관통은 계산에 있으니 8위 안일 때만
+  // 보호막 감소·공속 대응 효과는 점수 계산에 없어 순위가 안 오른다 → 순위와 상관없이. 관통은 계산에 있으니 8위 안일 때만.
+  // 치유 감소는 v0.1.93 P4-B 5단계부터 점수에 들어가지만, 우리 계산에 회복량이 안 잡히는 적(아군을 회복시키는 소라카 등)도
+  // 있어서 조언 쪽은 그대로 둔다 (점수로 이미 올라왔으면 아래 조건에서 걸러진다)
   const adv = enemyAdvice();
   // 이유는 조언 순서대로, 같은 이유 안에서는 지금 순위가 가장 높은 아이템 (저항 아이템은 후보가 여럿)
   const wanted = [...new Set((state.adviceWant || []).map((w) => w.why))].map((why) => {

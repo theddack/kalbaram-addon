@@ -366,6 +366,8 @@ def process_champion(cid, detail, bin_json, champ_name=""):
         spells.append({
             "cc": spell_cc_seconds(re.sub(r"<[^>]+>", "", text)),
             "slot": SLOTS[i], "name": sp["name"], "ranks": ranks,
+            # 사거리(가장 긴 랭크): '멀리서 맞히면' 조건 아이템 계산에 쓴다 (지평선의 초점 600)
+            "range": max([r for r in (sp.get("range") or []) if isinstance(r, (int, float))] or [0]),
             "cooldown": [round(c, 2) for c in cd], "cost": [round(c, 1) for c in cost],
             "tooltip": text, "effects": effects, "unresolved": unresolved,
         })
