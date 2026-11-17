@@ -641,11 +641,11 @@
   function augContribution(items, w, chosen, aug, rules, champ, statOpts = {}) {
     const num = { mw: conceptMetricWeights(w, [...chosen, aug], rules, champ, CONCEPTS[1], statOpts), norm: {} };
     const c = withChosenFeatures(champ, [...chosen, aug], rules);
-    const base = augStatsOf(chosen, rules, c);
+    const base = augStatsOf(chosen, rules, c, items);
     const empty = Stats.evaluate(c, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
     num.norm = normOf(empty, c);
     const v0 = valueOf(Stats.evaluate(c, 18, items, base, statOpts).m, num);
-    const v1 = valueOf(Stats.evaluate(c, 18, items, [...base, ...augStatsOf([aug], rules, c)], statOpts).m, num);
+    const v1 = valueOf(Stats.evaluate(c, 18, items, [...base, ...augStatsOf([aug], rules, c, items)], statOpts).m, num);
     return v1 - v0;
   }
 
@@ -673,7 +673,9 @@
   // 이미 많이 확보한 태그는 감쇠시켜 한쪽으로 쏠리지 않게 한다.
   function buildWith(items, iw, fixed, opts) {
     const num = opts.num ? { ...opts.num, mw: opts.mw || metricWeights(iw), augMw: opts.augMw || null } : null;
-    const evalM = (list) => Stats.evaluate(num.champ, num.level, list, num.augStats, num.statOpts).m;
+    // 아이템 업그레이드 증강은 그 아이템을 든 빌드에서만 효과가 난다 → 빌드마다 증강 능력치를 다시 고른다 (augStatsOf items)
+    const augFor = (list) => (num.augFor ? num.augFor(list) : num.augStats);
+    const evalM = (list) => Stats.evaluate(num.champ, num.level, list, augFor(list), num.statOpts).m;
     // 증강 몰빵: 빌드 전체 가치에 더해 '증강이 보태는 가치'(증강 있음 − 없음)도 키운다 = 증강 효과 극대화
     const focus = num && opts.focus && num.augStats.length ? opts.focus : 0;
     const evalBare = (list) => Stats.evaluate(num.champ, num.level, list, [], num.statOpts).m;
@@ -853,13 +855,19 @@
 
   // 능력치 계산에 넘길 증강 데이터: 능력치(rules stats) + 피해·보호막 효과(게임 데이터)
   // champ 를 주면 증강 조건(밀어내기 스킬 등)을 못 맞출 때 효과를 뺀다 (발동하지 않으니까)
-  function augStatsOf(chosen, rules, champ = null) {
+  // items: 지금 평가하는 아이템 목록. 주면 '아이템 업그레이드' 증강(rules augments items)은 그 아이템을 가졌을 때만 센다.
+  // 2026-11-17 v0.1.93 P3-F: 꽃피는 새벽의 검 업그레이드가 아이템 없이도 공격 속도 +100% 를 줘서,
+  // 그 아이템을 꼭 들어야 하는 몰빵 빌드가 들지 않아도 되는 '상한' 빌드보다 증강 효과가 낮게 나왔다 (역행).
+  // items 를 안 주면(아이템과 무관한 계산: 증강 출력 가중치·설명 칸) 예전처럼 그냥 넣는다.
+  function augStatsOf(chosen, rules, champ = null, items = null) {
     champ = withChosenFeatures(champ, chosen, rules);
     return chosen.map((a) => {
       const rule = ruleOf(rules, a);
       const unmet = champ && (a.eligible ? !a.eligible.includes(champ.id) : rule.requires && !(champ.features || []).includes(rule.requires));
       // 조건을 못 맞추면 능력치도 효과도 없다 (능력치만 남아 'D등급인데 계산상 강해짐'이 나왔다: 럭스 + 승리를 위한 회전)
-      return unmet ? { _effects: [] } : { ...(rule.statsResolved || {}), _effects: (a.effects || []).map((e) => ({ ...e, src: a.name })) };
+      const need = (rule.items || []).length ? rule.items : null;
+      const noItem = need && items && !items.some((i) => need.includes(i.name));
+      return unmet || noItem ? { _effects: [] } : { ...(rule.statsResolved || {}), _effects: (a.effects || []).map((e) => ({ ...e, src: a.name })) };
     });
   }
 
@@ -873,16 +881,35 @@
     const bal = buildConcepts(itemPool, w, chosen, fixed, rules, champ, statOpts, ["balanced"])[0];
     const items = bal.pick.map((p) => p.item);
     const num = { mw: conceptMetricWeights(w, weightsFrom || chosen, rules, champ, CONCEPTS[1], statOpts), norm: {} };
-    const base = augStatsOf(chosen, rules, champ);
+    const base = augStatsOf(chosen, rules, champ, items);
     const empty = Stats.evaluate(champ, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
     num.norm = normOf(empty, champ);
     const m0 = Stats.evaluate(champ, 18, items, base, statOpts).m;
     const v0 = valueOf(m0, num);
     const out = {};
+    // 아이템 업그레이드 증강(쓸 아이템이 정해진 증강)을 지금 빌드가 안 들고 있으면, 전설 한 칸을 그 아이템으로 바꿔서 잰다.
+    // 이 증강을 고른다는 건 그 아이템을 산다는 뜻이라서다. 바꾸는 칸은 빌드에서 마지막(가장 나중에 뽑힌) 전설 칸.
+    // (v0.1.93 P3-F: 보유 조건을 넣고 나니 안 넣으면 프리즘 업그레이드 증강이 '수치 이득 0'이 됐다)
+    const swapIn = (a) => {
+      const need = (ruleOf(rules, a).items || []).filter(Boolean);
+      if (!need.length || items.some((i) => need.includes(i.name))) return null;
+      const it = itemPool.find((i) => need.includes(i.name));
+      if (!it) return null;
+      let k = -1;
+      items.forEach((i, idx) => { if (i.kind === "legendary" && !fixed.some((f) => f.name === i.name)) k = idx; });
+      if (k < 0) return null;
+      const list = items.slice();
+      list[k] = it;
+      return list;
+    };
     for (const a of augs) {
       if (!hasNumbers(a, rules) || chosen.some((c) => c.id === a.id)) continue;
-      const m1 = Stats.evaluate(champ, 18, items, [...base, ...augStatsOf([a], rules, champ)], statOpts).m;
-      out[a.id] = { gain: valueOf(m1, num) - v0, parts: gainParts(m0, m1, champ), abs: absParts(m0, m1) };
+      const list = swapIn(a) || items;
+      const b = list === items ? base : augStatsOf(chosen, rules, champ, list);
+      const mA = list === items ? m0 : Stats.evaluate(champ, 18, list, b, statOpts).m;
+      const vA = list === items ? v0 : valueOf(mA, num);
+      const m1 = Stats.evaluate(champ, 18, list, [...b, ...augStatsOf([a], rules, champ, list)], statOpts).m;
+      out[a.id] = { gain: valueOf(m1, num) - vA, parts: gainParts(mA, m1, champ), abs: absParts(mA, m1) };
     }
     return { gains: out, build: items };
   }
@@ -910,7 +937,8 @@
     const champ0 = champ;
     champ = champ && withChosenFeatures(champ, chosen, rules);  // 고른 증강이 챔피언 특징을 바꾸면(검을 뽑아라 → 근접) 그 기준으로
     const ctx = augContext(chosen, rules, champ);
-    const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts } : null;
+    const num = champ && champ.spells
+      ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), augFor: (list) => augStatsOf(chosen, rules, champ, list), statOpts } : null;
     // 변칙: 균형 빌드가 중시하는 지표를 뒤집어서, 챔피언이 원래 약한 쪽(럭스면 탱킹·평타)을 키운다
     const normal = conceptMetricWeights(w, chosen, rules, champ0 || champ, CONCEPTS[1], statOpts);
     const inv = {};
@@ -1022,14 +1050,14 @@
     if (num) {
       const empty = Stats.evaluate(champ, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
       num.norm = normOf(empty, champ);
-      m0 = Stats.evaluate(champ, 18, fixed, num.augStats, statOpts).m;
+      m0 = Stats.evaluate(champ, 18, fixed, augStatsOf(sc, rules, champ, fixed), statOpts).m;
     }
     return items
       .filter((i) => !fixed.some((f) => f.name === i.name))
       .map((i) => {
         const tag = scoreItem(i, iw, covered, { ctx });
         if (!num) return { item: i, ...tag, tagScore: tag.score };
-        const m1 = Stats.evaluate(champ, 18, [...fixed, i], num.augStats, statOpts).m;
+        const m1 = Stats.evaluate(champ, 18, [...fixed, i], augStatsOf(sc, rules, champ, [...fixed, i]), statOpts).m;
         const score = (valueOf(m1, num) - valueOf(m0, num)) * NUM_K + tag.score * TAG_K;
         return { item: i, ...tag, tagScore: tag.score, score, gain: gainParts(m0, m1, champ) };
       })
@@ -1047,15 +1075,14 @@
     const concept = CONCEPTS.find((c) => c.key === (chosen.length ? "augment" : "balanced"));
     const ctx = withOfficial(augContext(chosen, rules, champ), champ, officialK(concept));
     const num = { mw: metricWeights(conceptWeights(w, ctx, concept)), norm: {} };
-    const augStats = augStatsOf(chosen, rules, champ);
     const L = Math.max(1, Math.min(18, Math.round(level)));
     const empty = Stats.evaluate(champ, L, [], [], statOpts).m;
     num.norm = normOf(empty, champ);
-    const v0 = valueOf(Stats.evaluate(champ, L, have, augStats, statOpts).m, num);
+    const v0 = valueOf(Stats.evaluate(champ, L, have, augStatsOf(chosen, rules, champ, have), statOpts).m, num);
     return cands.map((c) => {
       const used = [...(c.uses || [])];
       const after = have.filter((h) => { const i = used.indexOf(h.id); if (i < 0) return true; used.splice(i, 1); return false; }).concat([c]);
-      const gain = (valueOf(Stats.evaluate(champ, L, after, augStats, statOpts).m, num) - v0) * NUM_K;
+      const gain = (valueOf(Stats.evaluate(champ, L, after, augStatsOf(chosen, rules, champ, after), statOpts).m, num) - v0) * NUM_K;
       return { id: c.id, name: c.name, gold: c.gold, gain, perGold: c.gold > 0 ? gain / c.gold : 0 };
     }).sort((a, b) => b.gain - a.gain);
   }

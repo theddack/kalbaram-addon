@@ -231,3 +231,35 @@ test("치유 감소: 상대 회복량의 40%만큼 한타 피해, 상대를 모�
     assert.equal(ev(c, [bare(it)]).m.healCut, undefined, "효과가 없는 아이템은 안 센다");
   } finally { St.setTarget(null); St.TARGET.HEAL = saved; }
 });
+
+// v0.1.93 P3-F 1·2: 아이템 업그레이드 증강의 보유 조건, 라일라이의 '피해를 입히면' 조건
+const S = require(path.join(WEB, "scoring.js"));
+
+test("아이템 업그레이드 증강: 그 아이템이 없으면 능력치도 효과도 안 들어간다", () => {
+  const c = champ("Jinx");
+  const pairs = [];
+  for (const a of d.augments) {
+    const rule = (d.rules.augments || {})[a.id] || {};
+    if (!(rule.items || []).length) continue;
+    if (!Object.keys(rule.statsResolved || {}).length && !(a.effects || []).length) continue;
+    pairs.push([a, rule.items]);
+  }
+  assert.ok(pairs.length >= 4, `아이템을 요구하는 수치 증강이 있어야 해요: ${pairs.length}`);
+  const other = item("무한의 대검");
+  for (const [a, need] of pairs) {
+    const has = [d.items.find((i) => need.includes(i.name))].filter(Boolean);
+    assert.equal(has.length, 1, `${a.name} 이 요구하는 아이템 ${need.join(",")}`);
+    const off = S.augStatsOf([a], d.rules, c, [other])[0];
+    const on = S.augStatsOf([a], d.rules, c, has)[0];
+    assert.deepEqual(off, { _effects: [] }, `${a.name}: 아이템이 없으면 비어 있어야 해요`);
+    assert.ok(Object.keys(on).length > 1 || (on._effects || []).length, `${a.name}: 아이템이 있으면 들어가야 해요`);
+  }
+  // 꽃피는 새벽의 검 업그레이드 = 공격 속도 +100%. 아이템 없이 들면 공격 속도가 안 오른다
+  const up = d.augments.find((a) => a.name === "꽃피는 새벽의 검 업그레이드");
+  const asOf = (items) => St.evaluate(c, 18, items, S.augStatsOf([up], d.rules, c, items), {}).stats.total.AS;
+  near(asOf([other]), St.evaluate(c, 18, [other], [], {}).stats.total.AS, 1e-9, "아이템 없이는 공격 속도 그대로");
+  assert.ok(asOf([item("꽃피는 새벽의 검")]) > St.evaluate(c, 18, [item("꽃피는 새벽의 검")], [], {}).stats.total.AS + 0.5,
+    "아이템이 있으면 공격 속도가 크게 오른다");
+  // items 를 안 넘기면(아이템과 무관한 계산) 예전처럼 그대로 넣는다
+  assert.ok(S.augStatsOf([up], d.rules, c)[0].AS, "items 를 안 주면 조건을 안 본다");
+});

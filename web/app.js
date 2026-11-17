@@ -13,7 +13,8 @@ const statOpts = () => {
   // 적이 전부 마법이어도 0.8 까지만: 끝까지 밀면 다음 구매가 마법 저항 탱템뿐이라 딜템이 사라졌다 (반영 60%)
   return e ? { aram: state.aram, enemyMagic: Math.round((0.5 + (e.magic - 0.5) * 0.6) * 10) / 10 } : { aram: state.aram };
 };
-const augStats = () => S.augStatsOf(state.chosen, state.data.rules, state.champ);
+// 아이템 업그레이드 증강(꽃피는 새벽의 검 업그레이드 등)은 그 아이템을 들고 있을 때만 효과가 난다 → 지금 가진 아이템을 같이 넘긴다
+const augStats = () => S.augStatsOf(state.chosen, state.data.rules, state.champ, state.items || []);
 // 지금 능력치(게임 중): 즉시 골드 증강(징수의 총 업그레이드 250G 등)을 능력치로 환산한 값은 뺀다. 그 골드로 산 아이템이
 // 이미 게임 데이터에 들어와 있어 두 번 센다 (2026-10-17 사미라 판: 공격력 +3.57 차이). 추천 점수(18레벨 완성)엔 그대로 둔다
 // 가동률로 셈한 조건부 능력치(rules uptime: 신난다! 이동 속도 등)는 켜져 있을 때만 게임 값에 보여서 뺀다.
