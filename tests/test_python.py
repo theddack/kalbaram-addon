@@ -1201,6 +1201,27 @@ class AugOcr(unittest.TestCase):
             t.feed(None)
         self.assertIsNone(t.state.get("picked"), "새로고침 전 짐작은 버린다")
 
+    def test_rerolled_slot_clicked_before_name_read_keeps_slot(self):
+        """2026-11-15 그레이브즈 판 재현: 0번 칸을 새로고침하고 1.6초 만에 그 칸을 눌러 새 이름('검을 뽑아라')을 못 읽었다.
+        이름은 못 정하더라도 '어느 칸을 눌렀는지'는 남겨, 화면이 그 칸 이름을 못 읽었다고 알릴 수 있게 한다.
+        이름을 지어내지 않는다 (새로고침 전 옛 이름으로 메우면 2026-10-20 신드라 판처럼 한 판 내내 틀린다)."""
+        t = self.o.Tracker()
+        t.feed(["탭 댄서", "최종 형태", "RISE"])
+        t.reroll(0)
+        self.assertEqual(t.state["offers"], [None, "최종 형태", "RISE"], "새로고침한 칸은 비운다")
+        t.click(0)
+        for _ in range(self.o.Tracker.CLOSE_AFTER):
+            t.feed(None)
+        self.assertIsNone(t.state["picked"], "이름을 모르면 정하지 않는다")
+        self.assertEqual(t.state["pickedSlot"], 0, "누른 칸은 남긴다")
+        self.assertEqual(t.state["pickedFrom"], [None, "최종 형태", "RISE"])
+        # 아무 칸도 안 누르고 닫힌 경우에는 칸이 없다
+        t2 = self.o.Tracker()
+        t2.feed(["탭 댄서", "최종 형태", "RISE"])
+        for _ in range(self.o.Tracker.CLOSE_AFTER + 1):
+            t2.feed(None)
+        self.assertIsNone(t2.state.get("pickedSlot"))
+
     def test_pyke_guess_then_world_clicks(self):
         """2026-11-16 파이크 253초 재현: 카드(0번)를 누른 짐작 뒤, 카드가 닫히고 게임 화면을 누른 클릭이 들어온다.
         경기 결과 정답은 0번 칸 '속전속결'이었는데 예전 규칙은 1번 칸 '바다의 영혼'으로 기록했다."""

@@ -2228,6 +2228,7 @@ function applyAug(A) {
     offersOnly = true;
   }
   augOpen = !!A.offers;
+  let unreadSlot = null;  // 누른 칸은 아는데 이름을 못 읽은 칸 (안내 문구에 쓴다)
   if (A.pickSeq && A.pickSeq !== augPickSeq) {
     augPickSeq = A.pickSeq;
     const a = byName(A.picked);
@@ -2249,12 +2250,19 @@ function applyAug(A) {
       state.offers = A.pickedFrom.map(byName);
       state.offersClosed = true;
       offersOnly = warn = true;
+      // 누른 칸은 아는데 그 칸 이름을 못 읽은 경우 (새로고침 직후에 눌러 새 이름을 읽을 틈이 없었다):
+      // 몇 번째 칸인지까지 알려 준다. 이름을 지어내지 않고 '모른다'를 그대로 보여 주는 것이다 (v0.1.94)
+      unreadSlot = A.pickedSlot != null && !A.pickedFrom[A.pickedSlot] ? A.pickedSlot : null;
     }
   }
   if (full) { renderAll(); trackTimers(null); }  // 고른 증강에 쿨타임이 있으면 고른 시각부터 센다
   else if (offersOnly) renderOffers();
   if (!full && sureChanged) renderChosen();
-  if (warn) $("#offer-result").insertAdjacentHTML("afterbegin", `<p class="warn small">방금 고른 증강을 화면에서 확인하지 못했어요. 고른 것의 <b>이걸로 선택</b>을 눌러 주세요.</p>`);
+  if (warn) {
+    const where = unreadSlot != null ? `${["왼쪽", "가운데", "오른쪽"][unreadSlot] || `${unreadSlot + 1}번째`} 칸은 새로고침한 뒤 이름을 못 읽었어요. ` : "";
+    $("#offer-result").insertAdjacentHTML("afterbegin",
+      `<p class="warn small">${where}방금 고른 증강을 화면에서 확인하지 못했어요. 고른 것의 <b>이걸로 선택</b>을 눌러 주세요.</p>`);
+  }
 }
 
 // 윈도우 프로그램: 롤이 챔피언을 알려 주는지 (클라이언트 연결 또는 게임 중). 바뀌면 챔피언 목록을 숨기거나 보인다

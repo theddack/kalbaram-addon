@@ -279,6 +279,13 @@ test("증강 인식: 읽은 선택지를 채우고 게임 화면 카드에 보�
   // 못 정했으면 선택지를 남기고 직접 누르게 한다
   p.w.applyAug({ offers: null, seq: 2, picked: null, pickedFrom: ["눈 폭발", "탱크 엔진", "정신 변환"], pickSeq: 2 });
   assert.match(p.text("#offer-result"), /이걸로 선택/);
+  // 새로고침한 칸 이름을 못 읽었으면 몇 번째 칸인지까지 알려 준다 (v0.1.94 그레이브즈 판)
+  p.w.applyAug({ offers: null, seq: 3, picked: null, pickedFrom: [null, "탱크 엔진", "정신 변환"], pickedSlot: 0, pickSeq: 5 });
+  assert.match(p.text("#offer-result"), /왼쪽 칸은 새로고침한 뒤 이름을 못 읽었어요/);
+  assert.match(p.text("#offer-result"), /이걸로 선택/);
+  // 이름을 다 읽었는데 못 정한 경우엔 칸 안내를 붙이지 않는다
+  p.w.applyAug({ offers: null, seq: 2, picked: null, pickedFrom: ["눈 폭발", "탱크 엔진", "정신 변환"], pickedSlot: 1, pickSeq: 2 });
+  assert.doesNotMatch(p.text("#offer-result"), /이름을 못 읽었어요/);
   // 증강 칸 그림으로 확인: 못 정한 것은 채우고 (가벼운 모드도)
   p.w.applyAug({ offers: null, seq: 2, picked: "정신 변환", pickedFrom: ["눈 폭발", "탱크 엔진", "정신 변환"], by: "hud", replaces: null, pickSeq: 3 });
   assert.match(p.text("#chosen"), /정신 변환/);
