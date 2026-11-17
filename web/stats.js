@@ -865,7 +865,11 @@
     // ---- 제어력: 콤보 한 번에 거는 CC 시간 (스킬·패시브 + 증강·아이템)
     let control = (champ.passive && champ.passive.cc) || 0;
     for (const sp of out.spells) if (!sp.disabled) control += (champ.spells.find((x) => x.slot === sp.slot) || {}).cc || 0;
-    control += (cv.controlSec || 0) + (cv.controlPerCast || 0) * casts;
+    // 라일라이의 수정홀 '서리'는 "스킬로 적에게 피해를 입히면" 터진다 → 피해가 나는 스킬 칸만 센다.
+    // 2026-11-17 v0.1.93 P3-F: 스킬 칸 수(casts)로 세어 173명 전부 제어력이 1.20 으로 같았고,
+    // 피해 스킬이 1개뿐인 타릭도 4개로 셌다 (피해 없는 스킬을 가진 챔피언 103명)
+    const dmgCasts = out.spells.filter((s) => !s.disabled && s.dmg > 0).length;
+    control += (cv.controlSec || 0) + (cv.controlPerCast || 0) * dmgCasts;
     if (cv.fearPerCast) for (const sp of out.spells) if (!sp.disabled) control += Math.min(cv.fearPerCast, sp.cd / (cv.fearCdDiv || 20));
     out.control = control;
     // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 스킬 피해와 스킬에 딸린 효과는 SKILL_DPS_SHARE 만

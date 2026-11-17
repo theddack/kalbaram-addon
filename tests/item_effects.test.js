@@ -263,3 +263,16 @@ test("아이템 업그레이드 증강: 그 아이템이 없으면 능력치도 
   // items 를 안 넘기면(아이템과 무관한 계산) 예전처럼 그대로 넣는다
   assert.ok(S.augStatsOf([up], d.rules, c)[0].AS, "items 를 안 주면 조건을 안 본다");
 });
+
+test("라일라이의 수정홀: 피해를 주는 스킬 칸만 센다 (전 챔피언 같은 값이 아니다)", () => {
+  const it = item("라일라이의 수정홀");
+  assert.deepEqual(it.passiveStats, { controlPerCast: 0.3 }, "규칙이 붙어야 해요");
+  const add = (c) => ev(c, [it]).m.control - ev(c, [bare(it)]).m.control;
+  const dmgCasts = (c) => ev(c, []).m.spells.filter((s) => !s.disabled && s.dmg > 0).length;
+  for (const id of ["Taric", "Sona", "Lux", "Zed"]) {
+    near(add(champ(id)), 0.3 * dmgCasts(champ(id)), 1e-9, `${id} 피해 스킬 ${dmgCasts(champ(id))}칸`);
+  }
+  assert.ok(dmgCasts(champ("Taric")) < dmgCasts(champ("Lux")), "타릭은 럭스보다 피해 스킬이 적다");
+  const vals = new Set(d.champions.filter((c) => c.spells).map((c) => Math.round(add(c) * 100)));
+  assert.ok(vals.size > 1, `전 챔피언이 같은 값이면 조건을 안 보는 것: ${[...vals].join(",")}`);
+});
