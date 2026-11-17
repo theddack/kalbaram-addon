@@ -383,8 +383,9 @@ test("증강 칸 아이콘으로 읽은 고른 증강을 더한다 (클릭으로
   assert.match(p.text("#chosen"), /골드 강탈/, "클릭으로 잡은 것은 지우지 않는다");
 });
 
-test("고른 증강이 4개인데 선택 화면이 또 뜨면 증강 칸에서 확인 못 한 것을 빼고 카드를 띄운다", async () => {
-  // 2026-10-15 케일 판: 틀린 클릭 짐작(극악무도)이 남아 4개로 차서 마지막 선택 화면 카드가 안 떴다
+test("고른 증강이 4개인데 선택 화면이 또 떠도 카드가 뜨고, 틀린 짐작은 직접 뺄 수 있다", async () => {
+  // 2026-10-15 케일 판: 틀린 클릭 짐작(극악무도)이 남아 4개로 차서 마지막 선택 화면 카드가 안 떴다.
+  // 그때 상한이 4라 4개가 차면 선택지를 버렸던 것이고, 지금은 AUG_MAX = 6이라 카드가 그대로 뜬다
   const p = await loadPage({ simple: true });
   const sent = [];
   p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
@@ -395,9 +396,79 @@ test("고른 증강이 4개인데 선택 화면이 또 뜨면 증강 칸에서 �
   p.w.applyAug({ offers: null, seq: 1, pickSeq: 1, hudPicked: real.map(id) });
   assert.match(p.text("#chosen"), /극악무도/);
   p.w.applyAug({ offers: ["속전속결", "민병대", "조준경 부착"], seq: 2, pickSeq: 1, hudPicked: real.map(id) });
-  assert.doesNotMatch(p.text("#chosen"), /극악무도/, "확인 못 한 짐작만 뺀다");
-  for (const n of real) assert.match(p.text("#chosen"), new RegExp(n));
-  assert.equal(sent.at(-1).cards.filter(Boolean).length, 3, "게임 화면에 카드 3장");
+  assert.equal(sent.at(-1).cards.filter(Boolean).length, 3, "게임 화면에 카드 3장 (케일 판이 막혔던 곳)");
+  for (const n of real) assert.match(p.text("#chosen"), new RegExp(n), "확인된 것은 그대로");
+  assert.match(p.text("#chosen"), /극악무도/, "짐작도 함부로 지우지 않는다 (실제로 고른 것일 수 있다)");
+  // 직접 입력 칸이 잠기지 않는다 + 짐작한 칸을 눌러 뺄 수 있다
+  assert.equal([...p.doc.querySelectorAll("#offers input[type=search]")].filter((el) => el.disabled).length, 0, "직접 입력은 열려 있다");
+  const slot = [...p.doc.querySelectorAll("#chosen .slot[data-i]")].find((el) => /극악무도/.test(el.textContent));
+  slot.click();
+  assert.doesNotMatch(p.text("#chosen"), /극악무도/, "눌러서 뺐다");
+  // 증강 칸이 네 번째를 확인해 주면 그대로 받는다
+  p.w.applyAug({ offers: null, seq: 2, pickSeq: 1, hudPicked: [...real, "강타자"].map(id) });
+  assert.match(p.text("#chosen"), /강타자/);
+  assert.deepEqual(p.errors, []);
+});
+
+// 2026-11-08 미스 포츈 판: 증강 칸이 3개만 보이는 동안 클릭으로 잡은 4번째가 다음 선택 화면마다 지워졌다
+// (405초 조준경 부착 → 550초 지워짐, 568초 과충전 → 842초 지워짐, 860초 환영 무기 → 1058초 지워짐)
+test("재생(미스 포츈): 증강 칸이 3개만 보여도 클릭으로 잡은 4·5·6번째가 선택 화면 뒤에도 남는다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "MissFortune", level: 16, items: [] });
+  const id = (n) => p.data.augments.find((a) => a.name === n).id;
+  const sure = ["부식", "전부 다 무너뜨려", "헤비"];
+  p.w.applyAug({ offers: null, seq: 1, pickSeq: 0, hudPicked: sure.map(id) });
+  const clicked = ["조준경 부착", "과충전", "환영 무기"];
+  let seq = 1, pick = 0;
+  for (const n of clicked) {
+    p.w.applyAug({ offers: null, seq, picked: n, pickedFrom: [n, "강타자", "열의"], pickSeq: ++pick, hudPicked: sure.map(id) });
+    assert.match(p.text("#chosen"), new RegExp(n), `${n} 를 받았다`);
+    // 다음 증강 선택 화면이 뜬다 (예전엔 여기서 지워졌다)
+    p.w.applyAug({ offers: ["강타자", "열의", "속전속결"], seq: ++seq, pickSeq: pick, hudPicked: sure.map(id), rerolled: [false, false, false] });
+    assert.match(p.text("#chosen"), new RegExp(n), `선택 화면이 또 떠도 ${n} 가 남는다`);
+  }
+  for (const n of [...sure, ...clicked]) assert.match(p.text("#chosen"), new RegExp(n), `${n} 가 끝까지 남는다`);
+  const line = sent.at(-1).hud.find((x) => x.startsWith("고른 증강"));
+  for (const n of [...sure, ...clicked]) assert.match(line, new RegExp(n), `추천에 ${n} 가 전달된다`);
+  assert.deepEqual(p.errors, []);
+});
+
+// 2026-11-08 그레이브즈 판(23:36): 새로고침 직후 클릭이라 이름을 못 읽었고, 764초에 '불을 밝혀'가 지워졌다.
+// 앞쪽에 짐작이 끼면 뒤의 '증강 칸으로 확인된' 증강까지 slice(0, 3) 에 잘렸다
+test("재생(그레이브즈): 증강 칸으로 확인된 증강이 앞쪽 짐작 때문에 잘리지 않는다", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.pywebview = { api: { set_overlay: () => {} } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 16, items: [] });
+  const id = (n) => p.data.augments.find((a) => a.name === n).id;
+  const sure3 = ["부식", "전부 다 무너뜨려", "헤비"];
+  p.w.applyAug({ offers: null, seq: 1, pickSeq: 0, hudPicked: sure3.map(id) });
+  p.w.applyAug({ offers: null, seq: 1, picked: "불을 밝혀", pickedFrom: ["불을 밝혀", "강타자", "열의"], pickSeq: 1, hudPicked: sure3.map(id) });
+  // 증강 칸이 다섯 번째를 확인해 준다 (앞의 '불을 밝혀'는 아직 짐작)
+  const five = [...sure3, "불을 밝혀", "과충전"];
+  p.w.applyAug({ offers: null, seq: 1, pickSeq: 1, hudPicked: [...sure3, "과충전"].map(id) });
+  p.w.applyAug({ offers: ["강타자", "열의", "속전속결"], seq: 2, pickSeq: 1, hudPicked: [...sure3, "과충전"].map(id), rerolled: [false, false, false] });
+  for (const n of five) assert.match(p.text("#chosen"), new RegExp(n), `${n} 가 남는다 (예전엔 slice(0,3) 에 잘렸다)`);
+  assert.deepEqual(p.errors, []);
+});
+
+// 잘못 인식한 증강이 쌓여 6칸을 채워도 사람이 손으로 고칠 수 있어야 한다
+test("증강 6칸이 다 차도 칸을 눌러 빼고 다시 고를 수 있다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "MissFortune", level: 16, items: [] });
+  const id = (n) => p.data.augments.find((a) => a.name === n).id;
+  const six = ["부식", "전부 다 무너뜨려", "헤비", "조준경 부착", "과충전", "환영 무기"];
+  p.w.applyAug({ offers: null, seq: 1, pickSeq: 0, hudPicked: six.map(id) });
+  assert.equal([...p.doc.querySelectorAll("#chosen .slot[data-i]")].length, 6, "6칸이 다 보인다");
+  const slot = [...p.doc.querySelectorAll("#chosen .slot[data-i]")].find((el) => /환영 무기/.test(el.textContent));
+  slot.click();
+  assert.doesNotMatch(p.text("#chosen"), /환영 무기/, "눌러서 뺐다");
+  const line2 = sent.at(-1).hud.find((x) => x.startsWith("고른 증강"));
+  assert.doesNotMatch(line2, /환영 무기/, "추천에 전달되는 목록에서도 빠졌다");
+  assert.match(line2, /조준경 부착/, "나머지 5개는 그대로");
   assert.deepEqual(p.errors, []);
 });
 
@@ -1248,14 +1319,14 @@ test("추가 증강: 4개 확인 뒤 뜬 선택 화면은 카드를 띄우고 5�
   for (const n of four) assert.match(p.text("#chosen"), new RegExp(n), "확인된 4개는 그대로");
   p.w.applyAug({ offers: null, seq: 5, picked: "열의", pickSeq: 1, hudPicked: four.map(id) });
   assert.match(p.text("#chosen"), /열의/, "5번째로 받음");
-  // 짐작(증강 칸 미확인)이 섞여 있으면 예전처럼 그 짐작을 뺀다 (2026-10-15 케일 판)
+  // 짐작(증강 칸 미확인)이 섞여 있어도 지우지 않는다 (v0.1.94: 지우는 쪽이 실제로 고른 증강을 날렸다)
   const q = await loadPage({ simple: true });
   q.w.pywebview = { api: { set_overlay: () => {} } };
   q.w.applyLive({ enabled: true, inGame: true, champion: "Lux", level: 16, items: [] });
   q.w.applyAug({ offers: null, seq: 0, pickSeq: 0, hudPicked: four.slice(0, 3).map(id) });
   q.w.applyAug({ offers: null, seq: 0, picked: "강타자", pickSeq: 1, hudPicked: four.slice(0, 3).map(id) });
   q.w.applyAug({ offers: ["불을 밝혀", "한 발에 두 놈", "열의"], seq: 5, pickSeq: 1, hudPicked: four.slice(0, 3).map(id) });
-  assert.doesNotMatch(q.text("#chosen"), /강타자/, "확인 못 한 짐작은 뺀다");
+  assert.match(q.text("#chosen"), /강타자/, "짐작도 남긴다 (틀렸으면 증강 칸 확인이나 사람이 바로잡는다)");
   assert.deepEqual(p.errors, []);
   assert.deepEqual(q.errors, []);
 });

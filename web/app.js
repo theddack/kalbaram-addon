@@ -906,7 +906,9 @@ function renderStatsNow() {
 }
 
 function renderChosen() {
-  const slots = [0, 1, 2, 3].map((i) => {
+  // 보통 4칸이지만 헤드라이너로 더 받으면 그만큼 늘린다 (안 그리면 5·6번째가 화면에 없어 눌러서 뺄 수도 없었다)
+  const n = Math.min(AUG_MAX, Math.max(4, state.chosen.length));
+  const slots = [...Array(n).keys()].map((i) => {
     const a = state.chosen[i];
     if (!a) return `<div class="slot muted">빈 칸</div>`;
     // 게임 중이면 어디서 알았는지: 증강 칸 그림으로 봄(확인됨) / 클릭으로 짐작(화면 추정, 틀릴 수 있음)
@@ -1228,7 +1230,7 @@ function clearOffers() {
 const AUG_MAX = 6;
 function renderOffers() {
   const box = $("#offers");
-  const full = state.chosen.length >= 4;
+  const full = state.chosen.length >= AUG_MAX;  // 직접 입력 잠금은 실제 상한 기준 (헤드라이너로 5·6개째를 고를 수 있다)
   box.innerHTML = state.offers.map((a, i) => `
     <div class="offer">
       <input type="search" list="aug-names" data-i="${i}" placeholder="${["왼쪽", "가운데", "오른쪽"][i]} 증강 이름" value="${a ? esc(a.name) : ""}" ${full ? "disabled" : ""}>
@@ -1672,7 +1674,7 @@ function renderAugs() {
   const more = list.querySelector(".more-augs");
   if (more) more.addEventListener("click", () => { state.showAllAugs = true; renderAugs(); });
   list.querySelectorAll(".aug").forEach((el) => el.addEventListener("click", () => {
-    if (state.chosen.length >= 4) return;
+    if (state.chosen.length >= AUG_MAX) return;
     state.chosen.push(state.data.augments.find((a) => a.id === el.dataset.id));
     renderAll();
   }));
@@ -2197,17 +2199,11 @@ function applyAug(A) {
   }
   if (A.offers && A.seq !== augSeq) {
     augSeq = A.seq;
-    const sure = new Set(A.hudPicked || []);
-    // 4개가 모두 증강 칸 그림으로 확인됐는데 선택 화면이 또 떴다 = 헤드라이너(K/DA 등)가 주는 추가 증강 (26.21) → 그대로 받는다
-    const extra = state.chosen.length >= 4 && state.chosen.slice(0, 4).every((a) => sure.has(a.id));
-    if (state.chosen.length >= 4 && !extra) {
-      // 선택 화면이 또 떴다 = 아직 4개를 다 고르지 않았다 → 증강 칸에서 확인 못 한 것(클릭 짐작)을 뒤에서부터 뺀다
-      // (2026-10-15 케일 판: 틀린 짐작이 남아 4개로 차서 마지막 선택 화면 카드가 안 떴다)
-      const keep = [...state.chosen];
-      for (let i = keep.length - 1; i >= 0 && keep.length >= 4; i--) if (!sure.has(keep[i].id)) keep.splice(i, 1);
-      state.chosen = keep.slice(0, 3);
-      full = true;
-    }
+    // 선택 화면이 또 떴다고 고른 증강을 지우지 않는다. 예전엔 '아직 4개를 다 고르지 않았다'고 보고 증강 칸에서
+    // 확인 못 한 것을 빼고 3개로 잘랐는데, 그게 실제로 고른 증강을 지웠다 (2026-11-08 미스 포츈 판: 조준경 부착·과충전·
+    // 환영 무기가 차례로 지워져 판의 절반 이상을 6개 중 3개로 추천했다). 2026-10-15 케일 판이 막혔던 까닭은
+    // 그때 상한이 4라 4개가 차면 선택지를 버린 것이고, 지금은 AUG_MAX = 6이라 선택지가 그대로 뜬다.
+    // 틀린 짐작은 증강 칸 확인(_settle_unverified)이 바로잡고, 화면에서 칸을 눌러 직접 뺄 수도 있다
     if (state.chosen.length < AUG_MAX) {
       // 새로고침 씀: 증강 인식이 새로고침 버튼 클릭을 본 칸 + 같은 선택 화면이면 직접 체크한 칸 (다른 화면이면 새로, 피드백 #9)
       const next = A.offers.map(byName);
