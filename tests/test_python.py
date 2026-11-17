@@ -159,6 +159,53 @@ class GameFileSources(unittest.TestCase):
         self.assertEqual(C.game_as_ratio(bin_json, "Garen"), 0.625)
 
 
+class ManaRestoreNotDamage(unittest.TestCase):
+    """v0.1.93: 마나 회복 수치(유미 E manarestore)가 마법 피해 태그 안에 있어도 피해로 세지 않는다"""
+    def test_skip_mana_restore(self):
+        import champion_data as C
+        self.assertTrue(C.skip_effect("magic", "manarestore", " 회복시킵니다"))
+        self.assertTrue(C.skip_effect("magic", "ManaRefund", ""))
+        self.assertFalse(C.skip_effect("magic", "totaldamage", "의 마법 피해를 입힙니다"))
+        self.assertFalse(C.skip_effect("magic", "maxmanadamage", "의 마법 피해"), "최대 마나 비례 피해는 피해")
+
+
+class AllyHealShieldTrait(unittest.TestCase):
+    """v0.1.93 P3 E2: 아군을 돕는 챔피언의 회복·보호막 특성 = 지원 수치가 나오는 스킬·패시브 수 × 0.4 (최대 1). 예전 1.0 고정 규칙은 없앴다"""
+    def test_count_rule(self):
+        import build_data as B
+        sp = lambda slot, *effects: {"slot": slot, "effects": list(effects)}
+        heal = {"kind": "heal", "base": [50, 100], "target": "ally"}
+        zero = {"kind": "shield", "base": [0, 0], "target": "ally"}
+        lv = {"kind": "heal", "base": [0], "lvl": [35, 100], "target": "allies"}
+        own = {"kind": "shield", "base": [300], "target": "self"}
+        one = {"spells": [sp("W", {"kind": "shield", "base": [90], "target": "ally"}), sp("Q", {"kind": "magic", "base": [80]})], "passive": {"effects": []}}
+        self.assertEqual(B.ally_healshield_trait(one), 0.4, "아군 보호막 스킬 하나")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", zero)], "passive": {"effects": []}}), 0, "수치 0 은 세지 않음")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", own), sp("W", own)], "passive": {"effects": []}}), 0, "자기 보호막은 세지 않음 (v0.1.93 P4-A)")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", {**own, "target": "selfAndAllies"})], "passive": {"effects": []}}), 0.4, "자신과 아군이 함께 받으면 셈")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("Q", heal), sp("W", heal), sp("R", heal)], "passive": {"effects": [lv]}}), 1.0, "최대 1")
+        self.assertEqual(B.ally_healshield_trait({"spells": [sp("W", {"kind": "magic", "base": [80], "ally": {"hits": 1}})], "passive": {"effects": [lv]}}), 0.8,
+                         "아군이 넣는 피해(ally) 와 레벨 비례 패시브")
+        rule = {"spells": [], "passive": {"effects": []}, "fightStats": {"_effects": [{"src": "W 변덕쟁이", "kind": "allyAS", "base": [0.3]}, {"src": "패시브 영향력", "kind": "allyOnhit", "base": [0]}]}}
+        self.assertEqual(B.ally_healshield_trait(rule), 0.8, "규칙 효과는 출처마다, 아군 강화 종류는 수치 없이도 셈")
+
+    def test_ally_support_classification(self):
+        """아군 지원 분류도 계산되는 아군 몫으로 (설명에만 '아군'이 있는 챔피언은 빠진다, v0.1.93 P4-A)"""
+        d = json.loads((Path(__file__).resolve().parent.parent / "web" / "data.json").read_text(encoding="utf-8"))
+        feat = {c["id"]: c.get("features") or [] for c in d["champions"]}
+        for cid in ("Soraka", "Lulu", "Janna", "Nunu"):
+            self.assertIn("allysupport", feat[cid], cid)
+        for cid in ("Nilah", "Lucian", "Hecarim", "Galio", "Kled", "Yorick"):
+            self.assertNotIn("allysupport", feat[cid], cid)
+
+    def test_data_has_no_fixed_one(self):
+        d = json.loads((Path(__file__).resolve().parent.parent / "web" / "data.json").read_text(encoding="utf-8"))
+        lux = next(c for c in d["champions"] if c["id"] == "Lux")
+        soraka = next(c for c in d["champions"] if c["id"] == "Soraka")
+        self.assertEqual(lux["traits"]["HEALSHIELD"], 0.4)
+        self.assertEqual(soraka["traits"]["HEALSHIELD"], 0.8, "Q 는 자기 회복이라 W·R 만 셈 (v0.1.93 P4-A)")
+
+
 class RemovedAugments(unittest.TestCase):
     def test_removed_carried_within_patch(self):
         prev = {"augments": [{"id": "A", "name": "가"}, {"id": "B", "name": "나", "rarityName": "프리즘"}], "removedAugs": []}
@@ -409,6 +456,30 @@ class Desktop(unittest.TestCase):
             api.set_overlay({"statCheck": x})
         checks = [d for k, d in got if k == "statcheck"]
         self.assertEqual([c["level"] for c in checks], [3, 4])
+
+    def test_statcheck_logged_periodically(self):
+        """성장 능력치(윤 탈 치명타·극악무도 주문력) 추정을 나중에 되짚어 보려면 '같은 상태에서 두 번 읽은 값'이 필요하다.
+        그래서 레벨·아이템·증강이 그대로여도 STATCHECK_EVERY 초마다 한 줄 남긴다 (2026-11-16, 기록은 능력치 숫자뿐이라 개인정보가 없다)"""
+        api = desktop.Api(Settings_stub())
+        got = []
+
+        class Rec:
+            dir = "g1"
+
+            def event(self, kind, data=None, dedupe=False):
+                got.append((kind, data))
+        api._rec = Rec()
+        sc = lambda ad: {"level": 9, "items": ["3031"], "augs": [], "rows": {"AD": [100, ad]}}
+        now = [1000.0]
+        api._now = lambda: now[0]
+        api.set_overlay({"statCheck": sc(100)})
+        now[0] += 5
+        api.set_overlay({"statCheck": sc(101)})  # 아직 주기 전 → 안 남김
+        now[0] += desktop.STATCHECK_EVERY
+        api.set_overlay({"statCheck": sc(102)})  # 주기가 지나 한 줄 더
+        checks = [d for k, d in got if k == "statcheck"]
+        self.assertEqual([c["rows"]["AD"][1] for c in checks], [100, 102])
+        self.assertTrue(checks[1].get("periodic"), "주기 기록은 표시해 둔다")
 
     def test_pickfix_logged_once(self):
         # 화면이 실제 능력치로 고른 증강을 바로잡으면 그 판 기록에 한 번만 남긴다 (매번 보내는 화면 정보에 같이 실려 온다)
@@ -979,6 +1050,34 @@ class AugOcr(unittest.TestCase):
         self.assertEqual(t.state["pickSeq"], 0)  # 한 번 못 읽은 걸로는 닫힘 아님
         t.feed(None)
         self.assertEqual((t.state["picked"], t.state["pickSeq"], t.state["offers"]), ("영혼 흡수", 1, None))
+
+    def test_reroll_fill_keeps_click(self):
+        """새로고침한 칸 이름이 뒤늦게 읽혀도, 그 전에 다른 칸을 누른 클릭을 잃지 않는다.
+        (2026-11-17 파이크 판 9:36: 불여우(1번 칸) 클릭 0.3초 뒤 새로고침한 3번 칸 이름이 읽혀 클릭이 지워졌고,
+        카드가 닫힌 뒤의 화면 클릭 때문에 '대지의 영혼'으로 기록됐다. 경기 결과 정답은 불여우)"""
+        t = self.o.Tracker()
+        t.feed(["궁극의 반복", "불여우", "쌍둥이 불꽃"])
+        t.reroll(2)
+        t.click(1)                                        # 불여우를 누름
+        t.feed(["궁극의 반복", "불여우", "대지의 영혼"])   # 새로고침한 칸 이름이 뒤늦게 읽힘
+        self.assertEqual(t.state["offers"], ["궁극의 반복", "불여우", "대지의 영혼"])
+        t.click(2)                                        # 카드가 닫힌 뒤 화면 클릭
+        t.click(2)
+        for _ in range(self.o.Tracker.CLOSE_AFTER):
+            t.feed(None)
+        self.assertEqual(t.state["picked"], "불여우")
+
+    def test_new_screen_after_reroll_still_resets_click(self):
+        """새로고침한 칸 말고 다른 칸까지 바뀌면 다음 선택 화면이라 그 전 클릭은 버린다"""
+        t = self.o.Tracker()
+        t.feed(["궁극의 반복", "불여우", "쌍둥이 불꽃"])
+        t.reroll(2)
+        t.click(1)
+        t.feed(["도주 계획", "채널 고정", "대지의 영혼"])  # 세 칸이 다 다른 화면
+        t.click(0)
+        for _ in range(self.o.Tracker.CLOSE_AFTER):
+            t.feed(None)
+        self.assertEqual(t.state["picked"], "도주 계획")
 
     def test_hover_partial_names_keep_screen_open(self):
         # v0.1.13 실제 PC: 마우스를 올리자 이름이 잘려 읽혀 닫힘으로 착각 → 그 뒤 클릭을 못 잡았다
@@ -2362,6 +2461,62 @@ class GameLog(unittest.TestCase):
         rec.finish()
         self.assertEqual(gamelog.tidy(folder, ["헤비", "궁극의 히드라"]), (True, 0))
 
+    def test_augment_self_heal_not_support_tag(self):
+        """자기 회복·보호막 증강에는 '회복·보호막'(HEALSHIELD) 태그를 달지 않는다 — 아이템과 같은 규칙.
+        2026-11-16 파이크 판: '바다의 영혼'(자기 체력·마나 재생)이 이 태그 때문에 구원을 1순위로 끌어올렸다"""
+        import build_data as B
+        ally = B.augment_tags("아군에게 사용하는 체력 회복 및 보호막 효과가 30% 증가합니다.", [])
+        self.assertIn("HEALSHIELD", ally, "아군을 돕는 증강은 그대로")
+        own = B.augment_tags("적에게 피해를 입힌 후 높은 체력 및 마나 재생 효과를 얻는 바다의 영혼을 획득합니다.", [])
+        self.assertNotIn("HEALSHIELD", own, "자기 재생은 서포터 태그가 아니다")
+        self.assertIn("MANA", own, "다른 태그는 그대로")
+        shield = B.augment_tags("전투에서 벗어나면 잠시 동안 보호막을 획득합니다.", [])
+        self.assertNotIn("HEALSHIELD", shield, "자기 보호막도 마찬가지")
+
+    def test_tidy_marks_slot_shortfall(self):
+        """경기 결과 증강 칸은 6개가 끝이라, 7개를 고른 판은 기록이 맞아도 '다름'이 됐다 (2026-11-15 미스 포츈 판).
+        칸이 꽉 찼고 기록에만 있는 증강이 있으면 '칸 모자람'으로 나눈다 (그림은 '다름'과 똑같이 남긴다)"""
+        import gamelog
+        base = pathlib.Path(tempfile.mkdtemp())
+        rec = gamelog.GameRecorder(base)
+        rec.start("MissFortune")
+        for n in ("전부 다 무너뜨려", "헤비", "조준경 부착", "과충전", "환영 무기", "스래시"):
+            rec.event("picked", {"picked": n})
+        folder = rec.dir
+        (folder / "card_01.png").write_bytes(b"x")
+        rec.finish()
+        eog = ["헤비", "전부 다 무너뜨려", "조준경 부착", "과충전", "환영 무기"]  # 표시용 칸(3176)이 한 칸을 써서 5개만 남음
+        self.assertEqual(gamelog.tidy(folder, eog, slots=6), (False, 0))
+        ev = json.loads((folder / "events.json").read_text(encoding="utf-8"))
+        self.assertEqual(ev[-1]["kind"], "eog")
+        self.assertFalse(ev[-1]["match"])
+        self.assertTrue(ev[-1]["shortfall"], "칸 모자람")
+        self.assertEqual(ev[-1]["onlyInLog"], ["스래시"])
+        self.assertEqual(sorted(p.name for p in folder.glob("*.png")), ["card_01.png"], "그림은 남긴다")
+
+    def test_tidy_real_mismatch_is_not_shortfall(self):
+        """경기 결과에만 있는 증강이 있으면 칸이 꽉 찼어도 진짜 '다름'이다"""
+        import gamelog
+        base = pathlib.Path(tempfile.mkdtemp())
+        rec = gamelog.GameRecorder(base)
+        rec.start("Lux")
+        for n in ("취약", "도취"):
+            rec.event("picked", {"picked": n})
+        folder = rec.dir
+        rec.finish()
+        self.assertEqual(gamelog.tidy(folder, ["취약", "무한 반복"], slots=6), (False, 0))
+        ev = json.loads((folder / "events.json").read_text(encoding="utf-8"))
+        self.assertFalse(ev[-1].get("shortfall"), "경기 결과에만 있는 증강(무한 반복)이 있다")
+        # 칸이 남았는데 기록에만 있으면 그것도 진짜 다름 (감지 실패)
+        self.assertEqual(gamelog.tidy(folder, ["취약"], slots=3), (False, 0))
+        ev = json.loads((folder / "events.json").read_text(encoding="utf-8"))
+        self.assertFalse(ev[-1].get("shortfall"), "칸이 남아 있으면 칸 모자람이 아니다")
+
+    def test_eog_slots_counts_filled(self):
+        self.assertEqual(desktop.eog_aug_slots({"playerAugment%d" % i: v for i, v in enumerate([3176, 3170, 3116, 1170, 2123, 1029], 1)}), 6)
+        self.assertEqual(desktop.eog_aug_slots({"playerAugment1": 1390, "playerAugment2": 0}), 1)
+        self.assertEqual(desktop.eog_aug_slots({}), 0)
+
     def test_eog_names_skip_pentakill_display_augment(self):
         # 2026-11-08 쉬바나·사미라 판: 경기 결과 첫 칸이 3176 (GoH_PentakillAug_Generic, 이름 없는 펜타킬 표시용) →
         # 모르는 번호라 대조를 통째로 건너뛰어 'eog' 기록이 빠졌다
@@ -3215,3 +3370,25 @@ class ReleaseCheck(unittest.TestCase):
         self.assertEqual(rc.version_problems(cur, (ROOT / "desktop.py").read_text(encoding="utf-8"),
                                              (ROOT / "업데이트내역.md").read_text(encoding="utf-8"),
                                              (ROOT / "web" / "changelog.html").read_text(encoding="utf-8")), [])
+
+
+class ItemRuleScope(unittest.TestCase):
+    """v0.1.93 P4-B 4단계: 아이템 규칙의 확인 문구(check)는 상점 설명 + 아이템 칸 설명 둘 다에서 찾는다"""
+    def test_check_also_looks_at_passive_html(self):
+        import json, re
+        data = json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))
+        it = next(i for i in data["items"] if i["name"] == "지평선의 초점")
+        plain_desc = re.sub(r"<[^>]+>", "", it["desc"])
+        plain_all = re.sub(r"<[^>]+>", "", (it.get("passiveHtml") or "") + it["desc"])
+        self.assertNotIn("10%", plain_desc, "상점 설명에는 피해 증폭 수치가 없다")
+        self.assertIn("10%", plain_all, "아이템 칸 설명에는 있다")
+        self.assertEqual(it.get("passiveStats"), {"dmgDealtMult": 0.1, "_farMark": 600}, "그래도 규칙이 붙어야 한다")
+        self.assertNotIn("미적용", (ROOT / "web" / "review.md").read_text(encoding="utf-8"))
+
+    def test_spell_range_in_data(self):
+        """'멀리서 맞히면' 조건 계산에 쓰는 스킬 사거리가 데이터에 있다"""
+        import json
+        data = json.loads((ROOT / "web" / "data.json").read_text(encoding="utf-8"))
+        lux = next(c for c in data["champions"] if c["id"] == "Lux")
+        self.assertEqual(next(s for s in lux["spells"] if s["slot"] == "Q")["range"], 1175)
+        self.assertTrue(all("range" in s for c in data["champions"] for s in c["spells"]), "모든 스킬에 사거리")

@@ -58,11 +58,48 @@
   // 아이템 점수 = 수치 증가분 × NUM_K + 태그 점수 × TAG_K.
   // 수치: 최종 능력치로 계산한 스킬 콤보·DPS·유효 체력·회복/보호막의 상대 증가율 (18레벨, 칼바람 보정 포함)
   // 태그: 고유 효과·증강 연계처럼 수치로 안 잡히는 부분
-  const NUM_K = 4;
+  let NUM_K = 4;
+  // 실험 전용: 정규화 모드를 바꾸면 수치 몫 전체가 같이 커지거나 작아져서, 수치 : 태그 비율까지 같이 바뀐다.
+  // 그 두 가지를 갈라 보려고 수치 세기만 따로 맞춘다 (tools/exp_env.js NUMK=, 기본 4 그대로)
+  const setNumK = (v) => { NUM_K = v > 0 ? v : 4; clearMemo(); };
   const LIFT_FROM_CALC = 0.6;
   const AUG_GAIN_MIN = 0.02;  // 증강 몰빵이 균형보다 증강 몫(맨몸 대비 %p)을 이만큼은 늘려야 다른 빌드로 (tools/augment_fit.js NONE 과 같음)  // 계산(계수·발동·변환)으로만 찾은 입력 능력치의 lift 세기 = 설명 키워드 태그 세기 (build_data tag_text)
   const TAG_K = 0.4;
   const METRIC_FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };
+  // 지표 기준값: 맨몸 지표(최소 METRIC_FLOOR). 지표 상대 증가율의 분모. 엔진·화면 이유 문장·점검 도구(augment_fit·item_audit·augment_classify)가 모두 이 함수를 쓴다.
+  //   NORM_MODE "sharedAlly"(기본, v0.1.93 P2) 아군을 돕는 챔피언(allysupport)은 한타 피해와 지원을 같은 분모(맨몸 한타 피해 + 맨몸 지원)로.
+  //               근거: P1부터 두 지표가 같은 단위(적 체력 1 = 아군 체력 1)인데 분모가 따로라, 맨몸 한타 피해가 작은 회복형 서포터는
+  //               같은 체력 1을 공격으로 얻을 때 3~4배 높게 쳤다 (잔나 균형 빌드 가치의 공격 몫 76%). docs/v0.1.93_P2_분석.md
+  //             "own"    지표마다 자기 맨몸 값 (v0.1.92까지, 비교 기준선 A: tests/data/p2/)
+  //             "shared" 같은 분모를 모든 챔피언에 (자기 보호막이 큰 전사까지 바뀌어 쓰지 않음, 실험용)
+  //             "median" 전 챔피언 균형 빌드 지표 중앙값을 모든 챔피언·모든 지표의 분모로 (v0.1.93 P3-F 대안 B, 실험 전용).
+  //                      근거: 지표마다 '맨몸 대비 비율'의 척도가 달라 (기동력 1.05 고정 · 초당 피해 최대 24배)
+  //                      가중치 합이 1인데도 가중치가 뜻대로 동작하지 않았다. docs/v0.1.93_P3F_목적함수_원인조사.md 6절
+  //                      표는 tools/norm_median.js 가 지금 기본값으로 한 번 재서 만든다 (되먹임을 끊으려고 한 번만)
+  let NORM_MODE = "sharedAlly";
+  let NORM_MEDIAN = null;
+  let NORM_SCALE = null;
+  const setNormMedian = (t) => { NORM_MEDIAN = t ? { ...t } : null; clearMemo(); };
+  const setNormScale = (t) => { NORM_SCALE = t ? { ...t } : null; clearMemo(); };
+  function normOf(m0, champ) {
+    const n = {};
+    for (const k of Object.keys(METRIC_FLOOR)) n[k] = Math.max(m0[k] || 0, METRIC_FLOOR[k]);
+    if (NORM_MODE === "median" && NORM_MEDIAN) {
+      for (const k of Object.keys(METRIC_FLOOR)) n[k] = NORM_MEDIAN[k] || METRIC_FLOOR[k];
+      return n;
+    }
+    // "scaled" (대안 B′): 챔피언마다 자기 맨몸으로 나누는 건 그대로 두고(sharedAlly), 지표마다 '보통 빌드의 비율'로 한 번 더 나눠
+    // 척도만 맞춘다. 대안 B 에서 분모를 전 챔피언 공통으로 바꾼 탓에 생긴 쏠림(전사·암살자가 풀탱이 됨)을 빼고 척도만 고치는 변형
+    if (NORM_MODE === "scaled" && NORM_SCALE) {
+      const ally = champ && (champ.features || []).includes("allysupport");
+      if (ally) n.combo = n.support = Math.max((m0.combo || 0) + (m0.support || 0), METRIC_FLOOR.combo);
+      for (const k of Object.keys(METRIC_FLOOR)) n[k] *= NORM_SCALE[k] || 1;
+      return n;
+    }
+    const ally = champ && (champ.features || []).includes("allysupport");
+    if (NORM_MODE === "shared" || (NORM_MODE === "sharedAlly" && ally)) n.combo = n.support = Math.max((m0.combo || 0) + (m0.support || 0), METRIC_FLOOR.combo);
+    return n;
+  }
 
   // 빌드 컨셉: 챔피언 가중치와 증강 태그를 섞는 비율
   const CONCEPTS = [
@@ -106,7 +143,7 @@
     // 공격 속도가 고정인 챔피언(진): 추가 공격 속도는 공격력으로 조금(1%당 0.3%)만 바뀌고 공격 횟수는 늘지 않는다
     // → 공격 속도·적중 시 효과 비중을 낮추고 물리 관통을 올린다 (2026-10-18 진 판: 판 내내 윤 탈·루난·유령 무희를 권했다)
     if (champ.asFixed) { w.AS *= 0.3; w.ONHIT *= 0.3; w.LETHAL = Math.max(w.LETHAL, 0.7); }
-    for (const [t, v] of Object.entries(champ.traits || {})) if (t in w) w[t] += TRAIT_BOOST * v;
+    for (const [t, v] of Object.entries((TRAIT_OVERRIDE && TRAIT_OVERRIDE[champ.id]) || champ.traits || {})) if (t in w) w[t] += TRAIT_BOOST * v;
     if (champ.partype !== "마나") w.MANA = 0;
     for (const t of tags) w[t] = Math.min(1.5, round(w[t]));
     return w;
@@ -421,7 +458,11 @@
   // 실험 설정 (2026-11-15 태그·수치 중복 점검, tools/tag_overlap.js): {아이템 id: Set(태그)} 를 주면 그 태그는 태그 점수에서 뺀다.
   // 기본 null = 지금 그대로. 화면은 바꾸지 않는다 (tools 에서만 setTagSkip)
   let TAG_SKIP = null;
+  // 챔피언 특성(traits) 바꿔 끼우기 {챔피언 id: traits}. 기본 null = 데이터 그대로. 실험용 (tools/exp_env.js HS_TRAIT, v0.1.93 P3)
+  let TRAIT_OVERRIDE = null;
+  const setTraitOverride = (m) => { TRAIT_OVERRIDE = m || null; clearMemo(); };
   const setTagSkip = (m) => { TAG_SKIP = m || null; clearMemo(); };
+  const setNormMode = (m) => { NORM_MODE = m || "sharedAlly"; clearMemo(); };  // 실험·비교용 (tools 에서만, NORM=own 이면 기준선 A)
   function scoreItem(item, iw, covered, opts = {}) {
     const ctx = opts.ctx;
     const view = tagView(item.tags, ctx && ctx.convert);
@@ -598,7 +639,8 @@
     const m0 = Stats.evaluate(c, 18, [], [], statOpts).m, m1 = Stats.evaluate(c, 18, [], augStatsOf(chosen, rules, c), statOpts).m;
     const out = {};
     let sum = 0;
-    for (const k of Object.keys(METRIC_FLOOR)) { out[k] = Math.max(0, (m1[k] || 0) - (m0[k] || 0)) / Math.max(m0[k] || 0, METRIC_FLOOR[k]); sum += out[k]; }
+    const nm = normOf(m0, c);
+    for (const k of Object.keys(METRIC_FLOOR)) { out[k] = Math.max(0, (m1[k] || 0) - (m0[k] || 0)) / nm[k]; sum += out[k]; }
     let res = null;
     if (sum > 1e-9) { res = {}; for (const k of Object.keys(out)) res[k] = out[k] / sum; }
     if (AOW.size > 5000) AOW.clear();
@@ -622,11 +664,11 @@
   function augContribution(items, w, chosen, aug, rules, champ, statOpts = {}) {
     const num = { mw: conceptMetricWeights(w, [...chosen, aug], rules, champ, CONCEPTS[1], statOpts), norm: {} };
     const c = withChosenFeatures(champ, [...chosen, aug], rules);
-    const base = augStatsOf(chosen, rules, c);
+    const base = augStatsOf(chosen, rules, c, items);
     const empty = Stats.evaluate(c, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
-    for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
+    num.norm = normOf(empty, c);
     const v0 = valueOf(Stats.evaluate(c, 18, items, base, statOpts).m, num);
-    const v1 = valueOf(Stats.evaluate(c, 18, items, [...base, ...augStatsOf([aug], rules, c)], statOpts).m, num);
+    const v1 = valueOf(Stats.evaluate(c, 18, items, [...base, ...augStatsOf([aug], rules, c, items)], statOpts).m, num);
     return v1 - v0;
   }
 
@@ -637,9 +679,10 @@
     return out;
   }
 
-  function gainParts(m0, m1) {
+  function gainParts(m0, m1, champ) {
     const parts = {};
-    for (const k of Object.keys(METRIC_FLOOR)) parts[k] = (m1[k] - m0[k]) / Math.max(m0[k], METRIC_FLOOR[k]);
+    const nm = normOf(m0, champ);
+    for (const k of Object.keys(METRIC_FLOOR)) parts[k] = (m1[k] - m0[k]) / nm[k];
     return parts;
   }
 
@@ -653,7 +696,9 @@
   // 이미 많이 확보한 태그는 감쇠시켜 한쪽으로 쏠리지 않게 한다.
   function buildWith(items, iw, fixed, opts) {
     const num = opts.num ? { ...opts.num, mw: opts.mw || metricWeights(iw), augMw: opts.augMw || null } : null;
-    const evalM = (list) => Stats.evaluate(num.champ, num.level, list, num.augStats, num.statOpts).m;
+    // 아이템 업그레이드 증강은 그 아이템을 든 빌드에서만 효과가 난다 → 빌드마다 증강 능력치를 다시 고른다 (augStatsOf items)
+    const augFor = (list) => (num.augFor ? num.augFor(list) : num.augStats);
+    const evalM = (list) => Stats.evaluate(num.champ, num.level, list, augFor(list), num.statOpts).m;
     // 증강 몰빵: 빌드 전체 가치에 더해 '증강이 보태는 가치'(증강 있음 − 없음)도 키운다 = 증강 효과 극대화
     const focus = num && opts.focus && num.augStats.length ? opts.focus : 0;
     const evalBare = (list) => Stats.evaluate(num.champ, num.level, list, [], num.statOpts).m;
@@ -661,8 +706,7 @@
       // 기준값은 증강 없는 맨몸: 증강이 키운 지표(치명타 증강 → 평타 피해)를 기준에 넣으면 그 지표 아이템이 오히려 싸 보였다
       // (2026-10-16 가렌 + 치명적인 공격 → 탱커 빌드. 레벨당 공격력을 바로잡은 뒤 드러남)
       const m0 = evalBare([]);
-      num.norm = {};
-      for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(m0[k], METRIC_FLOOR[k]);
+      num.norm = normOf(m0, num.champ);
     }
     const step = (state, item, fixedFlag) => {
       const tag = scoreItem(item, iw, state.covered, opts);
@@ -677,7 +721,7 @@
       addCovered(covered, tagView(item.tags, opts.ctx.convert));
       return {
         items: list, covered, m, bare, total: state.total + score,
-        picks: [...state.picks, { item, ...tag, tagScore: tag.score, score, gain: num ? gainParts(state.m, m) : null, fixed: fixedFlag }],
+        picks: [...state.picks, { item, ...tag, tagScore: tag.score, score, gain: num ? gainParts(state.m, m, num.champ) : null, fixed: fixedFlag }],
       };
     };
     let beams = [{ items: [], covered: {}, m: num ? evalM([]) : null, bare: focus ? evalBare([]) : null, total: 0, picks: [] }];
@@ -834,13 +878,19 @@
 
   // 능력치 계산에 넘길 증강 데이터: 능력치(rules stats) + 피해·보호막 효과(게임 데이터)
   // champ 를 주면 증강 조건(밀어내기 스킬 등)을 못 맞출 때 효과를 뺀다 (발동하지 않으니까)
-  function augStatsOf(chosen, rules, champ = null) {
+  // items: 지금 평가하는 아이템 목록. 주면 '아이템 업그레이드' 증강(rules augments items)은 그 아이템을 가졌을 때만 센다.
+  // 2026-11-17 v0.1.93 P3-F: 꽃피는 새벽의 검 업그레이드가 아이템 없이도 공격 속도 +100% 를 줘서,
+  // 그 아이템을 꼭 들어야 하는 몰빵 빌드가 들지 않아도 되는 '상한' 빌드보다 증강 효과가 낮게 나왔다 (역행).
+  // items 를 안 주면(아이템과 무관한 계산: 증강 출력 가중치·설명 칸) 예전처럼 그냥 넣는다.
+  function augStatsOf(chosen, rules, champ = null, items = null) {
     champ = withChosenFeatures(champ, chosen, rules);
     return chosen.map((a) => {
       const rule = ruleOf(rules, a);
       const unmet = champ && (a.eligible ? !a.eligible.includes(champ.id) : rule.requires && !(champ.features || []).includes(rule.requires));
       // 조건을 못 맞추면 능력치도 효과도 없다 (능력치만 남아 'D등급인데 계산상 강해짐'이 나왔다: 럭스 + 승리를 위한 회전)
-      return unmet ? { _effects: [] } : { ...(rule.statsResolved || {}), _effects: (a.effects || []).map((e) => ({ ...e, src: a.name })) };
+      const need = (rule.items || []).length ? rule.items : null;
+      const noItem = need && items && !items.some((i) => need.includes(i.name));
+      return unmet || noItem ? { _effects: [] } : { ...(rule.statsResolved || {}), _effects: (a.effects || []).map((e) => ({ ...e, src: a.name })) };
     });
   }
 
@@ -854,16 +904,35 @@
     const bal = buildConcepts(itemPool, w, chosen, fixed, rules, champ, statOpts, ["balanced"])[0];
     const items = bal.pick.map((p) => p.item);
     const num = { mw: conceptMetricWeights(w, weightsFrom || chosen, rules, champ, CONCEPTS[1], statOpts), norm: {} };
-    const base = augStatsOf(chosen, rules, champ);
+    const base = augStatsOf(chosen, rules, champ, items);
     const empty = Stats.evaluate(champ, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
-    for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
+    num.norm = normOf(empty, champ);
     const m0 = Stats.evaluate(champ, 18, items, base, statOpts).m;
     const v0 = valueOf(m0, num);
     const out = {};
+    // 아이템 업그레이드 증강(쓸 아이템이 정해진 증강)을 지금 빌드가 안 들고 있으면, 전설 한 칸을 그 아이템으로 바꿔서 잰다.
+    // 이 증강을 고른다는 건 그 아이템을 산다는 뜻이라서다. 바꾸는 칸은 빌드에서 마지막(가장 나중에 뽑힌) 전설 칸.
+    // (v0.1.93 P3-F: 보유 조건을 넣고 나니 안 넣으면 프리즘 업그레이드 증강이 '수치 이득 0'이 됐다)
+    const swapIn = (a) => {
+      const need = (ruleOf(rules, a).items || []).filter(Boolean);
+      if (!need.length || items.some((i) => need.includes(i.name))) return null;
+      const it = itemPool.find((i) => need.includes(i.name));
+      if (!it) return null;
+      let k = -1;
+      items.forEach((i, idx) => { if (i.kind === "legendary" && !fixed.some((f) => f.name === i.name)) k = idx; });
+      if (k < 0) return null;
+      const list = items.slice();
+      list[k] = it;
+      return list;
+    };
     for (const a of augs) {
       if (!hasNumbers(a, rules) || chosen.some((c) => c.id === a.id)) continue;
-      const m1 = Stats.evaluate(champ, 18, items, [...base, ...augStatsOf([a], rules, champ)], statOpts).m;
-      out[a.id] = { gain: valueOf(m1, num) - v0, parts: gainParts(m0, m1), abs: absParts(m0, m1) };
+      const list = swapIn(a) || items;
+      const b = list === items ? base : augStatsOf(chosen, rules, champ, list);
+      const mA = list === items ? m0 : Stats.evaluate(champ, 18, list, b, statOpts).m;
+      const vA = list === items ? v0 : valueOf(mA, num);
+      const m1 = Stats.evaluate(champ, 18, list, [...b, ...augStatsOf([a], rules, champ, list)], statOpts).m;
+      out[a.id] = { gain: valueOf(m1, num) - vA, parts: gainParts(mA, m1, champ), abs: absParts(mA, m1) };
     }
     return { gains: out, build: items };
   }
@@ -891,7 +960,8 @@
     const champ0 = champ;
     champ = champ && withChosenFeatures(champ, chosen, rules);  // 고른 증강이 챔피언 특징을 바꾸면(검을 뽑아라 → 근접) 그 기준으로
     const ctx = augContext(chosen, rules, champ);
-    const num = champ && champ.spells ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), statOpts } : null;
+    const num = champ && champ.spells
+      ? { champ, level: 18, augStats: augStatsOf(chosen, rules, champ), augFor: (list) => augStatsOf(chosen, rules, champ, list), statOpts } : null;
     // 변칙: 균형 빌드가 중시하는 지표를 뒤집어서, 챔피언이 원래 약한 쪽(럭스면 탱킹·평타)을 키운다
     const normal = conceptMetricWeights(w, chosen, rules, champ0 || champ, CONCEPTS[1], statOpts);
     const inv = {};
@@ -1002,18 +1072,17 @@
     let m0 = null;
     if (num) {
       const empty = Stats.evaluate(champ, 18, [], [], statOpts).m;  // 기준값은 증강 없는 맨몸 (buildWith 와 같게)
-      num.norm = {};
-      for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
-      m0 = Stats.evaluate(champ, 18, fixed, num.augStats, statOpts).m;
+      num.norm = normOf(empty, champ);
+      m0 = Stats.evaluate(champ, 18, fixed, augStatsOf(sc, rules, champ, fixed), statOpts).m;
     }
     return items
       .filter((i) => !fixed.some((f) => f.name === i.name))
       .map((i) => {
         const tag = scoreItem(i, iw, covered, { ctx });
         if (!num) return { item: i, ...tag, tagScore: tag.score };
-        const m1 = Stats.evaluate(champ, 18, [...fixed, i], num.augStats, statOpts).m;
+        const m1 = Stats.evaluate(champ, 18, [...fixed, i], augStatsOf(sc, rules, champ, [...fixed, i]), statOpts).m;
         const score = (valueOf(m1, num) - valueOf(m0, num)) * NUM_K + tag.score * TAG_K;
-        return { item: i, ...tag, tagScore: tag.score, score, gain: gainParts(m0, m1) };
+        return { item: i, ...tag, tagScore: tag.score, score, gain: gainParts(m0, m1, champ) };
       })
       .map((r) => (off && off(r.item) ? { ...r, offType: true, cantBuy: cantBuy(champ, r.item) } : r))
       // 주 피해 유형과 반대인 아이템은 목록 맨 뒤로 (지우지는 않는다: 직접 골라 보는 건 자유)
@@ -1029,15 +1098,14 @@
     const concept = CONCEPTS.find((c) => c.key === (chosen.length ? "augment" : "balanced"));
     const ctx = withOfficial(augContext(chosen, rules, champ), champ, officialK(concept));
     const num = { mw: metricWeights(conceptWeights(w, ctx, concept)), norm: {} };
-    const augStats = augStatsOf(chosen, rules, champ);
     const L = Math.max(1, Math.min(18, Math.round(level)));
     const empty = Stats.evaluate(champ, L, [], [], statOpts).m;
-    for (const k of Object.keys(METRIC_FLOOR)) num.norm[k] = Math.max(empty[k], METRIC_FLOOR[k]);
-    const v0 = valueOf(Stats.evaluate(champ, L, have, augStats, statOpts).m, num);
+    num.norm = normOf(empty, champ);
+    const v0 = valueOf(Stats.evaluate(champ, L, have, augStatsOf(chosen, rules, champ, have), statOpts).m, num);
     return cands.map((c) => {
       const used = [...(c.uses || [])];
       const after = have.filter((h) => { const i = used.indexOf(h.id); if (i < 0) return true; used.splice(i, 1); return false; }).concat([c]);
-      const gain = (valueOf(Stats.evaluate(champ, L, after, augStats, statOpts).m, num) - v0) * NUM_K;
+      const gain = (valueOf(Stats.evaluate(champ, L, after, augStatsOf(chosen, rules, champ, after), statOpts).m, num) - v0) * NUM_K;
       return { id: c.id, name: c.name, gold: c.gold, gain, perGold: c.gold > 0 ? gain / c.gold : 0 };
     }).sort((a, b) => b.gain - a.gain);
   }
@@ -1234,7 +1302,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, setTraitOverride, setNormMode, setNormMedian, setNormScale, setNumK, normOf, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

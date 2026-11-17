@@ -12,7 +12,7 @@ global.Stats = global.Stats || require(path.join(ROOT, "web", "stats.js"));
 const S = require(path.join(ROOT, "web", "scoring.js"));
 require("./exp_env")(S, global.Stats);
 
-const FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };  // scoring.METRIC_FLOOR
+const FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };  // 지표 이름 목록용 (기준값은 S.normOf)
 const REFS = ["Jinx", "Garen", "Lux", "Leona", "Zed", "Nami"];  // 원딜·전사·메이지·탱커·암살자·서포터
 // 설명 능력치 이름 → 계산 키 (비율은 % 로 적힘). 계산에 안 쓰는 능력치는 null
 const STAT_LABEL = {
@@ -25,7 +25,7 @@ const STAT_LABEL = {
 // 고유 효과 문장에서 효과 종류 찾기
 const KIND_WORDS = [
   ["dmg", /피해를 입|추가 (물리|마법|고정) 피해|피해를 줍|피해가 증가|피해량이 .*증가|입히는 피해|폭발/],
-  ["heal", /회복/], ["shield", /보호막|피해를 흡수/], ["defense", /받는 피해|피해량 감소|방어력|마법 저항력|체력이 증가|최대 체력|공격 속도를 [\d.]+%만큼 감소/],
+  ["heal", /회복|상처를 남깁/], ["shield", /보호막|피해를 흡수/], ["defense", /받는 피해|피해량 감소|방어력|마법 저항력|체력이 증가|최대 체력|공격 속도를 [\d.]+%만큼 감소/],
   ["ms", /이동 속도/], ["haste", /스킬 가속|재사용 대기시간/], ["cc", /둔화|기절|속박|경직|공중에|정화|무적|경직/],
   ["stat", /공격력|주문력|공격 속도(?!를 [\d.]+%만큼 감소)|치명타/], ["ally", /아군/],
 ];
@@ -39,6 +39,7 @@ const RULE_KIND = {
   ultHasteAdd: "haste", basicHaste: "haste", onhitRemainingPct: "haste", controlPerCast: "cc", rampAS: "stat", rampMax: "stat", onhitRepeat: "dmg",
   magicDmgMult: "dmg", lowHpMagicTrueAmp: "dmg", lowHpAt: "dmg", trueDmgMult: "dmg", physDmgMult: "dmg", tgtBonusHpAmp: "dmg", tgtBonusHpAt: "dmg", mrShred: "defense", bonusHPtoAD: "stat",
   MP5PtoHSP: "heal", MP5PtoAP: "stat", selfHealMult: "heal", HP: "defense", MANA: "stat", AP: "stat",
+  healCut: "heal",  // 고통스러운 상처 (v0.1.93 P4-B 5단계)
 };
 const strip = (h) => (h || "").replace(/<br\s*\/?>/g, "\n").replace(/<[^>]+>/g, "").replace(/&#x27;/g, "'");
 
@@ -84,6 +85,7 @@ function modeled(it) {
   const rule = it.basisView || [];
   const approx = rule.some((b) => b.t === "assume");
   for (const k of Object.keys(ps)) {
+    if (k.startsWith("_")) continue;  // 조건을 적은 칸 (_belowAt·_farMark): 그 자체는 계산 항목이 아니다
     const kind = RULE_KIND[k] || "stat";
     if (!kinds.has(kind) || !kinds.get(kind).approx) kinds.set(kind, { src: `규칙 ${k}`, approx });
   }
@@ -118,7 +120,7 @@ function contribution(d, it) {
     const w = S.profile(c, d.tags);
     const mw = S.conceptMetricWeights(w, [], d.rules, c, null, {});
     const e0 = Stats.evaluate(c, 18, [], [], {}).m;
-    const norm = Object.fromEntries(Object.keys(FLOOR).map((k) => [k, Math.max(e0[k] || 0, FLOOR[k])]));
+    const norm = S.normOf(e0, c);  // 엔진과 같은 기준값 (v0.1.93 P2)
     const val = (m) => Object.keys(mw).reduce((v, k) => v + mw[k] * (m[k] || 0) / norm[k], 0);
     const v0 = val(e0), vb = val(Stats.evaluate(c, 18, [bare], [], {}).m), vf = val(Stats.evaluate(c, 18, [it], [], {}).m);
     res[cid] = { base: +((vb - v0) * 100).toFixed(1), unique: +((vf - vb) * 100).toFixed(1) };

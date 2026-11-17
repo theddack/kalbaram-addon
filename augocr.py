@@ -465,6 +465,19 @@ class Tracker:
                 self._last, self._click, self._guess = None, None, None
                 self._reroll_wait, self._reroll_old = set(), {}
                 self.state = {**self.state, "rerolled": [False] * 3}
+            # 새로고침으로 비워 둔 칸의 새 이름만 읽혔다 = 같은 선택 화면 → 그 전 클릭을 그대로 둔다.
+            # (2026-11-17 v0.1.93 파이크 판 9:36: 불여우(1번 칸)를 누른 0.3초 뒤에 새로고침한 3번 칸 이름이 읽혀
+            #  클릭이 지워졌고, 카드가 닫힌 뒤의 화면 클릭을 고른 것으로 봐서 '대지의 영혼'으로 기록됐다.
+            #  경기 결과 정답은 불여우였다). 새로 채워진 칸 말고 다른 칸이 하나라도 바뀌면 다음 선택 화면이라 아래로 간다
+            if (self._last is not None and offers3 != self._last
+                    and all(a == b or (b is None and i in self._reroll_wait) for i, (a, b) in enumerate(zip(offers3, self._last)))):
+                self._reroll_wait = {i for i in self._reroll_wait if offers3[i] is None}
+                for i, n in enumerate(offers3):
+                    if n is not None:
+                        self._reroll_old.pop(i, None)
+                self._last = list(offers3)
+                self.state = {**self.state, "offers": list(offers3), "seq": self.state["seq"] + 1}
+                return
             if offers3 != self._last:  # 새 선택지 (새로고침 포함): 그 전 클릭은 무효
                 # 새로고침한 칸을 아직 못 읽었으면 그 칸은 비운다 (예전엔 바뀌기 전 카드 평가가 새 카드 위에 남았다, 피드백 #7)
                 self._reroll_wait = {i for i in self._reroll_wait if offers3[i] is None}

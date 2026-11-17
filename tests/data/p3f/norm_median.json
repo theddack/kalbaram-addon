@@ -1,0 +1,37 @@
+{
+  "dataVersion": "16.22.8348910+branch.releases-16-22.content.release",
+  "builtAt": "2026-11-17T02:45:16.019Z",
+  "note": "전 챔피언 균형 빌드(증강 없음·18레벨) 지표 중앙값. 기본값(sharedAlly)으로 잰 1회차 값",
+  "norm": {
+    "combo": 1749.31,
+    "dps": 262.83,
+    "ehp": 6737.23,
+    "support": 1139.51,
+    "mobility": 399.6,
+    "control": 1.5
+  },
+  "raw": {
+    "combo": 1749.31,
+    "dps": 262.83,
+    "ehp": 6737.23,
+    "support": 0,
+    "mobility": 399.6,
+    "control": 1.5
+  },
+  "nz": {
+    "combo": 1749.31,
+    "dps": 262.83,
+    "ehp": 6737.23,
+    "support": 1139.51,
+    "mobility": 399.6,
+    "control": 1.8
+  },
+  "scale": {
+    "combo": 2.6062,
+    "dps": 3.0934,
+    "ehp": 1.1573,
+    "support": 1.1402,
+    "mobility": 1.0516,
+    "control": 1
+  }
+}

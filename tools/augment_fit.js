@@ -21,15 +21,17 @@ const EXP_LABEL = require("./exp_env")(S, global.Stats);
 
 const REPS = { Marksman: ["Jinx", "Vayne", "Caitlyn"], Mage: ["Lux", "Annie", "Viktor"], Tank: ["Malphite", "Sion", "Leona"],
   Fighter: ["Garen", "Darius", "Irelia"], Assassin: ["Zed", "Akali", "Kayn"], Support: ["Sona", "Nami", "Lulu"] };
-const FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };  // scoring.METRIC_FLOOR 와 같게
-const KEYS = Object.keys(FLOOR);
-const NONE = 0.02;  // 상한 − 기본이 이보다 작으면 아이템 무관
+const KEYS = Object.keys(S.normOf({}, null));  // 지표 기준값은 엔진과 같은 S.normOf (v0.1.93 P2)
+// 상한 − 기본이 이보다 작으면 아이템 무관. eff() 가 비율에 100을 곱해 돌려주므로(퍼센트 포인트) 2 = 비율 0.02 다.
+// 2026-11-17 v0.1.93 P4-B: 0.02(비율 기준 값)로 적혀 있어 사실상 아무것도 '아이템 무관'이 되지 않았고,
+// 여지가 0.6 포인트뿐인 장면에서 달성률이 −3.05 처럼 튀어 '역행'으로 셌다 (징크스 + 징수의 총 업그레이드: 기본 20.1 → 상한 20.7)
+const NONE = 2;
 
 function setup(d, c, aug) {
   const cc = S.withChosenFeatures(c, [aug], d.rules);
   const A = S.augStatsOf([aug], d.rules, cc);
   const empty = Stats.evaluate(cc, 18, [], [], {}).m;
-  const norm = Object.fromEntries(KEYS.map((k) => [k, Math.max(empty[k] || 0, FLOOR[k])]));
+  const norm = S.normOf(empty, cc);
   const eff = (items) => {
     const m0 = Stats.evaluate(cc, 18, items, [], {}).m, m1 = Stats.evaluate(cc, 18, items, A, {}).m;
     let v = 0;
@@ -132,6 +134,7 @@ function markdown(rows, sum, d) {
 
 if (require.main === module) {
   const d = JSON.parse(fs.readFileSync(path.join(ROOT, "web", "data.json"), "utf8"));
+  require("./exp_env").patchData(d);  // 데이터를 고치는 실험 설정(ZHONYA 등)도 반영
   S.attachSimilar(d.champions, null, d.items);
   const arg = (k) => { const i = process.argv.indexOf(k); return i > 0 ? process.argv[i + 1] : null; };
   const champs = arg("--champs") ? arg("--champs").split(",") : Object.values(REPS).flat();

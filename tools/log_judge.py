@@ -172,8 +172,13 @@ def judge(events):
     truth = (eog or {}).get("augments") or (eog or {}).get("picked")
     if truth and picked:
         wrong = [f"{e['t']}초 {e['picked']}" for e in picked if e["picked"] not in truth]
-        row("증강", "고른 증강 인식 (경기 결과 대조)", BAD if wrong else OK,
-            f"고른 증강 {len(picked)}개 · 경기 결과와 다름: {', '.join(wrong)}" if wrong else f"고른 증강 {len(picked)}개 모두 경기 결과와 같음")
+        # 경기 결과 증강 칸은 6개가 끝이라, 더 많이 고른 판은 기록이 맞아도 빠진 것처럼 보인다 (gamelog.tidy shortfall)
+        if wrong and (eog or {}).get("shortfall"):
+            row("증강", "고른 증강 인식 (경기 결과 대조)", PART,
+                f"고른 증강 {len(picked)}개 · 경기 결과 칸({(eog or {}).get('slots')}개)이 꽉 차 {', '.join(wrong)} 이(가) 결과에 안 남음 (감지 실패 아님)")
+        else:
+            row("증강", "고른 증강 인식 (경기 결과 대조)", BAD if wrong else OK,
+                f"고른 증강 {len(picked)}개 · 경기 결과와 다름: {', '.join(wrong)}" if wrong else f"고른 증강 {len(picked)}개 모두 경기 결과와 같음")
     else:
         row("증강", "고른 증강 인식 (참고)", NOREC if picked else NA,
             f"고른 증강 {len(picked)}개: " + ", ".join(e["picked"] for e in picked) + " (경기 결과 기록이 없어 맞는지는 diag.log '경기 결과와 고른 증강 대조')")

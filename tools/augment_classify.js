@@ -20,7 +20,7 @@ const p0 = (fs.readFileSync(path.join(R, "docs", "미구현_분류.md"), "utf8")
 const missing = new Set(p0.split("\n").filter((l) => /^\| /.test(l) && /(태그 기반 간접 반영|실제 게임 확인 필요)/.test(l))
   .map((l) => l.split("|")[1].replace(/\(.*\)/, "").trim()));
 const rows = JSON.parse(fs.readFileSync(fitPath, "utf8")).filter((r) => roles.includes(r.role) && r.reach != null && r.reach >= 0 && r.reach < 0.3);
-const FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };
+const FLOOR = { combo: 300, dps: 60, ehp: 2000, support: 600, mobility: 380, control: 1.5 };  // 지표 이름 목록용 (기준값은 S.normOf)
 const legal = (list) => { const lim = list.map((i) => i.limit).filter(Boolean); return new Set(lim).size === lim.length && new Set(list.map((i) => i.name)).size === list.length; };
 const out = [];
 const t0 = Date.now();
@@ -30,7 +30,7 @@ for (const r of rows) {
   const A = S.augStatsOf([aug], d.rules, c);
   const cache = new Map();
   const ev = (list, withAug) => { const k = (withAug ? "A" : "B") + list.map((i) => i.id).join(","); if (!cache.has(k)) cache.set(k, Stats.evaluate(c, 18, list, withAug ? A : [], {}).m); return cache.get(k); };
-  const e0 = ev([], false), norm = Object.fromEntries(Object.keys(FLOOR).map((k) => [k, Math.max(e0[k], FLOOR[k])]));
+  const e0 = ev([], false), norm = S.normOf(e0, c);  // 엔진과 같은 기준값 (v0.1.93 P2)
   const eng = S.buildConcepts(d.items, w, [aug], [], d.rules, c0, {}, ["augment"])[0];
   const balB = S.buildConcepts(d.items, w, [aug], [], d.rules, c0, {}, ["balanced"])[0];
   const measure = (list) => {

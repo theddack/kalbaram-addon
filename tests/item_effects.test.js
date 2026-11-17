@@ -133,3 +133,146 @@ test("세릴다의 원한 '매서운 추위': 대상 체력 50% 아래 조건을
   St.TARGET.CUR = 0.5;
   try { near(ctl(), 0.3 * 0.5, 1e-9, "처치까지 가는 경로면 절반 (예전 고정값 0.15와 같은 경우)"); } finally { St.TARGET.CUR = cur; }
 });
+
+// v0.1.93 발견: 유미 E '슈우우웅'의 마나 회복(20~36)이 마법 피해로 콤보에 들어가 있었다
+test("마나 회복 수치는 피해가 아니다 (유미 E manarestore)", () => {
+  const e = champ("Yuumi").spells.find((s) => s.slot === "E").effects;
+  assert.ok(!e.some((x) => /mana(restore|refund)/i.test(x.name) && ["magic", "physical", "true", "adaptive"].includes(x.kind)), JSON.stringify(e.map((x) => x.name)));
+});
+
+// v0.1.93 P1 아군 지원: 아군 강화 → 기준 아군(stats.js ALLY)이 지속시간 동안 더 넣는 피해 = 지원
+test("아군 강화는 기준 아군이 더 넣는 피해로 지원에 들어간다 (룰루 W 공격 속도·잔나 E 공격력)", () => {
+  const A = St.ALLY, m = (id, l = []) => St.evaluate(champ(id), 18, l, [], {}).m;
+  const lulu = m("Lulu").effects.find((e) => e.src === "W 변덕쟁이");
+  const as2 = A.AS + A.asRatio * 0.3;
+  near(lulu.ally, A.autoDps * (as2 / A.AS - 1) * 4, 1e-6, "룰루 W: 공격 속도 30% 4초");
+  const janna = m("Janna").effects.find((e) => e.src === "E 폭풍의 눈");
+  near(janna.ally, A.autoDps * 30 / A.AD * 4, 1e-6, "잔나 E: 공격력 30 4초 (주문력 0)");
+  const jAp = m("Janna", [item("라바돈의 죽음모자")]).effects.find((e) => e.src === "E 폭풍의 눈");
+  assert.ok(jAp.ally > janna.ally, "주문력 10% 계수");
+  assert.ok(m("Lulu").support - m("Lulu").shield - m("Lulu").heal >= lulu.ally - 1e-9, "지원 지표에 더해짐");
+});
+
+test("아군이 넣는 추가 피해(나미 E)는 서포터 자기 콤보에서 빠지고 기준 아군의 적중 3번으로 옮겨진다 (두 번 세지 않음)", () => {
+  const c = champ("Nami"), e = c.spells.find((s) => s.slot === "E").effects.find((x) => x.name === "totaldamage");
+  assert.deepEqual(e.ally, { hits: 3, sec: 6 });
+  const m = St.evaluate(c, 18, [], [], {}).m, sp = m.spells.find((s) => s.slot === "E");
+  near(sp.dmg, 0, 1e-9, "나미 E 자기 피해 0");
+  near(sp.ally, 80 * 100 / (100 + St.TARGET.MR) * 3, 1e-6, "80 마법 피해 × 3번 (기준 상대 마법 저항력)");
+});
+
+test("아이템 아군 버프(불타는 향로)는 아군을 돕는 챔피언만, 기준 아군 몫이 지원에 들어간다", () => {
+  const it = item("불타는 향로");
+  const gain = (id) => St.evaluate(champ(id), 18, [it], [], {}).m.allyDmg - St.evaluate(champ(id), 18, [], [], {}).m.allyDmg;
+  assert.ok(gain("Soraka") > 0, "소라카 (아군 지원)");
+  near(gain("Garen"), 0, 1e-9, "가렌 (아군 지원 아님)");
+  const A = St.ALLY;
+  near(gain("Soraka"), St.allyGain("allyAS", 0.25, 6, null, 5) + St.allyGain("allyOnhit", 20, 6, null, 5), 1e-6, "공격 속도 25% + 적중 20, 6초");
+  near(St.allyGain("allyAP", 40, 6), 0, 1e-12, "기준 아군(원딜)은 주문력 계수 0");
+  assert.ok(A.autoDps > 0 && A.AS > 0);
+});
+
+test("받는 아군 공격력 비례 효과(밀리오 패시브)와 아군이 터뜨리는 표식(레나타 패시브)도 기준 아군으로", () => {
+  const row = (id, src) => St.evaluate(champ(id), 18, [], [], {}).m.effects.find((e) => e.src === src);
+  near(row("Milio", "패시브 타오르는 힘").ally, 0.15 * St.ALLY.AD * 100 / (100 + St.TARGET.MR), 1e-6, "아군 공격력 15% 마법 피해 1번");
+  near(row("Renata", "패시브 영향력").ally, 0.033 * St.TARGET.HP * 100 / (100 + St.TARGET.MR), 1e-6, "최대 체력 3.3% 마법 피해 1번");
+});
+
+// v0.1.93 P4-B 3단계 지크의 융합 (게임 데이터 3050: Duration 5 · SlowAmount 0.3 · DamagePerSecond 30 · UltimateHaste 15 · Cooldown 45)
+test("지크의 융합: 폭풍 피해 5번·둔화 1.5초·궁극기 가속 15", () => {
+  const it = item("지크의 융합"), c = champ("Leona");
+  const a = ev(c, [bare(it)]).m, b = ev(c, [it]).m;
+  near(b.control - a.control, 1.5, 0.01, "30% 둔화 5초 = 제어력 1.5초 (라일라이와 같은 기준)");
+  // 폭풍 피해: 매초 30 × 5초 (전에는 1초치만 셌다)
+  const eff = (it.effects || []).find((e) => e.name === "DamagePerSecond");
+  assert.equal(eff.ticks, 5, "5번");
+  const noFx = { ...it, effects: [] };
+  const one = { ...it, effects: [{ ...eff, ticks: 1 }] };
+  const gain5 = ev(c, [it]).m.combo - ev(c, [noFx]).m.combo, gain1 = ev(c, [one]).m.combo - ev(c, [noFx]).m.combo;
+  assert.ok(Math.abs(gain5 - gain1 * 5) < gain1 * 0.05, `폭풍 피해가 5배: ${Math.round(gain1)} → ${Math.round(gain5)}`);
+  // 궁극기 가속은 궁극기 재사용 대기시간에만
+  const r1 = ev(c, [bare(it)]).stats, r2 = ev(c, [it]).stats;
+  assert.equal(r2.conv.ultHasteAdd, 15);
+  const ult = (m) => (m.spells.find((s) => s.slot === "R") || {}).cd;
+  assert.ok(ult(b) < ult(a), `궁극기만 짧아진다: ${ult(a).toFixed(1)} → ${ult(b).toFixed(1)}`);
+  assert.equal(Math.round((b.spells.find((s) => s.slot === "Q") || {}).cd * 10), Math.round((a.spells.find((s) => s.slot === "Q") || {}).cd * 10), "기본 스킬은 그대로");
+});
+
+// v0.1.93 P4-B 4단계 지평선의 초점 (게임 데이터 4628: DamageAmp 0.1 · SnipeRange 600 · BuffDuration 6)
+test("지평선의 초점: 600 밖에서 맞힐 수 있는 몫만큼 모든 피해 +10%", () => {
+  const it = item("지평선의 초점");
+  assert.deepEqual(it.passiveStats, { dmgDealtMult: 0.1, _farMark: 600 }, "규칙이 붙어야 해요");
+  const DMG = new Set(["physical", "magic", "true"]);
+  const farR = (c) => Math.max(0, ...(c.spells || []).filter((s) => (s.effects || []).some((e) => DMG.has(e.kind))).map((s) => s.range || 0));
+  const share = (c) => (farR(c) <= 600 ? 0 : 1 - (600 / farR(c)) ** 2);
+  for (const id of ["Lux", "Xerath", "Annie"]) {
+    const c = champ(id), a = ev(c, [bare(it)]).m, b = ev(c, [it]).m;
+    near(b.combo / a.combo, 1 + 0.1 * share(c), 0.002, `${id} 한타 피해 (몫 ${share(c).toFixed(2)})`);
+  }
+  // 멀리서 맞힐 피해 스킬이 없는 챔피언은 값이 0 (가렌 가장 긴 피해 스킬 사거리 < 600)
+  const g = champ("Garen");
+  assert.ok(farR(g) < 600, `가렌 피해 스킬 사거리 ${farR(g)}`);
+  near(ev(g, [it]).m.combo, ev(g, [bare(it)]).m.combo, 1e-9, "가렌은 못 쓴다");
+});
+
+// v0.1.93 P4-B 5단계 고통스러운 상처 (상대 회복량이 근거라 상대를 모르면 0)
+test("치유 감소: 상대 회복량의 40%만큼 한타 피해, 상대를 모르면 0", () => {
+  const c = champ("Lux");
+  for (const n of ["모렐로노미콘", "필멸자의 운명", "화공 펑크 사슬검", "가시 갑옷"]) {
+    assert.deepEqual(item(n).passiveStats, { healCut: 0.4 }, `${n} 규칙`);
+  }
+  const it = item("모렐로노미콘");
+  assert.equal(St.TARGET.HEAL, 0, "기준 상대는 회복 0 (전 챔피언 균형 빌드 중앙값)");
+  near(ev(c, [it]).m.combo, ev(c, [bare(it)]).m.combo, 1e-9, "상대를 모르면 값이 없다");
+  const saved = St.TARGET.HEAL;
+  St.setTarget({ ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: 1000 });
+  try {
+    near(ev(c, [it]).m.combo - ev(c, [bare(it)]).m.combo, 400, 1e-6, "회복 1000 × 40%");
+    assert.equal(ev(c, [bare(it)]).m.healCut, undefined, "효과가 없는 아이템은 안 센다");
+  } finally { St.setTarget(null); St.TARGET.HEAL = saved; }
+});
+
+// v0.1.93 P3-F 1·2: 아이템 업그레이드 증강의 보유 조건, 라일라이의 '피해를 입히면' 조건
+const S = require(path.join(WEB, "scoring.js"));
+
+test("아이템 업그레이드 증강: 그 아이템이 없으면 능력치도 효과도 안 들어간다", () => {
+  const c = champ("Jinx");
+  const pairs = [];
+  for (const a of d.augments) {
+    const rule = (d.rules.augments || {})[a.id] || {};
+    if (!(rule.items || []).length) continue;
+    if (!Object.keys(rule.statsResolved || {}).length && !(a.effects || []).length) continue;
+    pairs.push([a, rule.items]);
+  }
+  assert.ok(pairs.length >= 4, `아이템을 요구하는 수치 증강이 있어야 해요: ${pairs.length}`);
+  const other = item("무한의 대검");
+  for (const [a, need] of pairs) {
+    const has = [d.items.find((i) => need.includes(i.name))].filter(Boolean);
+    assert.equal(has.length, 1, `${a.name} 이 요구하는 아이템 ${need.join(",")}`);
+    const off = S.augStatsOf([a], d.rules, c, [other])[0];
+    const on = S.augStatsOf([a], d.rules, c, has)[0];
+    assert.deepEqual(off, { _effects: [] }, `${a.name}: 아이템이 없으면 비어 있어야 해요`);
+    assert.ok(Object.keys(on).length > 1 || (on._effects || []).length, `${a.name}: 아이템이 있으면 들어가야 해요`);
+  }
+  // 꽃피는 새벽의 검 업그레이드 = 공격 속도 +100%. 아이템 없이 들면 공격 속도가 안 오른다
+  const up = d.augments.find((a) => a.name === "꽃피는 새벽의 검 업그레이드");
+  const asOf = (items) => St.evaluate(c, 18, items, S.augStatsOf([up], d.rules, c, items), {}).stats.total.AS;
+  near(asOf([other]), St.evaluate(c, 18, [other], [], {}).stats.total.AS, 1e-9, "아이템 없이는 공격 속도 그대로");
+  assert.ok(asOf([item("꽃피는 새벽의 검")]) > St.evaluate(c, 18, [item("꽃피는 새벽의 검")], [], {}).stats.total.AS + 0.5,
+    "아이템이 있으면 공격 속도가 크게 오른다");
+  // items 를 안 넘기면(아이템과 무관한 계산) 예전처럼 그대로 넣는다
+  assert.ok(S.augStatsOf([up], d.rules, c)[0].AS, "items 를 안 주면 조건을 안 본다");
+});
+
+test("라일라이의 수정홀: 피해를 주는 스킬 칸만 센다 (전 챔피언 같은 값이 아니다)", () => {
+  const it = item("라일라이의 수정홀");
+  assert.deepEqual(it.passiveStats, { controlPerCast: 0.3 }, "규칙이 붙어야 해요");
+  const add = (c) => ev(c, [it]).m.control - ev(c, [bare(it)]).m.control;
+  const dmgCasts = (c) => ev(c, []).m.spells.filter((s) => !s.disabled && s.dmg > 0).length;
+  for (const id of ["Taric", "Sona", "Lux", "Zed"]) {
+    near(add(champ(id)), 0.3 * dmgCasts(champ(id)), 1e-9, `${id} 피해 스킬 ${dmgCasts(champ(id))}칸`);
+  }
+  assert.ok(dmgCasts(champ("Taric")) < dmgCasts(champ("Lux")), "타릭은 럭스보다 피해 스킬이 적다");
+  const vals = new Set(d.champions.filter((c) => c.spells).map((c) => Math.round(add(c) * 100)));
+  assert.ok(vals.size > 1, `전 챔피언이 같은 값이면 조건을 안 보는 것: ${[...vals].join(",")}`);
+});

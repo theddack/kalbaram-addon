@@ -13,7 +13,8 @@ const statOpts = () => {
   // 적이 전부 마법이어도 0.8 까지만: 끝까지 밀면 다음 구매가 마법 저항 탱템뿐이라 딜템이 사라졌다 (반영 60%)
   return e ? { aram: state.aram, enemyMagic: Math.round((0.5 + (e.magic - 0.5) * 0.6) * 10) / 10 } : { aram: state.aram };
 };
-const augStats = () => S.augStatsOf(state.chosen, state.data.rules, state.champ);
+// 아이템 업그레이드 증강(꽃피는 새벽의 검 업그레이드 등)은 그 아이템을 들고 있을 때만 효과가 난다 → 지금 가진 아이템을 같이 넘긴다
+const augStats = () => S.augStatsOf(state.chosen, state.data.rules, state.champ, state.items || []);
 // 지금 능력치(게임 중): 즉시 골드 증강(징수의 총 업그레이드 250G 등)을 능력치로 환산한 값은 뺀다. 그 골드로 산 아이템이
 // 이미 게임 데이터에 들어와 있어 두 번 센다 (2026-10-17 사미라 판: 공격력 +3.57 차이). 추천 점수(18레벨 완성)엔 그대로 둔다
 // 가동률로 셈한 조건부 능력치(rules uptime: 신난다! 이동 속도 등)는 켜져 있을 때만 게임 값에 보여서 뺀다.
@@ -28,6 +29,7 @@ const nowAugStats = () => {
     const rule = S.ruleOf(state.data.rules, state.chosen[i]);
     const o = dropKeys(s.goldValue ? { ...s, goldValue: 0 } : s, rule.uptime);
     for (const [k, v] of Object.entries(rule.perTakedown || {})) o[k] = (o[k] || 0) + v * (state.takedowns || 0);
+    for (const [k, g] of Object.entries(rule.grow || {})) if (o[k] != null) o[k] = growValue(k, o[k], g);  // 성장 능력치: 지금 값
     return o;
   }), ...anvil];
 };
@@ -81,8 +83,15 @@ const partItems = () => (state.inventory || []).map((id) => {
 // 지금 능력치에 넣을 아이템: 완성 아이템 + 부품. 아이템 고유 효과 중 가동률로 셈한 것(윤 탈 광풍 공속 등)은 뺀다
 // (2026-10-17 트리스타나 판: 공격 속도가 계속 0.1 높았다)
 const nowItems = () => [...state.items.map((it) => {
-  const up = ((state.data.rules.items || {})[it.name] || {}).uptime;
-  return up && it.passiveStats ? { ...it, passiveStats: dropKeys(it.passiveStats, up) } : it;
+  const rule = (state.data.rules.items || {})[it.name] || {};
+  let ps = it.passiveStats;
+  if (rule.uptime && ps) ps = dropKeys(ps, rule.uptime);
+  // 성장 능력치(윤 탈 치명타 등)는 게임이 알려 준 지금 값으로 (없으면 다 쌓인 값 그대로)
+  for (const [k, g] of Object.entries(rule.grow || {})) {
+    if (ps && ps[k] != null) ps = { ...ps, [k]: growValue(k, ps[k], g) };
+    else if ((it.stats || {})[k] != null) ps = { ...(ps || {}), [k]: growValue(k, it.stats[k], g) - it.stats[k] };
+  }
+  return ps === it.passiveStats ? it : { ...it, passiveStats: ps };
 }), ...partItems()];
 
 // 중첩형 패시브(세나 안개·베이가 극악·쓰레쉬 영혼 …)는 계산에 게임 중반 평균 중첩으로 들어간다. 게임 중 '지금 능력치'는
@@ -90,6 +99,108 @@ const nowItems = () => [...state.items.map((it) => {
 // 규칙 stats 의 첫 능력치(세나 공격력)로 배율을 찾고 나머지(치명타)도 같은 배율로. stackStep 은 계단식(세나 치명타 20개마다 10%).
 // 추천 점수(18레벨 완성)는 평균 중첩 그대로 둔다. 킨드레드 공속은 화살 세례 뒤에만 붙어 지금 값으로 못 맞춘다
 const STACK_MAX = 5;  // 평균의 5배까지만 (다른 이유의 차이를 중첩으로 몰아넣지 않게)
+
+// ---- 성장 능력치 (v0.1.93): 게임이 지날수록 커지는 몫. 아이템 윤 탈 야생화살 '연습이 치명타를 낳는다'(치명타 0 → 25%),
+// 증강 극악무도(스킬로 때릴 때마다 주문력 +1) 같은 것. 규칙의 grow {능력치: 다 쌓였을 때 값} 으로 적는다.
+//   추천 점수(18레벨 완성 빌드)는 '다 쌓인 값' 그대로 쓴다 — 사자마자 낮다고 가치를 깎지 않는다.
+//   게임 중 '지금 능력치'와 다음 구매만 게임이 알려 준 값으로 맞춘다 (관측 추정값, 정확한 중첩이 아님).
+// 섞임 막기 (2026-11-15 바드 판: 아이템을 산 직후 역산이 중첩 107 → 51 로 튀었다):
+//   · 아이템·레벨이 바뀐 뒤 GROW_SETTLE 초 안에는 재지 않는다
+//   · 같은 값이 GROW_HOLD 초 넘게 이어질 때만 반영한다 (잠깐 켜지는 버프 제외)
+//   · 한 능력치에 성장 출처가 둘이면 나누지 못하니 건너뛴다
+//   · 모루 능력치를 추정 중인 능력치(ANVIL_KEYS, 모루가 있는 판)는 건드리지 않는다
+const GROW_SETTLE = 5;   // 초
+const GROW_HOLD = 4;     // 초
+const GROW_MAX = 4;      // 상한이 없는 성장은 가정값의 이만큼까지만 (중첩 역산 STACK_MAX 와 같은 까닭)
+let growCand = {};
+const growNow = () => Date.now() / 1000;
+function resetGrow() { growCand = {}; state.grow = {}; state.growAt = 0; }
+// 규칙의 grow 값: 숫자면 '다 쌓인 값'(상한도 같음, 윤 탈 치명타 25%), {max: n} 이면 상한만 (극악무도처럼 끝이 없는 것).
+// 상한을 두는 까닭은 챔피언 중첩 역산(STACK_MAX)과 같아요: 다른 이유의 차이를 성장 몫으로 다 몰아넣지 않으려고요.
+const growCap = (g, assume) => (typeof g === "number" ? g : g && g.max != null ? g.max : assume * GROW_MAX);
+// 지금 빌드의 성장 출처: [{key, cap, src}] (assume = 지금 계산에 들어 있는 값)
+function growSources() {
+  const out = [];
+  const items = (state.data.rules.items || {});
+  for (const it of state.items || []) {
+    const rule = items[it.name] || {};
+    for (const [k, g] of Object.entries(rule.grow || {})) {
+      const assume = (it.passiveStats || {})[k] ?? (it.stats || {})[k] ?? 0;
+      out.push({ key: k, cap: growCap(g, assume), src: it.name });
+    }
+  }
+  for (const a of state.chosen || []) {
+    const rule = S.ruleOf(state.data.rules, a);
+    const st = (S.augStatsOf([a], state.data.rules, state.champ) || [])[0] || {};
+    for (const [k, g] of Object.entries(rule.grow || {})) out.push({ key: k, cap: growCap(g, st[k] || 0), src: a.name });
+  }
+  return out;
+}
+// 게임 중에는 관측 추정값, 아니면 가정값(assume) 그대로
+const growValue = (key, assume, g) => (liveOn && state.grow && state.grow[key] != null
+  ? Math.max(0, Math.min(growCap(g, assume), state.grow[key])) : assume);
+// 게임이 알려 준 값 (statRows 와 같은 단위)
+function liveStat(key) {
+  const s = state.liveStats, lk = LIVE_STAT[key];
+  if (!s || !lk) return null;
+  let v = Number(s[lk]);
+  if (!Number.isFinite(v)) return null;
+  if ((key === "CRIT" || key === "LS") && v > 1) v /= 100;
+  return v;
+}
+// 같은 능력치를 가정값으로 건드리는 다른 증강이 있으면 성장 몫을 나눌 수 없다 (탱크 엔진 최대 체력 % + 영혼의 포식자 체력 등)
+const OTHER_KEY = { HPmult: "HP", bonusADmult: "AD", APmult: "AP", ASmult: "AS", adaptive: null };
+function growBlocked(key, src) {
+  for (const a of state.chosen || []) {
+    if (a.name === src) continue;
+    const rule = S.ruleOf(state.data.rules, a);
+    const st = rule.statsResolved || rule.stats || {};
+    for (const k of Object.keys(st)) {
+      if (k === key || OTHER_KEY[k] === key) return true;
+      if (k === "adaptive" && (key === "AD" || key === "AP")) return true;
+    }
+  }
+  return false;
+}
+function trackGrow() {
+  if (!liveOn || !state.champ || !state.data || !state.liveStats || !Number(state.liveStats.moveSpeed)) return false;
+  if (state.liveLevel != null && state.liveLevel !== state.level) return false;
+  const srcs = growSources();
+  if (!srcs.length) { growCand = {}; return false; }
+  const now = growNow();
+  if (now - (state.growAt || 0) < GROW_SETTLE) return false;  // 아이템·레벨이 막 바뀜
+  const anvilKeys = state.anvilSeen ? new Set(ANVIL_KEYS) : new Set();
+  const byKey = {};
+  for (const g of srcs) (byKey[g.key] = byKey[g.key] || []).push(g);
+  // 성장 몫을 0 으로 둔 계산 = 성장 말고 다른 것들의 합
+  const zero = { ...(state.grow || {}) };
+  for (const k of Object.keys(byKey)) zero[k] = 0;
+  const keep = state.grow;
+  state.grow = zero;
+  let base;
+  try {
+    base = St.computeStats(nowChampBase(), state.level, nowItems(), nowAugStats(), { ...statOpts(), now: true }).total;
+  } finally { state.grow = keep; }
+  let changed = false;
+  for (const [k, list] of Object.entries(byKey)) {
+    if (list.length > 1 || anvilKeys.has(k) || growBlocked(k, list[0].src)) { delete growCand[k]; continue; }  // 나눌 수 없음
+    const real = liveStat(k);
+    if (real == null) { delete growCand[k]; continue; }
+    const cap = list[0].cap;
+    const v = Math.max(0, Math.min(cap, real - (base[k] || 0)));
+    const tol = Math.max(Math.abs(cap) * 0.02, k === "CRIT" || k === "AS" || k === "LS" ? 0.02 : 1);
+    const c = growCand[k];
+    if (!c || Math.abs(c.v - v) > tol) { growCand[k] = { v, since: now }; continue; }
+    if (now - c.since >= GROW_HOLD && Math.abs(((state.grow || {})[k] ?? cap) - v) > tol) {
+      state.grow = { ...(state.grow || {}), [k]: v };
+      changed = true;
+    }
+  }
+  return changed;
+}
+// 중첩 역산을 하지 않은 챔피언 (성장 능력치 추정이 중첩 역산과 서로 물고 돌지 않게)
+const nowChampBase = () => state.champ && S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
+
 function nowChamp() {
   const c = state.champ && S.withChosenFeatures(state.champ, state.chosen, state.data.rules);
   const s = state.liveStats, ss = c && c.stackStats;
@@ -134,13 +245,16 @@ function statRows() {
   return { rows, stackKey: c && c.stackNow != null ? Object.keys(c.stackStats || {})[0] : null };
 }
 function statCheck() {
+  // 성장 능력치(윤 탈 치명타·극악무도 주문력 …)를 게임 값으로 먼저 맞춘다
+  if (trackGrow()) return statCheck();
   const sr = statRows();
   if (!sr) return null;
   const rows = sr.rows;
   // 모루 능력치를 새로 정했으면 한 번 더 계산 (다음 비교부터 차이가 없어진다)
   if (trackAnvil(rows, sr.stackKey)) return statCheck();
   return { level: state.level, items: state.items.map((i) => i.id), augs: state.chosen.map((a) => a.id), rows,
-    anvil: Object.keys(state.anvil || {}).length ? { ...state.anvil } : undefined };
+    anvil: Object.keys(state.anvil || {}).length ? { ...state.anvil } : undefined,
+    grow: Object.keys(state.grow || {}).length ? { ...state.grow } : undefined };
 }
 // 5% 넘게 다르면 (아주 작은 값은 반올림 차이를 빼려고 최소 폭: 비율·공속 0.02, 나머지 1)
 const statOff = ([calc, real], k) => Math.abs(calc - real) > Math.max(Math.abs(real) * STAT_OFF, ["AS", "CRIT", "LS"].includes(k) ? 0.02 : 1);
@@ -239,7 +353,14 @@ function enemyTarget() {
     for (const k of Object.keys(sum)) sum[k] += (t[k] + empty * sb[k]) / b.length;
   }
   const r5 = (v) => Math.round(v / 5) * 5;  // 5 단위: 작은 차이로 계산을 전부 다시 하지 않게
-  return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50 };
+  // 적들이 한타 한 번에 자기 자신을 회복하는 양의 평균 (치유 감소 아이템 값의 근거, v0.1.93 P4-B 5단계).
+  // 기술 회복·생명력 흡수·아이템 자기 회복만 센다 (보호막은 고통스러운 상처가 안 막는다). 산 아이템만 본다 (안 산 칸은 0)
+  let heal = 0;
+  for (const e of b) {
+    const m = St.evaluate(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).m;
+    heal += ((m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHp || 0)) / b.length;
+  }
+  return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50, HEAL: Math.round(heal / 10) * 10 };
 }
 // 지금 상대 (실제 레벨 + 산 아이템만): '지금 수치'(능력치 패널)와 조언·기록에 쓴다.
 // 아이템·증강 순위는 '18레벨 완성' 기준이라 위의 예상 상대(enemyTarget)를 쓴다 (2026-10-15 검토: 둘을 섞지 않는다)
@@ -259,8 +380,8 @@ function enemyNow() {
 function withNowTarget(fn) {
   const now = !state.target && enemyNow();
   if (!now) return fn();
-  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP };
-  St.setTarget(now);
+  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: St.TARGET.HEAL };
+  St.setTarget({ ...now, HEAL: St.TARGET.HEAL });  // 회복량(치유 감소 근거)은 예상 상대 기준 그대로
   try { return fn(); } finally { St.setTarget(saved); }
 }
 // 적이 실제로 산 방어 아이템 수 (조언 근거: 예상 빌드가 아니라 산 것만)
@@ -276,14 +397,16 @@ function enemyResistItems() {
 const TARGET_STEP = 0.05;
 function applyEnemyTarget() {
   if (state.target) return false;  // 상대를 직접 골랐으면 그대로
-  const before = JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
+  const before = JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]);
   const next = enemyTarget();
   const T = St.TARGET;
   // 이미 적 기준으로 잡혀 있고, 새 값이 모든 항목에서 TARGET_STEP 안이면 그대로 (변화가 쌓여 넘으면 그때 바꾼다)
-  const small = next && state.targetFromEnemy && ["ARMOR", "MR", "HP"].every((k) => Math.abs(next[k] - T[k]) < Math.abs(T[k]) * TARGET_STEP);
+  // 회복량(HEAL)은 0에서 시작해 기준 비율로는 재기 어려워서 값이 바뀌면 바로 반영한다 (치유 감소 아이템 순위가 걸려 있다)
+  const small = next && state.targetFromEnemy && next.HEAL === T.HEAL
+    && ["ARMOR", "MR", "HP"].every((k) => Math.abs(next[k] - T[k]) < Math.abs(T[k]) * TARGET_STEP);
   if (!small) { St.setTarget(next); state.targetFromEnemy = !!next; }
   showTarget();
-  return JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]) !== before;
+  return JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]) !== before;
 }
 function showTarget() {
   const T = St.TARGET, id = state.target;
@@ -337,7 +460,7 @@ function enemyMoved() {
   return Object.keys(T_MOVED).some((k) => Math.abs(T[k] - D[k]) >= D[k] * T_MOVED[k]);
 }
 function atDefault(fn) {
-  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP };
+  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: St.TARGET.HEAL };
   St.setTarget(null);
   try { return fn(); } finally { St.setTarget(saved); }
 }
@@ -512,11 +635,12 @@ function enemyThreats() {
   return { lines, shield, as };
 }
 const fmt = (v, d = 0) => (Math.round(v * 10 ** d) / 10 ** d).toLocaleString("ko-KR", { minimumFractionDigits: d, maximumFractionDigits: d });
-const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "고정 피해", shield: "보호막", heal: "회복" };
+const KIND_LABEL = { magic: "마법 피해", physical: "물리 피해", true: "고정 피해", shield: "보호막", heal: "회복",
+  allyAS: "아군 공격 속도", allyAD: "아군 공격력", allyOnhit: "아군 적중 피해", allyHaste: "아군 스킬 가속", allyAP: "아군 주문력", allyAmp: "아군 피해량" };
 const TRIGGER_LABEL = { cast: "스킬마다", boundCast: "지정 스킬 + 기본 공격", onhit: "기본 공격마다", onattack: "기본 공격마다 (치명타 적용)", attacks: "기본 공격 N회마다", time: "주기적", once: "1회" };
 // 처음 하는 사람도 알 수 있게 쉬운 말로 (정확한 용어는 마우스를 올리면 보임)
-const METRIC_LABEL = { combo: "스킬 한 바퀴 피해", dps: "초당 피해", ehp: "버티는 힘", support: "회복·보호막", mobility: "기동성", control: "제어력" };
-const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력", support: "회복·보호막", mobility: "평균 이동 속도", control: "콤보당 CC 시간(둔화 30%)" };
+const METRIC_LABEL = { combo: "스킬 한 바퀴 피해", dps: "초당 피해", ehp: "버티는 힘", support: "아군 지원", mobility: "기동성", control: "제어력" };
+const METRIC_TERM = { combo: "콤보", dps: "DPS", ehp: "유효 체력 (자기 회복·보호막 포함)", support: "아군에게 주는 회복·보호막 + 아군 강화(기준 아군이 더 넣는 피해). 자기 회복·보호막은 버티는 힘", mobility: "평균 이동 속도", control: "콤보당 CC 시간(둔화 30%)" };
 // 받침 따라 조사 고르기 (이/가, 을/를, 와/과)
 function josa(word, withBatchim, without) {
   const c = String(word).trim().slice(-1).charCodeAt(0);
@@ -619,8 +743,12 @@ function setTargetChamp(id) {
   } else {
     St.setTarget(null);  // 상대의 빌드는 기준 상대로 계산 (앞에 고른 상대에 따라 달라지지 않게)
     const [b] = S.buildConcepts(d.items, S.profile(enemy, d.tags), [], [], d.rules, enemy, statOpts(), ["balanced"]);
-    const t = St.computeStats(enemy, 18, b.pick.map((p) => p.item), [], statOpts()).total;
-    St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP) });
+    const items = b.pick.map((p) => p.item);
+    const t = St.computeStats(enemy, 18, items, [], statOpts()).total;
+    // 그 챔피언이 한타에 자기를 회복하는 양 (치유 감소 아이템 값의 근거, enemyTarget 과 같은 계산)
+    const em = St.evaluate(enemy, 18, items, [], statOpts()).m;
+    const heal = (em.selfHeal || 0) + (em.vampHeal || 0) + (em.itemSelfHp || 0);
+    St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP), HEAL: Math.round(heal / 10) * 10 });
   }
   showTarget();
   if ($("#target-champ").value !== state.target) $("#target-champ").value = state.target;
@@ -761,14 +889,14 @@ function renderStatsNow() {
     + (Object.keys(state.anvil || {}).length && liveOn ? `<tr><td colspan="6" class="muted small">🔨 모루 능력치 (게임 실제 값으로 맞춤, 증강 칸에 들어 있어요): ${Object.entries(state.anvil).filter(([, v]) => v).map(([k, v]) => `${esc((St.ROWS.find((r) => r[0] === k) || [k, k])[1])} +${fmt(v)}`).join(" · ")}</td></tr>` : "")
     + (c.stackNow != null ? `<tr><td colspan="6" class="muted small">${esc(c.name)}의 쌓는 능력치는 게임 실제 값으로 지금 쌓인 만큼 맞췄어요 (게임 중반 평균의 ${fmt(c.stackNow * 100)}%). 추천 점수는 평균 그대로예요.</td></tr>` : "");
   const effRows = m.effects.map((e) => `<tr><td>${esc(e.src)}</td><td><span class="chip k-${esc(e.kind)}">${esc(KIND_LABEL[e.kind] || e.kind)}</span></td>
-      <td>${fmt(e.value)}</td><td>${e.hit != null ? fmt(e.hit) : "-"}</td><td class="muted">${esc(TRIGGER_LABEL[e.trigger] || e.trigger)}</td></tr>`).join("");
+      <td>${fmt(e.value)}</td><td>${e.ally != null ? `아군 +${fmt(e.ally)}` : e.hit != null ? fmt(e.hit) : "-"}</td><td class="muted">${esc(TRIGGER_LABEL[e.trigger] || e.trigger)}</td></tr>`).join("");
   $("#skills").innerHTML = (effRows ? `<table class="eff-table"><tr><th>패시브·아이템·증강 효과</th><th>종류</th><th>1회</th><th>방어 적용</th><th>발동</th></tr>${effRows}</table>
       <p class="muted small">콤보에는 4초 동안 발동 횟수만큼(쿨다운·기본 공격 횟수 제한) 들어가고, DPS에는 초당 발동 횟수로 들어가요.
       상대 체력 비례 피해는 상대 최대 체력 ${St.TARGET.HP}, 현재 체력 ${St.TARGET.CUR * 100}% 기준이에요.</p>` : "")
     + `<div class="skill"><b>패시브 · ${esc(c.passive.name)}</b><div class="desc">${c.passive.desc}</div></div>`
     + c.spells.map((sp, i) => {
       const ms = m.spells[i];
-      const vals = ms.values.map((v) => `<span class="chip k-${esc(v.kind)}">${esc(KIND_LABEL[v.kind] || v.kind)} ${fmt(v.value)}</span>`).join("");
+      const vals = ms.values.map((v) => `<span class="chip k-${esc(v.kind)}">${v.ally ? "아군 " : ""}${esc(KIND_LABEL[v.kind] || v.kind)} ${fmt(v.value)}</span>`).join("");
       return `<div class="skill ${ms.disabled ? "off" : ""}"><b>${esc(sp.slot)} · ${esc(sp.name)}</b>
         <span class="muted small">랭크 ${ms.rank}/${sp.ranks} · 재사용 ${fmt(ms.cd, 1)}초</span>
         ${ms.disabled ? `<span class="chip bad">${ms.rank === 0 ? "아직 안 배움" : "궁극기 봉인"}</span>` : ""}
@@ -1900,7 +2028,9 @@ function renderNextBuy(rows) {
   }
   // 조언(치유 감소·관통·보호막 감소·공속 대응)이 권한 아이템이 위 3개에 없으면 3번째 자리에 (이유를 붙여서).
   // 2026-10-17 지적: 조언 줄과 다음 구매가 따로 놀았다 (조언은 필멸자의 운명, 다음 구매엔 없음).
-  // 치유 감소·보호막 감소·공속 대응 효과는 점수 계산에 없어 순위가 안 오른다 → 순위와 상관없이. 관통은 계산에 있으니 8위 안일 때만
+  // 보호막 감소·공속 대응 효과는 점수 계산에 없어 순위가 안 오른다 → 순위와 상관없이. 관통은 계산에 있으니 8위 안일 때만.
+  // 치유 감소는 v0.1.93 P4-B 5단계부터 점수에 들어가지만, 우리 계산에 회복량이 안 잡히는 적(아군을 회복시키는 소라카 등)도
+  // 있어서 조언 쪽은 그대로 둔다 (점수로 이미 올라왔으면 아래 조건에서 걸러진다)
   const adv = enemyAdvice();
   // 이유는 조언 순서대로, 같은 이유 안에서는 지금 순위가 가장 높은 아이템 (저항 아이템은 후보가 여럿)
   const wanted = [...new Set((state.adviceWant || []).map((w) => w.why))].map((why) => {
@@ -2187,6 +2317,7 @@ function applyLive(L) {
     augTimers = {};
     state.chosen = [];
     resetAnvil();
+    resetGrow();
     state.tierMode = "auto";
     clearOffers();
     // 지난 판 마지막 다음 구매와 비교해 새 판 첫 갱신에 근거 없는 '🔁 바뀜'이 뜨지 않게 (2026-10-23 점검)
@@ -2314,6 +2445,8 @@ function applyLive(L) {
     clearOffers();
     renderChamps();
   }
+  if (level !== state.level || items.length !== (state.items || []).length
+      || items.some((it, i) => it.id !== (state.items[i] || {}).id)) state.growAt = growNow();  // 바뀐 직후엔 성장 추정을 쉰다
   state.level = level;
   $("#level").value = level;
   $("#level-val").textContent = level;

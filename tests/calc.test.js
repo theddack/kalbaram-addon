@@ -1199,3 +1199,92 @@ test("증강 효과는 같은 계산식·같은 발동 방식이 두 번 들어�
   // 전부 다 무너뜨려는 기본 공격 적중·스킬 적중을 따로 센다 (같은 계산식, 다른 발동)
   assert.equal(aug("TakeemDownDownDown").effects.filter((e) => e.name === "Calc_Damage_Hit").length, 2);
 });
+
+// v0.1.93 P4-B 1단계 실험 구조: 행동 불가 시간(stopSec)은 그동안 공격을 못 하는 몫만큼 초당 피해를 깎는다.
+// 콤보(스킬 한 바퀴)는 깎지 않는다 — 멈춘 동안 못 쓴 스킬은 뒤로 밀릴 뿐이라서. 기본 데이터에는 쓰는 아이템이 없다 (실험 설정에서만)
+test("행동 불가 시간: 초당 피해만 그 비율만큼 줄고 콤보는 그대로", () => {
+  const c = champ("Lux");
+  const plain = { id: "zz", name: "가짜", kind: "legendary", stats: { AP: 100 }, tags: {} };
+  const stop = { ...plain, passiveStats: { stopSec: 3 } };
+  const a = St.evaluate(c, 18, [plain], [], {}).m;
+  const b = St.evaluate(c, 18, [stop], [], {}).m;
+  assert.equal(Math.round(b.combo), Math.round(a.combo), "콤보는 그대로");
+  const close = (x, y, msg) => assert.ok(Math.abs(x - y) <= Math.max(1, Math.abs(y) * 0.02), `${msg}: ${x} vs ${y}`);
+  close(b.dps, a.dps * (1 - 3 / 6), "한타 6초 중 3초 멈추면 초당 피해 절반");
+  close(b.stopLoss, a.dps * 0.5, "줄어든 양을 따로 남긴다");
+  assert.equal(St.evaluate(c, 18, [plain], [], {}).m.stopLoss, undefined, "없는 아이템은 그대로");
+});
+
+// v0.1.93 P4-B: 무적·피해 감소로 '안 받는 피해'는 저항을 지난 뒤 단위(받는 피해)라, 버티는 힘(생피해) 단위로 바꿀 때
+// 기준 상대의 저항 배수를 써야 한다. 내 저항으로 곱하면 방어력이 높을수록 무적이 커져 탱커가 과대평가된다 (2026-11-16 존야 실험).
+test("무적 환산: 내 방어력이 달라도 같은 값만큼 버티는 힘이 는다", () => {
+  // 칼바람 받는 피해 보정이 없는 챔피언끼리 (보정이 있으면 그 배수만큼 달라지는 게 맞다)
+  const squishy = champ("Orianna"), tank = champ("Malphite");
+  assert.ok(!squishy.aram && !tank.aram, "보정 없는 챔피언으로 비교");
+  const inv = { id: "zz", name: "가짜무적", kind: "legendary", stats: {}, tags: {}, passiveStats: { invulnSec: 2.5 } };
+  const gain = (c) => St.evaluate(c, 18, [inv], [], {}).m.ehp - St.evaluate(c, 18, [], [], {}).m.ehp;
+  const a = gain(squishy), b = gain(tank);
+  assert.ok(Math.abs(a - b) < Math.max(a, b) * 0.02, `무적 2.5초는 누구에게나 같은 양: 오리아나 ${Math.round(a)} vs 말파이트 ${Math.round(b)}`);
+  // 크기: 받는 피해 초당 600 × 2.5초 ÷ 2 (위험할 때 쓴다 가정) × 기준 상대 저항 배수
+  const T = St.TARGET;
+  const want = 2.5 * T.DPS_TAKEN / 2 * ((1 + T.ARMOR / 100) * 0.5 + (1 + T.MR / 100) * 0.5);
+  assert.ok(Math.abs(a - want) < want * 0.05, `기준 상대 저항으로 환산: ${Math.round(a)} vs ${Math.round(want)}`);
+});
+
+test("무적·피해 감소가 겹쳐도 한타 길이를 넘지 않는다", () => {
+  const c = champ("Leona");
+  const mk = (ps) => ({ id: "zz", name: "가짜", kind: "legendary", stats: {}, tags: {}, passiveStats: ps });
+  const base = St.evaluate(c, 18, [], [], {}).m.ehp;
+  const long = St.evaluate(c, 18, [mk({ invulnSec: 5, drSec: 5 })], [], {}).m.ehp - base;
+  const cap = St.evaluate(c, 18, [mk({ invulnSec: 6 })], [], {}).m.ehp - base;
+  assert.ok(Math.abs(long - cap) < cap * 0.02, `합쳐도 한타 ${6}초까지만: ${Math.round(long)} vs ${Math.round(cap)}`);
+});
+
+// v0.1.93: 타릭 R '우주의 광휘'(자신과 주변 아군 무적)는 자기 몫을 무적 공통 경로로, 아군 몫만 보호막으로 센다.
+// 예전엔 자기 몫도 보호막이라 내 방어력·마법 저항력을 곱해, 탱커 빌드 타릭에서 2.4배로 잡혔다 (2026-11-16)
+test("타릭 R: 자기 몫은 무적 경로, 아군 몫만 지원 지표", () => {
+  const c = champ("Taric");
+  const m = St.evaluate(c, 18, [], [], {}).m;
+  assert.equal(Math.round(m.selfShield), 0, "자기 보호막으로 세지 않는다");
+  assert.ok(m.shield > 700, `아군 보호막은 그대로: ${Math.round(m.shield)}`);
+  const bare = { ...c, fightStats: { ...(c.fightStats || {}), invulnSec: 0 } };
+  assert.ok(St.evaluate(c, 18, [], [], {}).m.ehp > St.evaluate(bare, 18, [], [], {}).m.ehp, "무적은 버티는 힘으로");
+});
+
+// v0.1.93 P4-B 2단계: 아군 강화는 아군이 그 시간 동안 때리고 있어야 들어간다 (아군 평타 가동률, 기본 1 = 지금 가정).
+// 우리 자신 평타에 autoUptime 을 쓰는 것과 같은 자리. 스킬 가속 강화는 평타가 아니라 그대로
+test("아군 강화: 평타에 붙는 몫만 아군 가동률을 받는다", () => {
+  const c = champ("Lux");
+  const censer = item("불타는 향로"), staff = item("흐르는 물의 지팡이");
+  const at = (up, it) => { St.setExperiment({ allyUptime: up }); const m = St.evaluate(c, 18, [it], [], {}).m; St.setExperiment({}); return m.allyDmg; };
+  const full = at(1, censer), half = at(0.5, censer);
+  assert.ok(Math.abs(half - full * 0.5) < full * 0.05, `공격 속도·적중 시 강화는 절반으로: ${Math.round(full)} → ${Math.round(half)}`);
+  const s1 = at(1, staff), s2 = at(0.5, staff);
+  assert.ok(Math.abs(s1 - s2) < 1, `스킬 가속 강화는 가동률과 무관: ${Math.round(s1)} vs ${Math.round(s2)}`);
+  assert.equal(St.evaluate(c, 18, [censer], [], {}).m.allyDmg > 0, true, "기본값(1)은 지금과 같다");
+});
+
+// 존야 '시간 정지' 중에도 지속 피해·소환물은 계속 들어간다 → 멈춤 손실에서 뺀다 (실험 설정에서만 쓰는 구조)
+test("행동 불가: 시간마다 들어가는 피해는 멈춤 손실에서 빠진다", () => {
+  const c = champ("Garen");
+  const stop = { id: "zz", name: "가짜멈춤", kind: "legendary", stats: {}, tags: {}, passiveStats: { stopSec: 3 } };
+  // '시간마다'(time) 들어가는 피해를 가진 가짜 아이템: 멈춰 있어도 계속 들어간다 (지속 피해·소환물)
+  const dot = { id: "zy", name: "가짜지속", kind: "legendary", stats: {}, tags: {},
+    effects: [{ kind: "magic", name: "DotPerSec", base: [200], trigger: { type: "time", sec: 1 } }] };
+  const loss = (items) => { const a = St.evaluate(c, 18, items, [], {}).m, b = St.evaluate(c, 18, [...items, stop], [], {}).m; return (a.dps - b.dps) / a.dps; };
+  const plain = loss([]), withDot = loss([dot]);
+  assert.ok(plain > 0.45, `지속 피해가 없으면 절반 가까이 잃는다: ${(plain * 100).toFixed(0)}%`);
+  assert.ok(withDot < plain - 0.05, `지속 피해가 있으면 덜 잃는다: ${(withDot * 100).toFixed(0)}% < ${(plain * 100).toFixed(0)}%`);
+});
+
+// v0.1.93 P4-B 2단계: 불타는 향로·흐르는 물의 지팡이는 '아군을 치유하거나 보호막을 씌워 주면' 발동한다 (아이템 설명).
+// 아군을 회복·보호막으로 돕는 기술이 없으면 발동할 수 없다 — 누누는 아군 공격 속도 버프라 분류만 아군 지원이다
+test("향로·흐르는 물: 아군 회복·보호막이 있는 챔피언만 발동한다", () => {
+  const censer = item("불타는 향로"), staff = item("흐르는 물의 지팡이");
+  const gain = (id, it) => { const c = champ(id); return St.evaluate(c, 18, [it], [], {}).m.allyDmg - St.evaluate(c, 18, [], [], {}).m.allyDmg; };
+  assert.ok(gain("Soraka", censer) > 400, "아군 회복이 있으면 발동");
+  assert.ok(gain("Lux", censer) > 400, "아군 보호막이 있으면 발동");
+  assert.equal(Math.round(gain("Nunu", censer)), 0, "아군 회복·보호막이 없으면 발동 안 함");
+  assert.equal(Math.round(gain("Nunu", staff)), 0, "흐르는 물의 지팡이도 같음");
+  assert.equal(Math.round(gain("Jinx", censer)), 0, "아군 지원 챔피언이 아니면 그대로 0");
+});

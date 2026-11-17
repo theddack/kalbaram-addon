@@ -20,6 +20,8 @@ EFFECT_TAGS = {
 # 챔피언 상대 피해·회복이 아닌 값: 몬스터·미니언 전용, 소환물 체력
 NOT_CHAMPION = re.compile(r"monster|minion|ghoul|turret|tower|structure|jungle|nonchamp", re.I)
 # 자리표시자 바로 뒤가 '의 공격력을 얻습니다'처럼 능력치 획득이면 피해가 아니다 (베인 R 등)
+# 마나 회복·반환 수치: 원본 설명이 피해 태그로 감싸도 피해가 아니다 (유미 E manarestore, 2026-11-15 v0.1.93 발견)
+MANA_RESTORE = re.compile(r"mana_?(restore|refund|regen|gain)|restore_?mana", re.I)
 STAT_GRANT = re.compile(r"^\s*(의\s*)?(추가\s*)?(공격력|주문력|방어력|마법 저항력|공격 속도|이동 속도)(을|를)?\s*(얻|증가|획득)")
 
 
@@ -27,6 +29,8 @@ def skip_effect(kind, name, after):
     if NOT_CHAMPION.search(name):
         return True
     if kind == "heal" and name.lower().endswith("health"):
+        return True
+    if kind in ("magic", "physical", "true", "adaptive") and MANA_RESTORE.search(name):
         return True
     return kind in ("magic", "physical", "true", "adaptive") and bool(STAT_GRANT.search(after))
 
@@ -142,6 +146,40 @@ def resolve_tooltip(tooltip, calc, ranks, other_spell=None, infer=False, hp_pct=
             effects.append({"kind": kind, "name": name, **expr_json(exprs), "_ctx": ctx})
     out.append(tooltip[pos:])
     return "".join(out), effects, unresolved
+
+
+# ---------------------------------------------------------------- 회복·보호막의 대상 (v0.1.93 P4-A)
+# 게임 규칙상 누가 받을 수 있는지만 정한다. 실제로 자신에게 쓰는지 아군에게 쓰는지(사용 시나리오)는 계산 쪽(stats.js)에서 따로 본다.
+#   self          자기 자신만
+#   ally          아군 하나 (자신은 못 받음)
+#   allies        주변·모든 아군 여럿
+#   selfAndAllies 자신과 아군이 함께 받음
+#   selfOrAlly    자신 또는 아군 중 하나를 골라서 (둘이 동시에 받지는 않음)
+ALLY_WORD = re.compile(r"아군")
+ALLIES_WORD = re.compile(r"(근처|주변|모든|영역 안의|범위 안의|지나가는|주위)\s*(모든\s*)?아군")
+SELF_WORD = re.compile(r"자신|스스로|본인")
+OR_WORD = re.compile(r"자신 또는 아군|아군 또는 자신|자신이나 아군|아군이나 자신")
+
+
+def effect_target(ctx, full_text, champ_name=""):
+    """회복·보호막 효과 하나의 대상을 설명 문장에서 읽는다 (효과가 든 문장 먼저, 없으면 스킬 설명 전체).
+
+    설명에 '아군'이 없으면 self. 챔피언 이름과 '아군'이 함께 묶여 있거나 '자신'이 같이 나오면 selfAndAllies.
+    판정이 틀리는 경우는 rules.json champions[id].effectTarget 으로 덮어쓴다 (근거 문장과 함께).
+    """
+    name = re.escape(champ_name or "")
+    for text in (ctx or "", full_text or ""):
+        if not ALLY_WORD.search(text):
+            continue
+        if OR_WORD.search(text):
+            return "selfOrAlly"
+        both = SELF_WORD.search(text)
+        if not both and name:
+            both = re.search(rf"{name}[가이]?\s*(와|과|및)\s*(근처\s*|주변\s*)?아군", text) or re.search(rf"아군[^.]{{0,12}}(와|과)\s*{name}", text)
+        if both:
+            return "selfAndAllies"
+        return "allies" if ALLIES_WORD.search(text) else "ally"
+    return "self"
 
 
 # 증강 효과 발동 빈도 (설명 문구에서 판정, 위에서부터 먼저 맞는 것)
@@ -291,7 +329,7 @@ def game_as_ratio(bin_json, cid):
     return round(v, 4) if isinstance(v, (int, float)) and v > 0 else None
 
 
-def process_champion(cid, detail, bin_json):
+def process_champion(cid, detail, bin_json, champ_name=""):
     spells, unresolved_total = [], 0
     for i, sp in enumerate(detail["spells"]):
         spell = find_spell(bin_json, sp["id"])
@@ -299,8 +337,11 @@ def process_champion(cid, detail, bin_json):
         calc = Calc(spell)
         text, effects, unresolved = resolve_tooltip(sp["tooltip"], calc, ranks,
                                                     lambda sid: find_spell(bin_json, sid), hp_pct=True)
+        plain_sp = re.sub(r"<[^>]+>", "", sp["tooltip"])
         for e in effects:
             ctx = e.pop("_ctx", "")
+            if e["kind"] in ("heal", "shield"):  # 누가 받는 효과인지 (v0.1.93 P4-A)
+                e["target"] = effect_target(ctx, plain_sp, champ_name)
             # 스킬의 '기본 지속 효과: 기본 공격이 … 추가로' 피해는 기본 공격마다 들어간다 (케일 E·바루스 W·카사딘 W·티모 E 등).
             # 스킬 피해(콤보 1번)로만 세면 공격 속도 가치를 낮게 봤다. 지속 피해(독 등)는 다시 걸어도 안 쌓여서 뺀다
             # 'N번째 공격마다'·'3회 연속'(베인 W)은 매 공격이 아니라서 뺀다 (베인은 rules.json fight 로 따로 센다).
@@ -325,6 +366,8 @@ def process_champion(cid, detail, bin_json):
         spells.append({
             "cc": spell_cc_seconds(re.sub(r"<[^>]+>", "", text)),
             "slot": SLOTS[i], "name": sp["name"], "ranks": ranks,
+            # 사거리(가장 긴 랭크): '멀리서 맞히면' 조건 아이템 계산에 쓴다 (지평선의 초점 600)
+            "range": max([r for r in (sp.get("range") or []) if isinstance(r, (int, float))] or [0]),
             "cooldown": [round(c, 2) for c in cd], "cost": [round(c, 1) for c in cost],
             "tooltip": text, "effects": effects, "unresolved": unresolved,
         })

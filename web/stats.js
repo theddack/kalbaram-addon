@@ -111,9 +111,11 @@
       const rScale = (!champ.melee && s && s.rangedScale) || {};
       // '대상 체력 X% 아래' 조건 고유 효과 (rules _belowAt: 세릴다의 원한 둔화): 값 × 조건 아래 피해 비율 (targetBelowShare, 그림자불꽃과 같은 기준)
       const below = s && s._belowAt != null ? targetBelowShare(s._belowAt) : 1;
+      // '멀리서 맞히면' 조건 고유 효과 (rules _farMark: 지평선의 초점 600 밖에서 스킬 적중): 값 × 멀리서 맞힐 수 있는 몫 (farMarkShare)
+      const far = s && s._farMark != null ? farMarkShare(champ, s._farMark) : 1;
       for (const [k, raw0] of entriesOf(s)) {
-        if (k === "rangedScale" || k === "_belowAt") continue;
-        const raw = typeof raw0 === "number" ? (rScale[k] != null ? raw0 * rScale[k] : raw0) * below : raw0;
+        if (k === "rangedScale" || k === "_belowAt" || k === "_farMark") continue;
+        const raw = typeof raw0 === "number" ? (rScale[k] != null ? raw0 * rScale[k] : raw0) * below * far : raw0;
         // needsItem: 그 아이템을 가졌을 때만 터지는 증강 효과 (폭풍 쇄도 업그레이드: 폭풍 쇄도의 질풍이 폭발)
         if (k === "_effects") { effects.push(...raw.filter((e) => !e.needsItem || items.some((it) => it.name === e.needsItem))); continue; }
         if (REFUND_KEYS.includes(k)) continue;
@@ -190,7 +192,7 @@
     // 라이즈 패시브: 주문력 100당 최대 마나 10% (게임 데이터 PercentManaIncrease 10 · APAmount 100)
     if (conv.APtoManaPct && t.MANA) { const m = t.MANA * t.AP * conv.APtoManaPct; t.MANA += m; t.bonusMANA += m; }
     // 서포터 아이템 버프 (흐르는 물의 지팡이·불타는 향로): 아군을 회복·보호막으로 도울 때 자신도 받는 버프. 아군을 돕는 챔피언만 (rules items)
-    const helps = (champ.features || []).includes("allysupport");
+    const helps = canProcAllyItem(champ);
     if (helps && conv.allyBuffAP) t.AP += conv.allyBuffAP * (1 + mult.APmult);
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
     if (helps && conv.allyBuffHaste) t.HASTE += conv.allyBuffHaste;
@@ -402,7 +404,7 @@
 
   function spellTotals(effects, rank, L, t) {
     const { uniq, groups: planGroups, kinds, crit } = spellPlan(effects);
-    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}) }));
+    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.ally ? { ally: e.ally } : {}), ...(e.target ? { target: e.target } : {}) }));
     const groups = new Map();
     for (const [k, idx] of planGroups) groups.set(k, idx.map((i) => vals[i]));
     const isCritV = new Map(vals.map((v, i) => [v, crit[i]]));
@@ -446,14 +448,23 @@
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
   // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
   // 추가 체력(BONUS_HP): 같은 173명 균형 빌드의 18레벨 추가 체력 중앙값 (tools/target_median.js). 상대 추가 체력 비례 효과(도미닉 경의 인사)에 쓴다
-  const TARGET = { ARMOR: 113, MR: 63, HP: 3148, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600 };
+  // HEAL = 기준 상대가 한타 한 번에 자기 자신을 회복하는 양. 전 챔피언 18레벨 균형 빌드의 중앙값은 0 이다
+  // (173명 중 101명이 0 · 중앙값 0 · 평균 271). 그래서 상대를 모를 때 치유 감소(고통스러운 상처)의 값은 0 이고,
+  // 실제 판에서는 app.js 가 그 판 적들의 회복량 평균을 넣어 준다 (v0.1.93 P4-B 5단계)
+  const TARGET = { ARMOR: 113, MR: 63, HP: 3148, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600, HEAL: 0 };
+  // 기준 아군 (v0.1.93 P1 아군 지원): 아군 공격 속도·공격력·적중 시 피해·피해량 강화를 '아군이 더 넣는 피해'로 바꿀 때 쓴다.
+  // 원거리 딜러(첫 역할 Marksman, 원거리) 29명의 18레벨 균형 빌드(증강 없음) 지표 중앙값 (tools/ally_model.js, 기준 상대 TARGET 과 같은 방식).
+  // 원딜은 주문력 계수가 거의 없어 아군 주문력 버프(흐르는 물의 지팡이)는 기준 아군에선 0 이다 (메이지 아군이면 커짐, 미반영)
+  const ALLY = { autoDps: 891, skillDps: 86, AS: 2.04, asRatio: 0.656, AD: 324, HASTE: 10 };
+  // 아군 강화를 받는 아군 수: 회복·보호막을 아군 한 명에게 주는 지금 기준과 같다. 여러 아군에게 주는 효과도 1명 (근거 자료 없음, 미검증)
+  const ALLY_TARGETS = 1;
   // 골드 → 능력치: 위키 '골드 효율' 기준 가치 (공격력 35, 주문력 20, 체력 2.67, 방어력·마법 저항력 20골드)
   // 골드의 50%는 주 공격 능력치, 30% 체력, 20% 방어력·마법 저항력 반반으로 산다고 본다
   const GOLD_VALUE = { AD: 35, AP: 20, HP: 2.67, ARMOR: 20, MR: 20 };
   const DEFAULT_TARGET = { ...TARGET };
   // 기준 상대 바꾸기: {ARMOR, MR, HP} (실제 상대 챔피언의 18레벨 빌드 능력치 등). 인자 없으면 기본값
   function setTarget(t) {
-    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP, ...(t.bonusHP != null ? { BONUS_HP: t.bonusHP } : {}) } : {});
+    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP, ...(t.bonusHP != null ? { BONUS_HP: t.bonusHP } : {}), ...(t.HEAL != null ? { HEAL: t.HEAL } : {}) } : {});
   }
   // 초당 피해에 스킬을 써야 나오는 피해를 넣는 비율 (스킬을 재사용 대기시간마다 계속 맞히는 일은 드물다, ASSUMPTIONS).
   // 스킬에 딸린 효과(스킬 사용 시·지정 스킬 표식)는 '실제로 쓰여 맞는 스킬 빈도' = 시전 빈도 × 이 비율로 보고, 그다음 효과 자체의
@@ -464,7 +475,8 @@
   //   autoUptime  한타 중 기본 공격을 실제로 치는 시간 비율 (평타·적중·기본 공격 시 효과의 초당 피해, 구인수 중첩 평타 수에 곱함)
   //   fightSec    평타를 이어 치는 한타 시간(초, 구인수 중첩 평균)
   //   skillShare  SKILL_DPS_SHARE 대신 쓸 값
-  const EXP_DEFAULT = { autoUptime: 1, fightSec: AUTO_FIGHT_SEC, skillShare: SKILL_DPS_SHARE };
+  //   allyUptime  아군 강화가 실제로 쓰이는 비율 (아군이 그 시간 동안 때리고 있을 비율). 기본 1 = 한타 내내 때린다는 지금 가정
+  const EXP_DEFAULT = { autoUptime: 1, fightSec: AUTO_FIGHT_SEC, skillShare: SKILL_DPS_SHARE, allyUptime: 1 };
   const EXP = { ...EXP_DEFAULT };
   function setExperiment(e) { Object.assign(EXP, EXP_DEFAULT, e || {}); }
   const CAST_MIN_CD = 2; // '스킬 사용 시' 효과: 한 스킬은 최대 2초에 1번 (토글·충전형 스킬이 발동을 부풀리지 않게)
@@ -486,6 +498,10 @@
       why: "위키 'ARAM: Mayhem' 모드 변경 사항이에요. 실제 경기 기록(베인·미스 포츈) 체력·공격력과 맞춰 봤어요." },
     { what: "레벨당 공격력은 위키 값", src: "data", why: "라이엇 Data Dragon(16.20)이 173명 모두 0으로 주고 있어요. 실제 경기 기록과 위키 값이 맞았어요." },
     { what: "상대 현재 체력 70% (잃은 체력 30%)", src: "assume", why: "한타가 한창일 때를 기준으로 했어요. 현재·잃은 체력 비례 피해와, 체력이 낮을 때만 커지는 효과(그림자불꽃: 40% 아래)에 쓰여요. 체력 조건 효과는 상대 체력이 100%에서 40%로 고르게 줄어든다고 봐서(평균 70%) 그림자불꽃은 기본 계산에서 발동하지 않아요. 상대를 끝까지 잡는 판이 많으면 더 커져요 (실게임 검증 필요)." },
+    { what: "기준 아군: 평타 초당 피해 891 · 공격 속도 2.04 · 공격력 324 · 스킬 초당 피해 86", src: "data",
+      why: "원거리 딜러 29명이 18레벨에 균형 빌드를 갖췄을 때의 중앙값이에요. 서포터가 주는 아군 공격 속도·공격력·추가 피해를 '이 아군이 더 넣는 피해'로 바꿀 때 써요." },
+    { what: "아군 강화: 서포터 기술 1번에 1번, 아군 1명, 더 넣는 피해 1 = 지원 1", src: "assume",
+      why: "회복·보호막을 세는 기준과 맞췄어요. 한타는 양쪽 체력 차이로 갈려서 적 체력 1을 더 깎는 것과 아군 체력 1을 지키는 것을 같게 봤어요. 여러 아군이 받거나 메이지 아군이면 더 커요 (실게임 검증 필요)." },
     { what: "받는 피해 초당 600", src: "assume", why: "무적·피해 감소 시간을 '버티는 힘'으로 바꿀 때만 써요. 18레벨 한타에서 집중을 받을 때 정도로 잡았어요." },
     { what: "콤보 = Q·W·E·R 각 1번, 4초", src: "assume", why: "스킬 4개를 한 번씩 쓰는 데 걸리는 시간이에요. 재사용 대기시간이 있는 효과는 4초 안에 발동하는 횟수만 세요." },
     { what: "초당 피해에 스킬 피해는 30%만 (스킬을 써야 터지는 증강·아이템 효과도 같이)", src: "assume", why: "스킬을 재사용 대기시간마다 계속 맞히는 일은 드물어서, 다 넣으면 너무 커져요. 스킬에 딸린 효과(주문 검·붐 앤 베이스 등)도 그 스킬을 써야 나오니 같은 비율이에요." },
@@ -512,13 +528,73 @@
   // 따로 발동률을 정하지 않고 기준 상대 현재 체력(TARGET.CUR, 현재·잃은 체력 비례 피해와 같은 가정)에서 끌어낸다:
   // 한타 동안 상대 체력이 100% → (2 × CUR − 1) 로 고르게 줄어든다 (CUR 70% → 100% → 40%, 평균 70%).
   // 이 가정에선 끝점(40%) 아래로는 내려가지 않아 40% 이하 조건은 0이다 — 처치까지 가는 몫은 근거가 없어 넣지 않았다 (미검증)
+  // '600 밖에서 스킬로 맞히면' 조건을 챔피언마다 얼마나 쓸 수 있는지 (지평선의 초점).
+  // 피해가 나오는 스킬 중 사거리 R 이 가장 긴 것을 기준으로, 그 사거리 안에서 600 보다 먼 자리가 차지하는 넓이 비율 = 1 − (600/R)².
+  // 자리를 고를 수 있다는 가정이 아니라 '그 거리에서 쓸 기회가 얼마나 되나'의 대용값이에요 (가정, 미검증).
+  // R < 600 이면 0 (가렌·다리우스처럼 멀리서 맞힐 스킬이 없는 챔피언은 이 효과를 못 쓴다)
+  const FAR_DMG = new Set(["physical", "magic", "true"]);
+  function farMarkShare(champ, need) {
+    let best = 0;
+    for (const sp of champ.spells || []) {
+      if (!(sp.effects || []).some((e) => FAR_DMG.has(e.kind))) continue;
+      best = Math.max(best, sp.range || 0);
+    }
+    if (best <= need) return 0;
+    return Math.round((1 - (need / best) ** 2) * 1e4) / 1e4;
+  }
   function targetBelowShare(at) {
     const end = Math.max(0, 2 * TARGET.CUR - 1);
     return Math.max(0, Math.min(1, (at - end) / (1 - end)));
   }
+  // 아군 강화 → 기준 아군(ALLY)이 지속시간 동안 더 넣는 피해. 서포터 기술 1번에 1번 (회복·보호막을 콤보 1번에 1번 세는 것과 같음).
+  // 아군이 더 넣는 피해 1 = 지원 1 (체력 단위)로 본다: 한타는 양쪽 체력 차이로 갈려서 적 체력 1을 더 깎는 것과 아군 체력 1을 지키는 것을 같게 (가정, 미검증)
+  //   allyAS 공격 속도 비율 · allyAD 공격력 · allyOnhit 적중 시 마법 피해(한 번) · allyHaste 스킬 가속 · allyAmp 피해량 비율 · allyAP 주문력(기준 아군 0)
+  // 아군 강화 → 기준 아군이 더 넣는 피해. 평타에 붙는 강화(공격 속도·공격력·적중 시)는 아군이 그동안 실제로 때리고 있어야 들어가서
+  // 아군 평타 가동률(EXP.allyUptime, 기본 1)을 곱한다. 우리 자신 평타에 EXP.autoUptime 을 쓰는 것과 같은 자리예요 (v0.1.93 P4-B 2단계).
+  function allyGain(kind, amt, sec, hits, cap = AS_CAP) {
+    const s = Math.min(sec || COMBO_WINDOW, AUTO_FIGHT_SEC);
+    const up = EXP.allyUptime;
+    if (kind === "allyAS") return ALLY.autoDps * (Math.min(cap, ALLY.AS + ALLY.asRatio * amt) / ALLY.AS - 1) * s * up;
+    if (kind === "allyAD") return ALLY.autoDps * amt / ALLY.AD * s * up;
+    if (kind === "allyOnhit") return amt * 100 / (100 + TARGET.MR) * Math.min(hits || Infinity, ALLY.AS * s * up);
+    if (kind === "allyHaste") return ALLY.skillDps * amt / (100 + ALLY.HASTE) * s;
+    if (kind === "allyAmp") return (ALLY.autoDps + ALLY.skillDps) * amt * s;
+    return 0;
+  }
+  const isAllyKind = (k) => typeof k === "string" && k.startsWith("ally");
+  // 서포터 아이템(불타는 향로·흐르는 물의 지팡이) 발동 조건: '아군을 치유하거나 보호막을 씌워 주면' (아이템 설명).
+  // 아군에게 가는 회복·보호막 기술이 있어야 터진다. 분류만 아군 지원인 챔피언(누누 — 아군 공격 속도 버프)은 못 터뜨린다 (v0.1.93 P4-B 2단계)
+  const ALLY_TARGET_KINDS = ["ally", "allies", "selfAndAllies", "selfOrAlly"];
+  const CAN_PROC = new WeakMap();
+  function canProcAllyItem(champ) {
+    if (!champ || !(champ.features || []).includes("allysupport")) return false;
+    if (CAN_PROC.has(champ)) return CAN_PROC.get(champ);
+    const rows = [...(champ.spells || []).flatMap((s) => s.effects || []), ...((champ.passive || {}).effects || []),
+      ...(((champ.fightStats || {})._effects) || [])];
+    const ok = rows.some((e) => (e.kind === "heal" || e.kind === "shield") && ALLY_TARGET_KINDS.includes(e.target));
+    CAN_PROC.set(champ, ok);
+    return ok;
+  }
+
+  // 회복·보호막의 대상 (v0.1.93 P4-A). 게임 규칙(누가 받을 수 있나)과 사용 시나리오(실제로 누구에게 쓰나)를 나눈다.
+  //   self 자기만 · ally 아군 하나 · allies 주변 아군 여럿 · selfAndAllies 자신과 아군이 함께 · selfOrAlly 자신 또는 아군 중 하나
+  // 돌려주는 값은 {self: 자기 몫 배수, ally: 아군 몫 배수}. selfAndAllies 는 게임에서 둘 다 받으니 둘 다 1 (중복 계산이 아님).
+  // selfOrAlly 는 둘 중 하나라서 사용 시나리오로 가른다: 아군을 돕는 챔피언이면 아군에게, 아니면 자신에게 (가정, 실게임 미검증).
+  function targetShare(target, helps) {
+    switch (target) {
+      case "self": return { self: 1, ally: 0 };
+      case "ally": return { self: 0, ally: 1 };
+      case "allies": return { self: 0, ally: ALLY_TARGETS };
+      case "selfAndAllies": return { self: 1, ally: ALLY_TARGETS };
+      case "selfOrAlly": return helps ? { self: 0, ally: 1 } : { self: 1, ally: 0 };
+      // 대상을 못 읽은 효과: 예전처럼 아군을 돕는 챔피언이면 지원, 아니면 자기 생존으로 (rules.json effectTarget 으로 정해 주면 없어진다)
+      default: return helps ? { self: 0, ally: 1 } : { self: 1, ally: 0 };
+    }
+  }
   function metrics(champ, L, stats, opts = {}) {
     const { total: t, flags, aram } = stats;
     const cv = stats.conv || {};
+    const asCapOf = (champ.modeStats || {}).asCap || AS_CAP;  // 기준 아군도 같은 모드의 공격 속도 상한
     // 상대 추가 체력 비례 피해 증가 (도미닉 경의 인사 '거인 학살자': 추가 체력 1500에서 최대 15%) → 기준 상대 추가 체력으로
     const bonusHpAmp = cv.tgtBonusHpAmp ? cv.tgtBonusHpAmp * Math.min(1, TARGET.BONUS_HP / (cv.tgtBonusHpAt || 1500)) : 0;
     const dealt = (aram.dmg_dealt || 1) * (1 + flags.dmgDealtMult) * (1 + bonusHpAmp);
@@ -531,7 +607,8 @@
     const magMit = mitigation(TARGET.MR * (1 - Math.min(0.9, cv.mrShred || 0)), t.MPENP, t.MPEN) * (1 + (cv.magicDmgMult || 0) + lowAmp);
     const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
     const ranks = ranksAt(L, champ.spells);
-    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0 };
+    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0 };
+    const helps = (champ.features || []).includes("allysupport");
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
     // 쿨의 f% 를 확률 p 로 돌려받음 → 남는 쿨 비율 (1 - pf). 여럿이면 곱한다 → 가속 100 × (1/Π(1-pf) - 1)
@@ -594,12 +671,14 @@
       const cd = !cdBase ? cdNormal : (ohwK || cobalt) ? eMult / Math.max(eRateMult, 1e-9) : cdNormal;
       if (!disabled && cdBase > 0) out.boundCastRate += eCobaltRate * weave;
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
-      let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0;
+      let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0, ally = 0, selfShield = 0, selfHeal = 0;
       // 보석 건틀릿: 스킬도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값
       // 보석 팔찌(26.21): 궁극기만 치명타 (ultCritDmg)
       const critMul = cv.skillCritDmg || (sp.slot === "R" && cv.ultCritDmg) || 0;
       const skillCrit = critMul ? 1 + Math.min(1, t.CRIT) * (critMul + (t.CRITDMG - BASE_CRIT_DMG) - 1) : 1;
       for (const v of vals) {
+        // 아군이 넣는 추가 피해 (나미 E·소나 Q 멜로디·아이번 W, rules champions allyDealt): 서포터 자기 피해가 아니라 기준 아군의 적중 피해로
+        if (v.ally) { const g = allyGain("allyOnhit", v.value, v.ally.sec, v.ally.hits, asCapOf) * ALLY_TARGETS; out.allyDmg += g; ally += g; continue; }
         if (v.onhit && DMG_KINDS.includes(v.kind)) {
           // 스킬의 '기본 지속 효과' 적중 시 피해: 기본 공격마다 (초당 피해의 평타 쪽). 스킬 피해 증폭은 안 받는다
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
@@ -611,16 +690,25 @@
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
-        } else if (v.kind === "shield") shield += v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0)) * (1 + (flags.slotHeal[sp.slot] || 0));
-        else if (v.kind === "heal") heal += v.value * (aram.healing || 1) * (1 + t.HSP) * (1 + (flags.slotHeal[sp.slot] || 0));
+        } else if (v.kind === "shield" || v.kind === "heal") {
+          // 회복·보호막: 대상(게임 규칙)에 따라 자기 생존과 아군 지원으로 나눈다 (v0.1.93 P4-A)
+          const amt = v.kind === "shield"
+            ? v.value * (aram.shielding || 1) * (1 + t.HSP) * (1 + (cv.shieldMult || 0)) * (1 + (flags.slotHeal[sp.slot] || 0))
+            : v.value * (aram.healing || 1) * (1 + t.HSP) * (1 + (flags.slotHeal[sp.slot] || 0));
+          const sh = targetShare(v.target, helps);
+          if (v.kind === "shield") { shield += amt * sh.ally; selfShield += amt * sh.self; }
+          else { heal += amt * sh.ally; selfHeal += amt * sh.self; }
+        }
       }
-      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit });
+      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit, ...(ally ? { ally } : {}), ...(selfShield || selfHeal ? { selfShield, selfHeal } : {}) });
       out.spellOnhit += onhit;
       out.combo += dmg;
       out.comboRaw += raw;
       out.shield += shield;
       out.heal += heal;
-      out.kitShield += shield;
+      out.selfShield += selfShield;
+      out.selfHeal += selfHeal;
+      out.kitShield += shield;  // 서포터 아이템 발동(향로·월석)은 아군에게 준 몫만 (자기 보호막으로는 발동하지 않는다)
       out.kitHeal += heal;
       // 원래 재사용 대기시간이 아주 짧은 스킬(징크스 Q 같은 전환형)은 DPS에서 제외, 가속으로 짧아진 건 0.5초까지만
       if (cdBase > 0.5) out.skillDps += dmg / Math.max(cd, 0.5);
@@ -683,6 +771,14 @@
       };
       const row = { src: e.src || "", kind: e.kind, value: v, trigger: tr.type, ...(critAlt ? { critAlt: true, full: critAlt.full, share: critAlt.share } : {}) };
       out.effects.push(row);
+      // 아군 강화 (룰루 W 공격 속도·잔나 E 공격력 …, 불타는 향로 아군 몫): 기준 아군이 더 넣는 피해 → 지원. 아이템 몫은 아군을 돕는 챔피언만 (needsAlly)
+      if (isAllyKind(e.kind)) {
+        if (e.needsAlly && !canProcAllyItem(champ)) { row.value = 0; continue; }
+        // ofAllyAD: 받는 아군의 공격력 비례 (밀리오 패시브 '아군 공격력의 15%')
+        row.ally = allyGain(e.kind, v + (e.ofAllyAD || 0) * ALLY.AD, e.sec, e.hits, asCapOf) * ALLY_TARGETS;
+        out.allyDmg += row.ally;
+        continue;
+      }
       if (e.kind === "shield" || e.kind === "heal") {
         const k = e.kind === "shield" ? (aram.shielding || 1) : (aram.healing || 1);
         const amt = v * k * (1 + t.HSP) * (tr.type === "cast" ? comboTimes(casts) : 1);
@@ -690,9 +786,15 @@
         // 2026-11-14 예전엔 '회복·보호막(지원)' 지표에 넣어, 지원 기준값(600)이 작은 탓에 메이지·서포터 계산 최적이 스테락·케이닉·워모그가 됐고
         // (공식 추천 가산이 가리고 있었음), 레오나 + 탱크 엔진의 점검표 증강 효과 2/3가 스테락 보호막 증가분이었다
         if (e.item) { out.itemSelfHp += amt; continue; }
-        if (e.kind === "shield") out.shield += amt; else out.heal += amt;
-        // 챔피언 자기 기술(패시브)의 회복·보호막만 아군에게 줄 수 있다고 본다 (아이템·증강 효과의 보호막은 자기 자신에게만: 스테락·케이닉 루컨)
-        if (!itemOrAugFx(e)) { if (e.kind === "shield") out.kitShield += amt; else out.kitHeal += amt; }
+        // 챔피언 기술(패시브·규칙 효과)의 회복·보호막만 아군에게 줄 수 있다 (아이템·증강 효과는 자기 자신에게만: 스테락·케이닉 루컨)
+        const sh = itemOrAugFx(e) ? { self: 1, ally: 0 } : targetShare(e.target, helps);
+        row.toSelf = amt * sh.self;
+        row.toAlly = amt * sh.ally;
+        if (sh.self) { if (e.kind === "shield") out.selfShield += row.toSelf; else out.selfHeal += row.toSelf; }
+        if (sh.ally) {
+          if (e.kind === "shield") { out.shield += row.toAlly; out.kitShield += row.toAlly; }
+          else { out.heal += row.toAlly; out.kitHeal += row.toAlly; }
+        }
         continue;
       }
       const kind = e.kind === "adaptive" ? (apMain(champ) ? "magic" : "physical") : e.kind;
@@ -726,6 +828,13 @@
       out.effects.push({ src: "회복 → 피해", kind: "magic", value: out.heal * cv.healToDamage, hit: hd, trigger: "once" });
     }
     out.combo += out.augCombo;
+    // 치유 감소(고통스러운 상처 40%): 상대가 한타에서 회복할 양 중 못 하게 막는 몫 = 그만큼 더 깎은 것과 같다 → 한타 피해에 더한다.
+    // 기준 상대의 회복량(TARGET.HEAL)은 상대를 모르면 0 이라 기본 추천에서는 값이 0 이다 (위 TARGET 설명)
+    if (cv.healCut && TARGET.HEAL > 0) {
+      out.healCut = TARGET.HEAL * Math.min(1, cv.healCut);
+      out.combo += out.healCut;
+      out.effects.push({ src: "치유 감소", kind: "true", value: out.healCut, hit: out.healCut, trigger: "once" });
+    }
     const critMul = 1 + (t.critAuto ?? t.CRIT) * (t.CRITDMG - 1);
     // 한 발에 두 놈: 치명타 평타는 적중 효과를 한 번 더 (conv.onhitOnCrit 번) → 적중 효과에 (1 + 치명타 확률 × 횟수)
     // 구인수의 격노검: 다 쌓인 뒤 세 번째 평타마다 적중 효과를 한 번 더 (t.onhitRepeat = 쌓는 동안까지 평균 낸 값)
@@ -737,9 +846,16 @@
     const autoCombo = out.autoDps * COMBO_WINDOW;
     out.vampHeal = ((t.LS || 0) * autoCombo + (t.OMNIVAMP || 0) * (autoCombo + out.combo)) * (aram.healing || 1);
     // 정령의 형상 '무한한 활력': 자신이 받는 회복·보호막 증가 → 자기 회복(생명선·흡혈·아이템 자기 회복·보호막)에 곱한다
-    const extraHp = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHp) * (1 + (cv.selfHealMult || 0)) + (cv.invulnSec || 0) * TARGET.DPS_TAKEN / 2 + (cv.drSec || 0) * TARGET.DPS_TAKEN / 2;
-    out.ehpPhys = (t.HP * (1 + t.ARMOR / 100) + extraHp * (1 + t.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
-    out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100)) / taken;
+    // 챔피언 기술의 자기 회복·보호막(out.selfHeal·selfShield)도 버티는 힘으로 (v0.1.93 P4-A, 예전엔 지원 지표에 들어갔다)
+    const extraHp = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHp + out.selfHeal + out.selfShield) * (1 + (cv.selfHealMult || 0));
+    // 무적·피해 감소(존야 시간 정지·천상의 구원 …): 그동안 '안 받는 피해'는 저항을 지난 뒤 단위(받는 피해 초당)예요.
+    // 버티는 힘은 맞을 수 있는 생피해 단위라, 바꿀 때 기준 상대의 저항 배수를 써요. 내 저항으로 곱하면 방어력이 높을수록
+    // 무적이 커져 탱커가 최대 2.5배 과대평가됐어요 (2026-11-16 존야 실험에서 드러남, docs/v0.1.93_P4B_1단계_존야.md).
+    // 여러 효과가 겹쳐도 한타 길이(AUTO_FIGHT_SEC)를 넘지 않아요. ÷2 는 '위험할 때 쓴다'는 기존 가정 그대로예요.
+    out.avoidSec = Math.min(AUTO_FIGHT_SEC, (cv.invulnSec || 0) + (cv.drSec || 0));
+    const avoided = out.avoidSec * TARGET.DPS_TAKEN / 2;
+    out.ehpPhys = ((t.HP + extraHp) * (1 + t.ARMOR / 100) + avoided * (1 + TARGET.ARMOR / 100)) * (1 + (cv.ehpPhysMult || 0)) / taken;
+    out.ehpMag = ((t.HP + extraHp) * (1 + t.MR / 100) + (cv.ehpMagFlat || 0) * (1 + t.MR / 100) + avoided * (1 + TARGET.MR / 100)) / taken;
     if (cv.ehpMult) { out.ehpPhys *= 1 + cv.ehpMult; out.ehpMag *= 1 + cv.ehpMult; }  // 상대 피해량 감소 (감쇠 광선)
     // 받는 피해의 마법 비율: 게임 중이면 적 구성(라이엇 주 피해 유형)으로, 모르면 반반
     const mag = opts && typeof opts.enemyMagic === "number" ? opts.enemyMagic : 0.5;
@@ -749,12 +865,26 @@
     // ---- 제어력: 콤보 한 번에 거는 CC 시간 (스킬·패시브 + 증강·아이템)
     let control = (champ.passive && champ.passive.cc) || 0;
     for (const sp of out.spells) if (!sp.disabled) control += (champ.spells.find((x) => x.slot === sp.slot) || {}).cc || 0;
-    control += (cv.controlSec || 0) + (cv.controlPerCast || 0) * casts;
+    // 라일라이의 수정홀 '서리'는 "스킬로 적에게 피해를 입히면" 터진다 → 피해가 나는 스킬 칸만 센다.
+    // 2026-11-17 v0.1.93 P3-F: 스킬 칸 수(casts)로 세어 173명 전부 제어력이 1.20 으로 같았고,
+    // 피해 스킬이 1개뿐인 타릭도 4개로 셌다 (피해 없는 스킬을 가진 챔피언 103명)
+    const dmgCasts = out.spells.filter((s) => !s.disabled && s.dmg > 0).length;
+    control += (cv.controlSec || 0) + (cv.controlPerCast || 0) * dmgCasts;
     if (cv.fearPerCast) for (const sp of out.spells) if (!sp.disabled) control += Math.min(cv.fearPerCast, sp.cd / (cv.fearCdDiv || 20));
     out.control = control;
     // 스킬을 쿨마다 계속 쓰는 가정은 과대평가라 스킬 피해와 스킬에 딸린 효과는 SKILL_DPS_SHARE 만
     out.dps = out.autoDps * EXP.autoUptime + EXP.skillShare * out.skillDps + (out.augDps - out.castDps - out.atkDps) + out.atkDps * EXP.autoUptime + out.castDpsUsed;
-    out.support = out.shield + out.heal;
+    // 행동 불가 시간 (존야 '시간 정지' 같은 무적): 그동안 공격을 못 하니 한타 시간에서 그만큼 초당 피해를 뺀다.
+    // 콤보(스킬 한 바퀴)는 빼지 않는다 — 멈춘 동안 못 쓴 스킬은 사라지는 게 아니라 뒤로 밀리니까 (한타가 끝나면 잃지만, 그 비율을 정할 근거가 없다).
+    // 쓰는 시점·적 공격 집중도는 모르니 '한타 내내 한 번 쓴다'는 가정이에요 (실게임 미검증)
+    if (cv.stopSec) {
+      // 멈춰 있는 동안에도 '시간마다' 들어가는 피해(지속 피해·소환물·장판: 리안드리 화상, 모르가나 W, 자이라 식물 …)는 계속 들어간다.
+      // 그래서 평타·스킬 쪽 초당 피해에서만 뺀다 (v0.1.93, 존야 실험)
+      const keepDps = out.augDps - out.castDps - out.atkDps;  // 시간 발동(time) 몫
+      out.stopLoss = Math.max(0, out.dps - keepDps) * Math.min(1, cv.stopSec / AUTO_FIGHT_SEC);
+      out.dps -= out.stopLoss;
+    }
+    out.support = out.shield + out.heal + out.allyDmg;
     // 서포터 아이템: 아군을 돕는 챔피언(allysupport)이면 그 도움을 다른 아군에게 더 준다 (rules.json items).
     // 월석 재생기 연쇄(회복 30%·보호막 35%), 헬리아의 메아리(감소 전 피해 30% 충전 → 아군 회복, 최대 80~250).
     // 예전엔 수치로 안 잡혀 서포터 1위가 리치베인 같은 피해 아이템이었다 (2026-10-20 공식 추천 차이 분석)
@@ -778,7 +908,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt };
+  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);
