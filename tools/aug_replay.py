@@ -6,8 +6,8 @@
     python tools/aug_replay.py --rule first         클릭 규칙 실험 (아래)
 
 클릭 규칙(--rule): 같은 선택 화면에서 어느 클릭을 고른 것으로 볼지
-    now    지금 코드 그대로 — 확실한 클릭이 있으면 그것, 없으면 짐작한 클릭 (기본)
-    first  먼저 온 클릭 — 확실·짐작을 가리지 않고 시간 순서로 첫 번째
+    now    지금 코드 그대로 — 먼저 온 클릭 (확실·짐작을 가리지 않음, v0.1.94 기본)
+    old    v0.1.93 까지의 규칙 — 확실한 클릭이 있으면 늘 그것, 없을 때만 짐작 (변경 전후 비교용)
 
 정답은 경기 결과(eog)다. 경기 결과 칸은 6개뿐이라 그보다 많이 고른 판은 '칸 모자람'으로 따로 센다
 (gamelog.EOG_SLOTS). 계산 결과가 아니라 기록 재생이라, 기록에 없는 것은 알 수 없다.
@@ -40,22 +40,21 @@ def events_of(p):
     return None
 
 
-class FirstClick(augocr.Tracker):
-    """실험 규칙 'first': 확실·짐작을 가리지 않고 이번 선택 화면에서 처음 온 클릭을 고른 칸으로 본다"""
+class OldRule(augocr.Tracker):
+    """v0.1.93 까지의 규칙: 확실한 클릭이 있으면 늘 그것, 없을 때만 짐작한 클릭 (변경 전후 비교용)"""
 
     def click(self, slot, sure=True):
         if self._last is None or slot is None:
             return
-        if self._click is None and self._guess is None:
-            if sure:
-                self._click = slot
-            else:
-                self._guess = slot
+        if sure and self._click is None:
+            self._click = slot
+        elif not sure and self._guess is None:
+            self._guess = slot
 
 
 def replay(ev, rule="now"):
     """원본 이벤트를 Tracker 에 먹인다 → 고른 증강 목록"""
-    t = (FirstClick if rule == "first" else augocr.Tracker)()
+    t = (OldRule if rule == "old" else augocr.Tracker)()
     picks, seen = [], [0]
 
     def snap():

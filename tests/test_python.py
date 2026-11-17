@@ -1165,14 +1165,19 @@ class AugOcr(unittest.TestCase):
         m.down = False
         self.assertEqual(m.clicked(), (480, 1570), "누르고 있는 클릭은 지금 위치만")
 
-    def test_guessed_click_is_used_only_without_sure_click(self):
-        t = self.o.Tracker()
+    def test_first_click_of_the_screen_wins(self):
+        """같은 선택 화면에서는 먼저 온 클릭이 고른 카드다 (확실·짐작을 가리지 않는다).
+
+        예전(v0.1.93까지)엔 확실한 클릭을 늘 먼저 썼다. 그 규칙은 2026-10-28 에 들어왔는데,
+        그때 '짐작'은 *직전 위치*(덜 믿을 만한 쪽)를 뜻했다. 2026-11-08 에 '직전 위치가 더 믿을 만하다'로
+        바꾸면서 확실·짐작의 뜻이 서로 뒤집혔는데 우선순위만 그대로 남아, 나중에 온 클릭이 이기게 됐다.
+        실제로 파이크(253초)·케이틀린(431초) 두 판에서 먼저 온 짐작이 정답인데 0.6~1.9초 뒤 클릭에 졌다."""
         offers = ["탭 댄서", "한 발에 두 놈", "신성한 눈덩이"]
+        t = self.o.Tracker()
         t.feed(offers)
         t.click(1, sure=False)
-        t.feed(None)
-        t.feed(None)
-        t.feed(None)
+        for _ in range(3):
+            t.feed(None)
         self.assertEqual(t.state["picked"], "한 발에 두 놈", "짐작한 칸")
         t = self.o.Tracker()
         t.feed(offers)
@@ -1180,7 +1185,14 @@ class AugOcr(unittest.TestCase):
         t.click(2)
         for _ in range(3):
             t.feed(None)
-        self.assertEqual(t.state["picked"], "신성한 눈덩이", "확실한 클릭이 먼저")
+        self.assertEqual(t.state["picked"], "한 발에 두 놈", "먼저 온 짐작이 나중 확실보다 앞선다")
+        t = self.o.Tracker()
+        t.feed(offers)
+        t.click(2)
+        t.click(1, sure=False)
+        for _ in range(3):
+            t.feed(None)
+        self.assertEqual(t.state["picked"], "신성한 눈덩이", "확실이 먼저 왔으면 확실")
         t = self.o.Tracker()
         t.feed(offers)
         t.click(0, sure=False)
@@ -1188,6 +1200,30 @@ class AugOcr(unittest.TestCase):
         for _ in range(3):
             t.feed(None)
         self.assertIsNone(t.state.get("picked"), "새로고침 전 짐작은 버린다")
+
+    def test_pyke_guess_then_world_clicks(self):
+        """2026-11-16 파이크 253초 재현: 카드(0번)를 누른 짐작 뒤, 카드가 닫히고 게임 화면을 누른 클릭이 들어온다.
+        경기 결과 정답은 0번 칸 '속전속결'이었는데 예전 규칙은 1번 칸 '바다의 영혼'으로 기록했다."""
+        t = self.o.Tracker()
+        t.feed(["속전속결", "바다의 영혼", "그림자 질주"])
+        t.click(0, sure=False)   # 253.0 직전 위치가 카드 밖 → 지금 위치(0번 카드)로 짐작
+        t.click(1)               # 253.6
+        t.click(2)               # 254.2
+        t.click(2)               # 254.4
+        for _ in range(self.o.Tracker.CLOSE_AFTER):
+            t.feed(None)
+        self.assertEqual(t.state["picked"], "속전속결")
+
+    def test_caitlyn_guess_then_later_click(self):
+        """2026-11-16 케이틀린 431초 재현: 세 이름을 다 맞게 읽었고, 먼저 온 짐작(1번 '아티스트 보호')이 정답이다.
+        1.9초 뒤 2번 칸 클릭이 들어와 예전 규칙은 '순수주의자 - 마법사'로 기록했다 (OCR 오인식이 아니다)."""
+        t = self.o.Tracker()
+        t.feed(["빙글빙글", "아티스트 보호", "순수주의자 - 마법사"])
+        t.click(1, sure=False)
+        t.click(2)
+        for _ in range(self.o.Tracker.CLOSE_AFTER):
+            t.feed(None)
+        self.assertEqual(t.state["picked"], "아티스트 보호")
 
     def test_released_click_off_card_guesses_previous_card(self):
         # 바루스 판: 한 발에 두 놈(가운데)을 누르고 마우스를 화면 맨 아래로 → 직전 위치로 가운데 카드

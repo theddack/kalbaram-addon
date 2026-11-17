@@ -368,14 +368,20 @@ class Tracker:
         return self._last is not None
 
     def click(self, slot, sure=True):
-        # 카드는 누르는 순간 골라진다 → 처음 누른 카드. 그 뒤 클릭은 사라지는 카드 위를 누른 것
+        # 카드는 누르는 순간 골라진다 → 이번 선택 화면에서 **처음 온 클릭**이 고른 카드.
+        # 그 뒤 클릭은 사라지는 카드 위나 게임 화면을 누른 것
         # (2026-10-17 카이사: 광휘의 검을 누르고 0.6초 뒤 옆 카드를 또 눌러 '빵과 치즈'로 잘못 알림. 예전 기록 3판도 첫 클릭이 맞았다)
-        # sure=False: 위치가 짐작인 클릭 (이미 뗀 클릭의 직전 위치). 확실한 카드 클릭이 없을 때만 고른 칸으로 쓴다
+        # sure=False: 위치가 짐작인 클릭 (이미 뗀 클릭의 '지금 위치'. 확실 = 직전 확인 때 위치).
+        # 2026-11-17 v0.1.94: 예전엔 확실을 짐작보다 늘 먼저 썼는데, 2026-11-08 에 확실·짐작의 뜻이 서로 뒤집히면서
+        # (그 전엔 짐작 = 직전 위치) 우선순위만 옛날 그대로 남아 '나중에 온 클릭'이 이기고 있었다.
+        # 파이크 253초 · 케이틀린 431초: 먼저 온 짐작이 정답인데 0.6~1.9초 뒤 들어온 클릭에 졌다 (tools/aug_replay.py)
         if self._last is None or slot is None:
             return
-        if sure and self._click is None:
+        if self._click is not None or self._guess is not None:
+            return
+        if sure:
             self._click = slot
-        elif not sure and self._guess is None:
+        else:
             self._guess = slot
 
     def _chosen(self):
