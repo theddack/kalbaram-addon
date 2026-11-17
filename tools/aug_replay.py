@@ -20,6 +20,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 import augocr  # noqa: E402
+from gamelog import EOG_SLOTS  # noqa: E402
 
 if hasattr(sys.stdout, "reconfigure"):
     sys.stdout.reconfigure(encoding="utf-8", errors="replace")
@@ -84,7 +85,11 @@ def replay(ev, rule="now"):
 
 
 def judge(picks, eog):
-    """정답(경기 결과)과 맞춰 본다 → (판정, 설명)"""
+    """정답(경기 결과)과 맞춰 본다 → (판정, 설명)
+
+    경기 결과는 playerAugment1~6 **여섯 칸뿐**이고(lcu.py), 펜타킬 묶음처럼 표시용 증강도 한 칸을 쓴다.
+    그래서 여섯 칸이 꽉 찬 판에서 기록에만 있는 증강이 나오면 '감지 실패'가 아니라 '칸 모자람'이다
+    (gamelog.tidy 의 shortfall 과 같은 기준). 판 기록에 shortfall 이 적혀 있으면 그것을 먼저 쓴다."""
     if not eog:
         return "확인 불가", "경기 결과가 없어요"
     truth, got = sorted(map(str, eog.get("augments") or [])), sorted(str(p) for p in picks if p)
@@ -93,9 +98,10 @@ def judge(picks, eog):
     blank = sum(1 for p in picks if not p)
     if not miss and not extra and not blank:
         return "맞음", ""
-    if not miss and extra and len(picks) > len(truth):
-        # 경기 결과 칸(6개)보다 많이 골랐을 수 있다 — 기록에만 있는 것이 있고 결과에만 있는 것은 없을 때
-        return "칸 모자람?", f"기록에만: {', '.join(extra)}"
+    slots = eog.get("slots")
+    full = eog.get("shortfall") or (slots is not None and slots >= EOG_SLOTS) or (slots is None and len(picks) > EOG_SLOTS - 1)
+    if not miss and not blank and extra and full:
+        return "칸 모자람", f"기록에만: {', '.join(extra)}" + (f" (결과 칸 {slots}/{EOG_SLOTS})" if slots else "")
     why = []
     if blank:
         why.append(f"못 읽은 칸 {blank}개")
@@ -126,7 +132,7 @@ def main(argv):
             print("기록 폴더를 못 찾았어요. --dir 로 알려 주세요.")
             return 1
     print(f"클릭 규칙: {rule}")
-    n_ok = 0
+    n_ok = n_short = 0
     rows = []
     for p in targets:
         ev = events_of(p)
@@ -136,6 +142,7 @@ def main(argv):
         picks = replay(ev, rule)
         verdict, why = judge(picks, eog)
         n_ok += verdict == "맞음"
+        n_short += verdict == "칸 모자람"
         rows.append((p.name, verdict, why, eog and eog.get("augments"), picks))
     for name, verdict, why, truth, picks in rows:
         print(f"\n== {name}: {verdict}{' — ' + why if why else ''}")

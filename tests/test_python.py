@@ -1165,6 +1165,25 @@ class AugOcr(unittest.TestCase):
         m.down = False
         self.assertEqual(m.clicked(), (480, 1570), "누르고 있는 클릭은 지금 위치만")
 
+    def test_replay_judge_separates_shortfall(self):
+        """경기 결과 칸은 6개뿐이고 표시용 증강도 한 칸을 쓴다 → 칸이 꽉 찬 판에서 기록에만 있는 증강은
+        '감지 실패'가 아니라 '칸 모자람'이다 (gamelog.tidy shortfall 과 같은 기준)."""
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("aug_replay", ROOT / "tools" / "aug_replay.py")
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        truth = ["헤비", "전부 다 무너뜨려", "조준경 부착", "과충전", "환영 무기"]
+        picks = truth + ["스래시"]
+        self.assertEqual(m.judge(truth, {"augments": truth})[0], "맞음")
+        self.assertEqual(m.judge(picks, {"augments": truth, "slots": 6})[0], "칸 모자람")
+        self.assertEqual(m.judge(picks, {"augments": truth, "shortfall": True})[0], "칸 모자람")
+        # 칸이 안 찼으면 칸 모자람이 아니다
+        self.assertEqual(m.judge(truth + ["스래시"], {"augments": truth, "slots": 5})[0], "다름")
+        # 결과에만 있는 것이 있으면 칸 모자람이 아니다
+        self.assertEqual(m.judge(["헤비"], {"augments": truth, "slots": 6})[0], "다름")
+        # 못 읽은 칸은 따로 알린다
+        self.assertIn("못 읽은 칸", m.judge([None] + truth[1:], {"augments": truth})[1])
+
     def test_first_click_of_the_screen_wins(self):
         """같은 선택 화면에서는 먼저 온 클릭이 고른 카드다 (확실·짐작을 가리지 않는다).
 
