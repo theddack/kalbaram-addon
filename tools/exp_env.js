@@ -11,6 +11,8 @@
 //   FIGHT_SEC=4            평타를 이어 치는 한타 시간(초, 기본 6)
 //   SKILL_SHARE=0.5        스킬 적중 빈도 비율 (기본 0.3)
 //   NORM=own               지표마다 자기 맨몸 값으로 나눔 (v0.1.92까지 = 기준선 A). 기본은 sharedAlly (v0.1.93 P2) · shared 는 모든 챔피언에 같은 분모
+//   NORM=median            전 챔피언 균형 빌드 지표 중앙값을 분모로 (v0.1.93 P3-F 대안 B). tests/data/p3f/norm_median.json 이 있어야 한다
+//   NORM=scaled            분모는 지금처럼 챔피언 맨몸(sharedAlly), 지표마다 '보통 빌드 비율' 중앙값으로 한 번 더 나눔 (대안 B′)
 //   TAG_DEDUP=effect       수치로 이미 계산되는 효과 태그(tools/tag_overlap.js '계산됨')를 아이템 태그 점수에서 뺌 (기본은 그대로)
 //   TAG_DEDUP=unique       TAG_DEDUP=effect 에서 기본 능력치로 계산되는 효과 태그(관통·가속·흡혈 = 능력치 선호)는 남기고, 고유 효과로 계산되는 태그만 뺌 (v0.1.93 P3)
 //   HS_TRAIT=fixed         아군 지원 챔피언의 회복·보호막 특성(HEALSHIELD)을 예전처럼 1.0 고정으로 (v0.1.93 P3 E2 적용 전과 비교용.
@@ -58,7 +60,18 @@ const apply = function apply(S, Stats, env = process.env) {
     parts.push(`존야 ${env.ZHONYA}`);
     S.clearMemo();
   }
-  if (env.NORM && env.NORM !== "sharedAlly") { S.setNormMode(env.NORM); parts.push(`기준값 ${env.NORM}`); }
+  if (env.NORM && env.NORM !== "sharedAlly") {
+    // NORM=median (v0.1.93 P3-F 대안 B): 분모 표를 파일에서 읽는다 (tools/norm_median.js --write 로 만든다)
+    if (env.NORM === "median" || env.NORM === "scaled") {
+      const f = require("path").join(__dirname, "..", "tests", "data", "p3f", "norm_median.json");
+      if (!require("fs").existsSync(f)) throw new Error(`NORM=${env.NORM} 을 쓰려면 먼저 node tools/norm_median.js --write`);
+      const t = JSON.parse(require("fs").readFileSync(f, "utf8"));
+      if (env.NORM === "median") S.setNormMedian(t.norm); else S.setNormScale(t.scale);
+    }
+    S.setNormMode(env.NORM); parts.push(`기준값 ${env.NORM}`);
+  }
+  // NUMK=8.4 수치 세기 (기본 4). 정규화 모드를 바꿨을 때 수치 : 태그 비율을 예전과 같게 맞춰 비교하려고 (실험 전용)
+  if (env.NUMK) { S.setNumK(+env.NUMK); parts.push(`수치 세기 ${env.NUMK}`); }
   if (env.HS_TRAIT === "fixed") {
     const path = require("path");
     const d = JSON.parse(require("fs").readFileSync(path.join(__dirname, "..", "web", "data.json"), "utf8"));

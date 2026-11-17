@@ -58,7 +58,10 @@
   // 아이템 점수 = 수치 증가분 × NUM_K + 태그 점수 × TAG_K.
   // 수치: 최종 능력치로 계산한 스킬 콤보·DPS·유효 체력·회복/보호막의 상대 증가율 (18레벨, 칼바람 보정 포함)
   // 태그: 고유 효과·증강 연계처럼 수치로 안 잡히는 부분
-  const NUM_K = 4;
+  let NUM_K = 4;
+  // 실험 전용: 정규화 모드를 바꾸면 수치 몫 전체가 같이 커지거나 작아져서, 수치 : 태그 비율까지 같이 바뀐다.
+  // 그 두 가지를 갈라 보려고 수치 세기만 따로 맞춘다 (tools/exp_env.js NUMK=, 기본 4 그대로)
+  const setNumK = (v) => { NUM_K = v > 0 ? v : 4; clearMemo(); };
   const LIFT_FROM_CALC = 0.6;
   const AUG_GAIN_MIN = 0.02;  // 증강 몰빵이 균형보다 증강 몫(맨몸 대비 %p)을 이만큼은 늘려야 다른 빌드로 (tools/augment_fit.js NONE 과 같음)  // 계산(계수·발동·변환)으로만 찾은 입력 능력치의 lift 세기 = 설명 키워드 태그 세기 (build_data tag_text)
   const TAG_K = 0.4;
@@ -69,10 +72,30 @@
   //               같은 체력 1을 공격으로 얻을 때 3~4배 높게 쳤다 (잔나 균형 빌드 가치의 공격 몫 76%). docs/v0.1.93_P2_분석.md
   //             "own"    지표마다 자기 맨몸 값 (v0.1.92까지, 비교 기준선 A: tests/data/p2/)
   //             "shared" 같은 분모를 모든 챔피언에 (자기 보호막이 큰 전사까지 바뀌어 쓰지 않음, 실험용)
+  //             "median" 전 챔피언 균형 빌드 지표 중앙값을 모든 챔피언·모든 지표의 분모로 (v0.1.93 P3-F 대안 B, 실험 전용).
+  //                      근거: 지표마다 '맨몸 대비 비율'의 척도가 달라 (기동력 1.05 고정 · 초당 피해 최대 24배)
+  //                      가중치 합이 1인데도 가중치가 뜻대로 동작하지 않았다. docs/v0.1.93_P3F_목적함수_원인조사.md 6절
+  //                      표는 tools/norm_median.js 가 지금 기본값으로 한 번 재서 만든다 (되먹임을 끊으려고 한 번만)
   let NORM_MODE = "sharedAlly";
+  let NORM_MEDIAN = null;
+  let NORM_SCALE = null;
+  const setNormMedian = (t) => { NORM_MEDIAN = t ? { ...t } : null; clearMemo(); };
+  const setNormScale = (t) => { NORM_SCALE = t ? { ...t } : null; clearMemo(); };
   function normOf(m0, champ) {
     const n = {};
     for (const k of Object.keys(METRIC_FLOOR)) n[k] = Math.max(m0[k] || 0, METRIC_FLOOR[k]);
+    if (NORM_MODE === "median" && NORM_MEDIAN) {
+      for (const k of Object.keys(METRIC_FLOOR)) n[k] = NORM_MEDIAN[k] || METRIC_FLOOR[k];
+      return n;
+    }
+    // "scaled" (대안 B′): 챔피언마다 자기 맨몸으로 나누는 건 그대로 두고(sharedAlly), 지표마다 '보통 빌드의 비율'로 한 번 더 나눠
+    // 척도만 맞춘다. 대안 B 에서 분모를 전 챔피언 공통으로 바꾼 탓에 생긴 쏠림(전사·암살자가 풀탱이 됨)을 빼고 척도만 고치는 변형
+    if (NORM_MODE === "scaled" && NORM_SCALE) {
+      const ally = champ && (champ.features || []).includes("allysupport");
+      if (ally) n.combo = n.support = Math.max((m0.combo || 0) + (m0.support || 0), METRIC_FLOOR.combo);
+      for (const k of Object.keys(METRIC_FLOOR)) n[k] *= NORM_SCALE[k] || 1;
+      return n;
+    }
     const ally = champ && (champ.features || []).includes("allysupport");
     if (NORM_MODE === "shared" || (NORM_MODE === "sharedAlly" && ally)) n.combo = n.support = Math.max((m0.combo || 0) + (m0.support || 0), METRIC_FLOOR.combo);
     return n;
@@ -1279,7 +1302,7 @@
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, setTraitOverride, setNormMode, normOf, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, setTraitOverride, setNormMode, setNormMedian, setNormScale, setNumK, normOf, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;
