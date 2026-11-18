@@ -3,15 +3,15 @@
 pywebview==6.2.1
 pyinstaller==6.22.3
 # 증강 선택 화면 읽기 (윈도우 기본 글자 인식 Windows.Media.Ocr). 윈도우에서만 설치
-winrt-runtime==3.2.1; sys_platform == "win32"
-winrt-Windows.Foundation==3.2.1; sys_platform == "win32"
-winrt-Windows.Foundation.Collections==3.2.1; sys_platform == "win32"
-winrt-Windows.Globalization==3.2.1; sys_platform == "win32"
-winrt-Windows.Graphics.Imaging==3.2.1; sys_platform == "win32"
-winrt-Windows.Media.Ocr==3.2.1; sys_platform == "win32"
-winrt-Windows.Storage.Streams==3.2.1; sys_platform == "win32"
+winrt-runtime==4.0.3; sys_platform == "win32"
+winrt-Windows.Foundation==4!10.0.28000.2705; sys_platform == "win32"
+winrt-Windows.Foundation.Collections==4!10.0.28000.2705; sys_platform == "win32"
+winrt-Windows.Globalization==4!10.0.28000.2705; sys_platform == "win32"
+winrt-Windows.Graphics.Imaging==4!10.0.28000.2705; sys_platform == "win32"
+winrt-Windows.Media.Ocr==4!10.0.28000.2705; sys_platform == "win32"
+winrt-Windows.Storage.Streams==4!10.0.28000.2705; sys_platform == "win32"
 # 프로그램 안 '데이터 갱신'(build_data)이 26.21 부터 해시 키로만 있는 새 문자열을 찾는 데 쓴다 (없으면 갱신이 실패로 끝난다)
-xxhash==4.0.1
+xxhash==4.0.2
 # 증강 칸 아이콘 읽기 (hudicons.py). 윈도우에서만
-numpy==2.3.3; sys_platform == "win32"
-pillow==12.3.0; sys_platform == "win32"
+numpy==2.5.4; sys_platform == "win32"
+pillow==13.0.0; sys_platform == "win32"
