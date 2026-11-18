@@ -368,14 +368,20 @@ class Tracker:
         return self._last is not None
 
     def click(self, slot, sure=True):
-        # 카드는 누르는 순간 골라진다 → 처음 누른 카드. 그 뒤 클릭은 사라지는 카드 위를 누른 것
+        # 카드는 누르는 순간 골라진다 → 이번 선택 화면에서 **처음 온 클릭**이 고른 카드.
+        # 그 뒤 클릭은 사라지는 카드 위나 게임 화면을 누른 것
         # (2026-10-17 카이사: 광휘의 검을 누르고 0.6초 뒤 옆 카드를 또 눌러 '빵과 치즈'로 잘못 알림. 예전 기록 3판도 첫 클릭이 맞았다)
-        # sure=False: 위치가 짐작인 클릭 (이미 뗀 클릭의 직전 위치). 확실한 카드 클릭이 없을 때만 고른 칸으로 쓴다
+        # sure=False: 위치가 짐작인 클릭 (이미 뗀 클릭의 '지금 위치'. 확실 = 직전 확인 때 위치).
+        # 2026-11-17 v0.1.94: 예전엔 확실을 짐작보다 늘 먼저 썼는데, 2026-11-08 에 확실·짐작의 뜻이 서로 뒤집히면서
+        # (그 전엔 짐작 = 직전 위치) 우선순위만 옛날 그대로 남아 '나중에 온 클릭'이 이기고 있었다.
+        # 파이크 253초 · 케이틀린 431초: 먼저 온 짐작이 정답인데 0.6~1.9초 뒤 들어온 클릭에 졌다 (tools/aug_replay.py)
         if self._last is None or slot is None:
             return
-        if sure and self._click is None:
+        if self._click is not None or self._guess is not None:
+            return
+        if sure:
             self._click = slot
-        elif not sure and self._guess is None:
+        else:
             self._guess = slot
 
     def _chosen(self):
@@ -425,7 +431,7 @@ class Tracker:
             # 안 돌아왔거나 다른 선택지(다음 선택 화면)가 떴다 → 그때 못 정함으로. 다시 뜬 화면을 한 칸 못 읽은 것(빈칸)은 같은 선택지
             # (빈칸 하나를 다른 선택지로 보고 '못 정함'을 먼저 알린 뒤, 이어서 고르면 고른 것이 하나 더 생겼다)
             if not offers3 or not all(n is None or n == f for n, f in zip(offers3, frm)):
-                self.state = {**self.state, "picked": None, "pickedFrom": frm, "replaces": None, "by": "click",
+                self.state = {**self.state, "picked": None, "pickedFrom": frm, "pickedSlot": None, "replaces": None, "by": "click",
                               "pickSeq": self.state["pickSeq"] + 1}
         if offers3 and self._reroll_old:
             # 새로고침 연출 중 다시 읽힌 옛 이름은 빈칸으로 (REROLL_ANIM 초 안)
@@ -461,6 +467,7 @@ class Tracker:
                 # 카드를 누른 뒤 닫히지 않고 바로 세 칸이 다 다른 선택 화면이 떴다 = 누른 카드를 고르고 다음 선택 화면 (2026-10-22 하이머딩거 판:
                 # 유레카를 누르고 3초 뒤 다른 선택 화면이 바로 떠서 유레카를 '고른 증강'으로 못 셌다)
                 self.state = {**self.state, "picked": self._last[self._chosen()], "pickedFrom": self._last,
+                              "pickedSlot": self._chosen(),
                               "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
                 self._last, self._click, self._guess = None, None, None
                 self._reroll_wait, self._reroll_old = set(), {}
@@ -496,7 +503,11 @@ class Tracker:
                 self._pending = {"from": self._last, "at": now}
                 self.state = {**self.state, "offers": None, "pos": None}
             else:
+                # 누른 칸은 아는데 그 칸 이름을 못 읽었으면(새로고침 직후 클릭) picked 는 None 이다 →
+                # 어느 칸을 눌렀는지(pickedSlot)를 같이 남겨 화면이 '그 칸 이름을 못 읽었다'고 알릴 수 있게 한다.
+                # 2026-11-15 그레이브즈 판: 0번 칸을 새로고침하고 1.6초 만에 눌러 '검을 뽑아라'를 이름 없이 잃었다 (v0.1.94)
                 self.state = {**self.state, "offers": None, "pos": None, "picked": self._last[self._chosen()], "pickedFrom": self._last,
+                              "pickedSlot": self._chosen(),
                               "replaces": None, "by": "click", "pickSeq": self.state["pickSeq"] + 1}
             self._last, self._click, self._guess, self._miss = None, None, None, 0
             self._reroll_wait = set()
@@ -1255,7 +1266,7 @@ class Reader(threading.Thread):
             return
         name, frm, click = fix
         st = self.tracker.state
-        self.tracker.state = {**st, "picked": name, "pickedFrom": frm, "replaces": click, "by": "hud",
+        self.tracker.state = {**st, "picked": name, "pickedFrom": frm, "pickedSlot": None, "replaces": click, "by": "hud",
                               "pickSeq": st["pickSeq"] + 1}
         self._rec("picked", {"picked": name, "from": frm, "by": "hud", "replaces": click})
         self._changed()
@@ -1341,7 +1352,8 @@ class Reader(threading.Thread):
         """고른 것이 정해졌을 때: 기록하고, 증강 칸 그림으로 맞는지 확인을 건다"""
         if after.get("pickSeq") == before.get("pickSeq"):
             return
-        self._rec("picked", {"picked": after.get("picked"), "from": after.get("pickedFrom"), "by": "click"})
+        self._rec("picked", {"picked": after.get("picked"), "from": after.get("pickedFrom"), "by": "click",
+                             **({"slot": after["pickedSlot"]} if after.get("picked") is None and after.get("pickedSlot") is not None else {})})
         if not self.hud_blind():
             self._hud_at = time.time() + 2  # 고른 직후엔 증강 칸을 바로 확인
             self._hud_soon = True  # 지금 읽는 중이면 끝나고 바로 한 번 더
