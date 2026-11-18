@@ -453,6 +453,49 @@ test("재생(그레이브즈): 증강 칸으로 확인된 증강이 앞쪽 짐�
   assert.deepEqual(p.errors, []);
 });
 
+// 6칸이 찼어도 선택 화면이 또 뜨면 보여 준다 (N1). 선택 화면이 떴다 = 게임이 아직 더 고르게 한다 = 칸 쪽이 틀렸다
+test("6칸이 차도 새 선택 화면을 보여 주고, 칸을 뺀 뒤 바로 고를 수 있다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "MissFortune", level: 16, items: [] });
+  // 클릭으로만 잡은(짐작) 6개로 칸을 채운다
+  const six = ["부식", "전부 다 무너뜨려", "헤비", "조준경 부착", "과충전", "환영 무기"];
+  let ps = 0;
+  for (const n of six) p.w.applyAug({ offers: null, seq: 1, picked: n, pickedFrom: [n, "강타자", "열의"], pickSeq: ++ps });
+  assert.equal([...p.doc.querySelectorAll("#chosen .slot[data-i]")].length, 6);
+  // 새 선택 화면
+  p.w.applyAug({ offers: ["강타자", "열의", "속전속결"], seq: 2, pickSeq: ps, rerolled: [false, false, false] });
+  await new Promise((r) => setTimeout(r, 300));
+  const vals = [...p.doc.querySelectorAll("#offers input[type=search]")].map((el) => el.value);
+  assert.deepEqual(vals, ["강타자", "열의", "속전속결"], "선택지가 보인다 (예전엔 빈 칸이었다)");
+  assert.equal(sent.at(-1).cards.filter(Boolean).length, 3, "게임 화면에도 카드 3장");
+  assert.match(p.text("#offer-result"), /강타자/, "선택지 평가도 계산한다");
+  // 틀린 칸을 눌러 빼면 바로 고를 수 있다
+  const slot = [...p.doc.querySelectorAll("#chosen .slot[data-i]")].find((el) => /환영 무기/.test(el.textContent));
+  slot.click();
+  assert.equal([...p.doc.querySelectorAll("#offers input[type=search]")].filter((el) => el.disabled).length, 0, "칸이 비면 직접 입력도 열린다");
+  p.w.applyAug({ offers: null, seq: 2, picked: "속전속결", pickedFrom: ["강타자", "열의", "속전속결"], pickSeq: ++ps });
+  assert.match(p.text("#chosen"), /속전속결/, "뺀 자리에 들어간다");
+  assert.deepEqual(p.errors, []);
+});
+
+// 안내 문구는 실제로 고른 개수를 쓴다 (N3). 동작은 안 바뀐다
+test("안내 문구가 고른 개수를 따라간다 (6칸인데 '4개'라고 하지 않는다)", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.pywebview = { api: { set_overlay: () => {} } };
+  p.w.applyLive({ enabled: true, inGame: true, champion: "MissFortune", level: 16, items: [] });
+  const id = (n) => p.data.augments.find((a) => a.name === n).id;
+  const six = ["부식", "전부 다 무너뜨려", "헤비", "조준경 부착", "과충전", "환영 무기"];
+  p.w.applyAug({ offers: null, seq: 1, pickSeq: 0, hudPicked: six.slice(0, 4).map(id) });
+  assert.match(p.text("#aug-title"), /증강 4개 완료/);
+  assert.match(p.text("#offer-result"), /증강 4개를 다 골랐어요/);
+  p.w.applyAug({ offers: null, seq: 1, pickSeq: 0, hudPicked: six.map(id) });
+  assert.match(p.text("#aug-title"), /증강 6개 완료/, "6개면 6개라고 한다");
+  assert.match(p.text("#offer-result"), /증강 6개를 다 골랐어요/);
+  assert.deepEqual(p.errors, []);
+});
+
 // 잘못 인식한 증강이 쌓여 6칸을 채워도 사람이 손으로 고칠 수 있어야 한다
 test("증강 6칸이 다 차도 칸을 눌러 빼고 다시 고를 수 있다", async () => {
   const p = await loadPage({ simple: true });

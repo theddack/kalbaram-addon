@@ -1273,7 +1273,7 @@ function renderOfferResult() {
   if (!state.champ || !offers.length) {
     offerSeq++;  // 미뤄 둔 몰빵 빌드 계산 취소
     if (!$("#ov-preview") || !$("#ov-preview").checked) pushOverlay([], "clear:no-offers");  // 위치 맞추기 미리 보기 중이면 예시 카드를 지우지 않는다
-    out.innerHTML = state.chosen.length >= 4 ? `<p class="muted small">증강 4개를 다 골랐어요.</p>`
+    out.innerHTML = state.chosen.length >= 4 ? `<p class="muted small">증강 ${state.chosen.length}개를 다 골랐어요.</p>`
       : `<p class="muted small">게임에 뜬 증강 이름을 입력하면 고를 때마다 빌드·수치가 어떻게 바뀌는지 비교해요.</p>`;
     return;
   }
@@ -1624,7 +1624,7 @@ function renderAugs() {
   if (!state.champ) { list.innerHTML = ""; return; }
   // 증강 4개를 다 골랐으면 더 고를 게 없다: 목록 대신 완료 요약 (등급 계산도 건너뛴다. 피드백 #15)
   if (state.chosen.length >= 4 && !state.showAllAugs) {
-    $("#aug-title").textContent = "증강 4개 완료";
+    $("#aug-title").textContent = `증강 ${state.chosen.length}개 완료`;
     $("#tier-basis").textContent = state.chosen.map((a) => a.name).join(" + ");
     $("#tier-mode").hidden = true;
     list.innerHTML = `<p class="muted small">증강을 다 골랐어요. 오른쪽 '다음에 살 아이템'을 보세요.</p>`
@@ -2204,15 +2204,15 @@ function applyAug(A) {
     // 환영 무기가 차례로 지워져 판의 절반 이상을 6개 중 3개로 추천했다). 2026-10-15 케일 판이 막혔던 까닭은
     // 그때 상한이 4라 4개가 차면 선택지를 버린 것이고, 지금은 AUG_MAX = 6이라 선택지가 그대로 뜬다.
     // 틀린 짐작은 증강 칸 확인(_settle_unverified)이 바로잡고, 화면에서 칸을 눌러 직접 뺄 수도 있다
-    if (state.chosen.length < AUG_MAX) {
-      // 새로고침 씀: 증강 인식이 새로고침 버튼 클릭을 본 칸 + 같은 선택 화면이면 직접 체크한 칸 (다른 화면이면 새로, 피드백 #9)
-      const next = A.offers.map(byName);
-      const same = state.offers.some((a, i) => a && next[i] && a.id === next[i].id);
-      state.rerolled = [0, 1, 2].map((i) => !!(A.rerolled && A.rerolled[i]) || (same && state.rerolled[i]));
-      state.offers = next;
-      state.offersClosed = false;
-      offersOnly = true;
-    }
+    // 칸이 찼어도 선택 화면은 보여 준다. 선택 화면이 떴다 = 게임이 아직 더 고르게 한다 = 칸 쪽이 틀렸다는 뜻이다.
+    // 예전엔 칸이 차면 선택지를 통째로 버려서, 칸이 잘못 찬 판에서는 화면이 빈 채로 멈췄다 (2026-10-15 케일 판의 6칸 판)
+    // 새로고침 씀: 증강 인식이 새로고침 버튼 클릭을 본 칸 + 같은 선택 화면이면 직접 체크한 칸 (다른 화면이면 새로, 피드백 #9)
+    const next = A.offers.map(byName);
+    const same = state.offers.some((a, i) => a && next[i] && a.id === next[i].id);
+    state.rerolled = [0, 1, 2].map((i) => !!(A.rerolled && A.rerolled[i]) || (same && state.rerolled[i]));
+    state.offers = next;
+    state.offersClosed = false;
+    offersOnly = true;
   } else if (A.offers && A.rerolled && A.rerolled.some((v, i) => v && !state.rerolled[i])) {
     state.rerolled = state.rerolled.map((v, i) => v || !!A.rerolled[i]);  // 새로고침을 눌렀는데 새 이름은 아직 못 읽음
     offersOnly = true;
