@@ -425,11 +425,20 @@
       // 고른 증강이 반대 유형을 키우면 막지 않는다. 내 유형도 똑같이 키우는 증강(불을 밝혀: 공격력·주문력)은 반대로 가는 증강이 아니다
       const liftOf = (keys) => Math.max(0, ...keys.map((t) => lift[t] || 0));
       const converts = Object.keys(conv).some((t) => rule.off.includes(conv[t]) || rule.off.includes(t));
-      const flips = converts || (liftOf(rule.off) >= 0.5 && liftOf(rule.off) > liftOf(rule.own));
+      // 2026-11-24 B2: 반대 유형을 여는 근거는 '그 능력치가 증강의 피해 계산에 실제로 쓰일 때'다.
+      // 회복·보호막 계수에만 쓰이는 주문력(전술적 대비: 사망 시 보호막)이나 수치 계산이 아예 없는 설명 태그
+      // (3연발·주문 분산·다중 공격의 주문력 태그)로는 열지 않는다 — 물리 챔피언 78명 전원의 차단이 통째로 꺼졌다
+      const dmgLift = (t) => Object.values(ctx.liftBy || {}).some((l) => (l[t] || 0) >= 0.5 && l._dmg && l._dmg.has(t));
+      const opened = rule.off.filter((t) => (lift[t] || 0) >= 0.5 && dmgLift(t));
+      const flips = converts || (opened.length > 0 && liftOf(rule.off) > liftOf(rule.own));
       const off = (item) => isOffItem(critTags(item, conv));
-      if (!flips) {
-        bootsOff = off;  // 신발은 공식 추천이 반대여도 빌드 유형에 맞춘다 (2026-11-12 점검: 원딜 카이사 빌드에 마법사의 신발)
-        if (committed || !officialAgainst(champ, rule, pool)) typeOff = off;
+      // 연계되는 능력치를 가진 반대 유형 아이템만 연다: 치명타 증강을 고른 마법 챔피언에게 무한의 대검(공격력+치명타)은 막지 않고,
+      // 치명타가 없는 공격력 아이템(몰락한 왕의 검)은 계속 뒤로 민다. 유형 환산 증강은 지금처럼 전체 해제
+      const offUnlinked = (item) => { const t = critTags(item, conv); return isOffItem(t) && !opened.some((k) => (t[k] || 0) >= 0.5); };
+      if (!flips || !converts) {
+        const blocked = flips ? offUnlinked : off;
+        bootsOff = blocked;  // 신발은 공식 추천이 반대여도 빌드 유형에 맞춘다 (2026-11-12 점검: 원딜 카이사 빌드에 마법사의 신발)
+        if (committed || !officialAgainst(champ, rule, pool)) typeOff = blocked;
       }
     }
     // 마법 챔피언에게 공격 속도 신발(광전사의 군화)은 공격 속도·적중 시 효과를 키우는 증강이나 공식 추천이 있을 때만
@@ -438,6 +447,9 @@
     const noAsBoots = champ.damageType === "magic" && !((lift.AS || 0) >= 0.5 || (lift.ONHIT || 0) >= 0.5);
     return (item) => {
       if (cantBuy(champ, item)) return true;
+      // 고른 증강이 이름으로 요구·연계하는 아이템은 반대 유형이어도 막지 않는다 (무한의 대검 업그레이드·궁극의 히드라 …).
+      // 2026-11-24 B2: 예전엔 그 증강의 '태그'가 반대 유형 전체를 열어 줘서 같이 통과했다. 이제 그 아이템만 통과시킨다
+      if ((ctx.wanted || {})[item.name]) return false;
       const t = critTags(item, conv);
       if (noCrit && (t.CRIT || 0) >= 0.5) return true;
       if (item.kind === "boots") {
@@ -999,7 +1011,7 @@
       // 균형: 맞지 않는 유형의 아이템을 모두 요구하는 퀘스트(메이지 + 궁극의 히드라)엔 빌드를 맞추지 않는다 (몰빵은 맞춘다).
       // 증강 자체가 그 유형을 키우니(lift) 증강 방향을 빼고 챔피언 본래 유형으로 판단
       if (c.key === "balanced" && champ && !isHybrid(champ) && ctx.mustAll.size) {
-        const own = offTypeFilter(champ, { ...ctx, lift: {}, tags: {} }, c, items, fixed);
+        const own = offTypeFilter(champ, { ...ctx, lift: {}, tags: {}, wanted: {} }, c, items, fixed);
         const byName = (n) => items.find((i) => i.name === n);
         if (own) cctx = { ...cctx, must: cctx.must.filter((g) => !(g.length === 1 && ctx.mustAll.has(g[0]) && byName(g[0]) && own(byName(g[0])))) };
       }
@@ -1008,7 +1020,7 @@
         ? new Set(buildConcepts(items, w, [], fixed, rules, champ0, statOpts, ["balanced"])[0].pick.filter((p) => !p.fixed && p.item.kind === "legendary").map((p) => p.item.name))
         : null;
       // 반대 유형 = 증강이 키우는 방향(lift)을 뺀 챔피언 본래 유형 기준
-      const offType = core && champ ? offTypeFilter(champ, { ...ctx, lift: {}, tags: {} }, c, items, fixed) : null;
+      const offType = core && champ ? offTypeFilter(champ, { ...ctx, lift: {}, tags: {}, wanted: {} }, c, items, fixed) : null;
       const cmw = num ? conceptMetricWeights(w, chosen, rules, champ0, c, statOpts) : null;
       const amw = num && c.focus ? augOutputWeights(chosen, rules, champ0, statOpts) : null;
       const fallback = c.focus && AUG_DELTA != null && num && chosen.length

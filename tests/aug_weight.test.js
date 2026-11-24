@@ -72,14 +72,33 @@ test("[B1 근거] 보석 건틀릿 아리에게 무한의 대검의 combo 상승
 });
 
 // ── B2: 부수 효과의 lift 하나로 반대 유형 차단이 통째로 꺼진다 ───────────────────
-test("[B2 재현] 보호막 증강(전술적 대비)이 징크스의 반대 유형 차단을 통째로 끈다", () => {
+test("[B2 수정] 보호막 계수로 붙은 주문력은 징크스의 반대 유형 차단을 끄지 않는다", () => {
   const c = champ("Jinx");
   const before = offTypeCount(c, []);
-  const after = offTypeCount(c, [aug("전술적 대비")]);
+  // 수정 전: 전술적 대비 뒤 0개 (차단이 통째로 꺼졌다). 전술적 대비의 주문력은 사망 시 보호막 계수에서만 쓰인다
   assert.ok(before > 20, `증강 없을 때 반대 유형 ${before}개`);
-  assert.equal(after, 0, `전술적 대비 뒤 ${after}개`);
-  // 전술적 대비의 lift 는 {AP 0.6, HEALSHIELD 0.6} — 주문력은 사망 시 보호막 계수에서 온 부수 효과다.
-  // ⇒ Phase 2 후: 주문력 아이템만 열리고, 주문력과 무관한 반대 유형 아이템은 계속 뒤로 밀려야 한다 (0개가 되면 안 된다).
+  assert.equal(offTypeCount(c, [aug("전술적 대비")]), before, "보호막 계수 주문력으로 열렸다");
+});
+
+test("[B2 수정] 수치 계산이 없는 설명 태그만으로는 반대 유형이 열리지 않는다", () => {
+  const c = champ("Jinx");
+  const before = offTypeCount(c, []);
+  // 3연발·주문 분산·다중 공격은 주문력 계수가 하나도 없는데 태그 하나로 물리 챔피언 전원의 차단을 껐다
+  for (const n of ["3연발", "주문 분산", "다중 공격"]) {
+    assert.equal(offTypeCount(c, [aug(n)]), before, `${n} 으로 열렸다`);
+  }
+});
+
+test("[B2 수정] 치명타 증강을 고른 마법 챔피언에게 무한의 대검은 차단되지 않는다", () => {
+  const c = champ("Ahri");
+  const rows = S.rankItems(d.items, S.profile(c, d.tags), [aug("보석 건틀릿")], [], d.rules, c, { aram: true }, "augment");
+  const row = (n) => rows.find((r) => r.item.name === n);
+  // 공격력과 치명타를 같이 가진 아이템: 치명타가 증강과 연계되므로 공격력 때문에 막지 않는다 (순위는 계산에 맡긴다)
+  assert.ok(!row("무한의 대검").offType, "무한의 대검이 차단됐다");
+  assert.ok(!row("정수 약탈자").offType, "정수 약탈자가 차단됐다");
+  // 치명타가 없는 공격력 아이템은 계속 뒤로 민다 (전체 해제가 아니다)
+  assert.ok(row("몰락한 왕의 검").offType, "몰락한 왕의 검이 열렸다");
+  assert.ok(row("요우무의 유령검").offType, "요우무의 유령검이 열렸다");
 });
 
 test("[B2 유지] 유형 전환 증강(적응형 능력치)은 지금처럼 전체 해제여야 한다", () => {

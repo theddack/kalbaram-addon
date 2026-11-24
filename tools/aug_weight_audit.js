@@ -183,7 +183,11 @@ function flipsFor(dt, ctx) {
   const rule = OFF[dt], lift = ctx.lift || {}, conv = ctx.convert || {};
   const liftOf = (keys) => Math.max(0, ...keys.map((t) => lift[t] || 0));
   const converts = Object.keys(conv).some((t) => rule.off.includes(conv[t]) || rule.off.includes(t));
-  return { flips: converts || (liftOf(rule.off) >= 0.5 && liftOf(rule.off) > liftOf(rule.own)), converts, offLift: liftOf(rule.off), ownLift: liftOf(rule.own) };
+  // 2026-11-24 B2 수정 반영: 반대 유형 능력치가 그 증강의 피해 계산에 실제로 쓰일 때만 연다 (augContext 의 _dmg 를 그대로 본다)
+  const dmgLift = (t) => Object.values(ctx.liftBy || {}).some((l) => (l[t] || 0) >= 0.5 && l._dmg && l._dmg.has(t));
+  const opened = rule.off.filter((t) => (lift[t] || 0) >= 0.5 && dmgLift(t));
+  const flips = converts || (opened.length > 0 && liftOf(rule.off) > liftOf(rule.own));
+  return { flips, converts, opened, offLift: liftOf(rule.off), ownLift: liftOf(rule.own) };
 }
 
 // ── 전수 계산 ─────────────────────────────────────────────────────────────────
