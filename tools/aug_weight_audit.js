@@ -25,13 +25,16 @@ const BUCKET = {
   HP: [["ehp", 0.5]], ARMOR: [["ehp", 0.5]], MR: [["ehp", 0.5]], HEALSHIELD: [["support", 1]],
   MS: [["mobility", 0.4]], CC: [["control", 0.8]],
 };
-const bucketOf = (t) => (BUCKET[t] || []).map(([k, v]) => `${k}×${v}`).join("+") || "-";
+// CRITSKILL 은 아이템 태그가 아니다: metricWeights 에서 min(CRITSKILL, CRIT) 만큼의 치명타 몫을 dps 대신 combo 로 보낸다
+const MOVE = { CRITSKILL: "CRIT 몫 min(CRITSKILL,CRIT) 을 dps→combo 로" };
+const bucketOf = (t) => MOVE[t] || (BUCKET[t] || []).map(([k, v]) => `${k}×${v}`).join("+") || "-";
 
-// ── 효과 성격 (같은 CRIT 태그 안에 섞여 있는 서로 다른 효과) ─────────────────────
+// ── 효과 성격 (CRIT 태그 안에 섞여 있던 서로 다른 효과 — 2026-11-24 B1 수정으로 스킬 쪽에는 CRITSKILL 이 같이 붙는다) ─
+const ATTACK_TRIGGER = new Set(["onhit", "attacks", "onattack"]);  // = web/scoring.js ATTACK_TRIGGER
 const KIND_KEYS = {
-  "스킬 치명타": ["skillCritDmg", "effectCritDmg", "ultCritDmg", "APtoCRIT"],
+  "스킬 치명타": ["skillCritDmg", "effectCritDmg", "ultCritDmg"],  // = web/scoring.js SKILL_CRIT_KEYS (CRITSKILL 이 붙는 키)
   "평타 치명타": ["critStackAS", "onhitOnCrit", "AStoCRITDMG"],
-  "치명타 확률": ["CRIT"],
+  "치명타 확률": ["CRIT", "APtoCRIT"],  // APtoCRIT 은 주문력을 치명타 '확률' 로 — 터지는 자리는 평타라서 CRITSKILL 이 안 붙는다
   "적중 시 효과": ["onhitDmg", "onhitMult", "ONHIT"],
   "공격 속도": ["AS", "bonusAS", "ASmult", "itemADtoAS", "AStoHASTE"],
 };
@@ -45,7 +48,7 @@ function effectKinds(a) {
     const tr = (e.trigger || {}).type;
     if (tr === "onhit" || tr === "attacks") kinds.add("적중 시 효과");
     if (tr === "onattack") kinds.add("공격 속도");
-    if (e.chance === "CRIT" || e.countCrit) kinds.add("평타 치명타");
+    if (e.chance === "CRIT" || e.countCrit) kinds.add(ATTACK_TRIGGER.has(tr) ? "평타 치명타" : "스킬 치명타");
   }
   if (Object.keys(rule.convert || {}).length) kinds.add("피해 유형 전환");
   return [...kinds];
@@ -273,6 +276,7 @@ function markdown() {
   L.push(`게임 데이터 \`${audit.dataVersion}\` · 만든 도구: \`node tools/aug_weight_audit.js --write\` · 증강 ${rows.length}개 전수`, "");
   L.push("> 증강의 실제 효과가 어떤 계산 경로를 거쳐 추천 가중치의 어느 칸으로 들어가는지 한 줄씩 적는다.", "");
   L.push("경로: `rules.augments.*.statsResolved` / `augments[].effects` → `scaleTags` → `augContext.lift` → `conceptWeights` → `metricWeights` 칸 → `offTypeFilter`", "");
+  L.push("`CRITSKILL` 은 아이템 태그가 아니라 표식이다: 치명타가 어느 자리(평타/스킬)에서 터지는지를 `metricWeights` 에만 알려 준다 (`scaleTags` → `conceptWeights` → `metricWeights`).", "");
 
   L.push("## 1. 수치원", "");
   const bySrc = {};
@@ -285,16 +289,28 @@ function markdown() {
 
   L.push("## 2. 같은 태그로 뭉친 서로 다른 효과", "");
   L.push("| 효과 성격 | 증강 수 | 지금 붙는 태그 | 그 태그가 가는 지표 칸 |", "|---|---:|---|---|");
-  const kindTag = { "스킬 치명타": "CRIT", "평타 치명타": "CRIT", "치명타 확률": "CRIT", "적중 시 효과": "ONHIT", "공격 속도": "AS", "피해 유형 전환": "convert" };
+  const kindTag = {
+    "스킬 치명타": ["CRIT + CRITSKILL", "그 몫은 combo×1 (평타 칸으로 안 감)"],
+    "평타 치명타": ["CRIT", "dps×1"],
+    "치명타 확률": ["CRIT", "dps×1"],
+    "적중 시 효과": ["ONHIT", "dps×0.5"],
+    "공격 속도": ["AS", "dps×1"],
+    "피해 유형 전환": ["convert", "태그 자체를 바꿈"],
+  };
   for (const kind of [...Object.keys(KIND_KEYS), "피해 유형 전환"]) {
     const list = rows.filter((r) => r.kinds.includes(kind));
-    const t = kindTag[kind];
-    L.push(`| ${kind} | ${list.length} | ${t} | ${t === "convert" ? "태그 자체를 바꿈" : bucketOf(t)} |`);
+    const [t, b] = kindTag[kind];
+    L.push(`| ${kind} | ${list.length} | ${t} | ${b} |`);
   }
   L.push("");
-  L.push("### 2.1 `lift.CRIT ≥ 0.5` 증강 — 효과 성격이 다른데 전부 `dps`(평타) 칸", "");
-  L.push("| 증강 | lift.CRIT | 효과 키 | 효과 성격 | 지금 가는 칸 |", "|---|---:|---|---|---|");
-  for (const r of critRows) L.push(`| ${r.name} | ${r.lift.CRIT} | ${r.keys.filter((k) => /CRIT|crit/i.test(k)).join(", ") || "-"} | ${r.kinds.join(" + ") || "수치 없음 (태그만)"} | dps |`);
+  L.push("### 2.1 `lift.CRIT ≥ 0.5` 증강 — 효과 성격별로 가는 칸 (2026-11-24 B1 수정 반영)", "");
+  L.push("> 치명타가 스킬·아이템 효과에 붙는 증강은 `CRITSKILL` 이 같이 붙어, 그 몫만큼 `dps` 대신 `combo` 로 간다. 챔피언 본래 치명타 성향은 그대로 `dps` 에 남는다.", "");
+  L.push("| 증강 | lift.CRIT | lift.CRITSKILL | 효과 키 | 효과 성격 | 가는 칸 |", "|---|---:|---:|---|---|---|");
+  for (const r of critRows) {
+    const cs = r.lift.CRITSKILL || 0;
+    const dest = cs ? `combo (치명타 몫 중 ${Math.min(cs, r.lift.CRIT)}) + dps (나머지)` : "dps";
+    L.push(`| ${r.name} | ${r.lift.CRIT} | ${cs || "-"} | ${r.keys.filter((k) => /CRIT|crit/i.test(k)).join(", ") || "-"} | ${r.kinds.join(" + ") || "수치 없음 (태그만)"} | ${dest} |`);
+  }
   L.push("");
 
   L.push("## 3. 반대 유형 차단 전체 해제(`flips`)", "");
