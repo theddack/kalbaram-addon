@@ -1,0 +1,84 @@
+// v0.1.95 재현 테스트 (수정 전에 먼저 작성): B1·B2·B3 가 지금 어떻게 틀리는지를 숫자로 고정해 둔다.
+// 여기 적힌 값은 '지금 상태'다. Phase 2·3 에서 고치면 ⇒ 로 적힌 쪽으로 바뀌어야 하고, 그때 이 파일의 단언을 뒤집는다.
+// 특정 아이템을 몇 위로 만들자는 기준이 아니라, 효과 성격과 점수 기여도가 맞물리는지를 본다.
+const test = require("node:test");
+const assert = require("node:assert/strict");
+const path = require("path");
+const WEB = path.join(__dirname, "..", "web");
+global.Stats = global.Stats || require(path.join(WEB, "stats.js"));
+const St = global.Stats;
+const S = require(path.join(WEB, "scoring.js"));
+const d = require(path.join(WEB, "data.json"));
+S.attachSimilar(d.champions, null, d.items);
+
+const champ = (id) => d.champions.find((c) => c.id === id);
+const item = (name) => d.items.find((i) => i.name === name);
+const aug = (name) => d.augments.find((a) => a.name === name);
+const AUG = S.CONCEPTS.find((c) => c.key === "augment");
+const mwOf = (c, chosen) => S.metricWeights(S.conceptWeights(S.profile(c, d.tags), S.augContext(chosen, d.rules, c), AUG));
+const offTypeCount = (c, chosen) =>
+  S.rankItems(d.items, S.profile(c, d.tags), chosen, [], d.rules, c, { aram: true }, chosen.length ? "augment" : "balanced")
+    .filter((r) => r.item.kind === "legendary" && r.offType).length;
+
+// ── B1: 스킬 치명타와 평타 치명타가 같은 CRIT 태그로 묶여 전부 평타(dps) 칸으로 간다 ──
+test("[B1 재현] 스킬 치명타 증강(보석 건틀릿)이 아리의 평타 가중치를 20배 넘게 키운다", () => {
+  const c = champ("Ahri");
+  const a = mwOf(c, []), b = mwOf(c, [aug("보석 건틀릿")]);
+  // 지금: dps 0.018 → 0.379 (21.5배), combo 0.692 → 0.520
+  assert.ok(b.dps / a.dps > 10, `dps 배수 ${(b.dps / a.dps).toFixed(1)}`);
+  assert.ok(b.combo < a.combo, `combo ${a.combo.toFixed(3)} → ${b.combo.toFixed(3)}`);
+  // ⇒ Phase 2 후: 스킬 치명타는 combo 쪽으로 가야 하므로 dps 배수가 10배 아래로 내려오고 combo 는 크게 깎이지 않는다.
+});
+
+test("[B1 근거] 보석 건틀릿 아리에게 무한의 대검의 combo 상승은 전부 치명타에서 온다 (공격력 몫 0)", () => {
+  const c = champ("Ahri");
+  const A = S.augStatsOf([aug("보석 건틀릿")], d.rules, c);
+  const base = ["리안드리의 고통", "그림자불꽃", "폭풍 쇄도", "라바돈의 죽음모자", "공허의 지팡이"].map(item);
+  const IE = item("무한의 대검");
+  const mk = (suf, keep) => ({ ...IE, id: IE.id + suf, stats: Object.fromEntries(Object.entries(IE.stats).filter(([k]) => keep(k))) });
+  const m0 = St.evaluate(c, 18, base, A, { aram: true }).m;
+  const ev = (x) => St.evaluate(c, 18, base.concat([x]), A, { aram: true }).m;
+  const full = ev(IE), adOnly = ev(mk("_ad", (k) => !/CRIT/.test(k))), critOnly = ev(mk("_crit", (k) => /CRIT/.test(k)));
+  // 수치 계산 자체는 맞다: 공격력 75 는 아리의 콤보 피해를 전혀 못 올리고, 치명타가 올린 몫이 전부다
+  assert.ok(Math.abs(adOnly.combo - m0.combo) < 1, `공격력만: combo ${Math.round(m0.combo)} → ${Math.round(adOnly.combo)}`);
+  assert.ok(Math.abs(critOnly.combo - full.combo) < 1, `치명타만 ${Math.round(critOnly.combo)} vs 전체 ${Math.round(full.combo)}`);
+  // ⇒ Phase 2 후에도 이 사실은 그대로여야 한다 (수치 계산은 건드리지 않는다).
+});
+
+// ── B2: 부수 효과의 lift 하나로 반대 유형 차단이 통째로 꺼진다 ───────────────────
+test("[B2 재현] 보호막 증강(전술적 대비)이 징크스의 반대 유형 차단을 통째로 끈다", () => {
+  const c = champ("Jinx");
+  const before = offTypeCount(c, []);
+  const after = offTypeCount(c, [aug("전술적 대비")]);
+  assert.ok(before > 20, `증강 없을 때 반대 유형 ${before}개`);
+  assert.equal(after, 0, `전술적 대비 뒤 ${after}개`);
+  // 전술적 대비의 lift 는 {AP 0.6, HEALSHIELD 0.6} — 주문력은 사망 시 보호막 계수에서 온 부수 효과다.
+  // ⇒ Phase 2 후: 주문력 아이템만 열리고, 주문력과 무관한 반대 유형 아이템은 계속 뒤로 밀려야 한다 (0개가 되면 안 된다).
+});
+
+test("[B2 유지] 유형 전환 증강(적응형 능력치)은 지금처럼 전체 해제여야 한다", () => {
+  const c = champ("Jinx");
+  assert.equal(offTypeCount(c, [aug("적응형 능력치")]), 0);
+  // ⇒ Phase 2 후에도 0 (convert 가 있는 증강은 비정석 빌드를 막지 않는다).
+});
+
+// ── B3: 캐시 열쇠에 상대 회복량(TARGET.HEAL)이 빠져 옛 결과가 남는다 ──────────────
+test("[B3 재현] 상대 회복량만 바뀌면 빌드 계산이 옛 결과를 그대로 돌려준다", () => {
+  const c = champ("Galio");
+  const opts = { aram: true, enemyMagic: 0.5 }, T = { ARMOR: 170, MR: 65, HP: 3450 };
+  const build = () => S.buildConcepts(d.items, S.profile(c, d.tags), [], [], d.rules, c, opts, ["balanced"])[0].pick.map((p) => p.item.name).join(" / ");
+  try {
+    S.clearMemo(); St.setTarget({ ...T, HEAL: 0 });
+    const low = build();
+    St.setTarget({ ...T, HEAL: 450 });
+    const stale = build();
+    S.clearMemo();
+    const fresh = build();
+    assert.equal(stale, low, "회복량을 올렸는데 결과가 그대로다 (지금 상태)");
+    assert.notEqual(fresh, low, "기억을 비우면 치유 감소 아이템이 들어온다");
+    assert.ok(/모렐로노미콘/.test(fresh), `새로 계산한 빌드: ${fresh}`);
+  } finally {
+    St.setTarget(null); S.clearMemo();
+  }
+  // ⇒ Phase 3 후: memoKey 와 app.js 캐시 열쇠에 HEAL 이 들어가 stale !== low 가 된다.
+});
