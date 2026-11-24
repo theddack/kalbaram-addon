@@ -21,13 +21,39 @@ const offTypeCount = (c, chosen) =>
     .filter((r) => r.item.kind === "legendary" && r.offType).length;
 
 // ── B1: 스킬 치명타와 평타 치명타가 같은 CRIT 태그로 묶여 전부 평타(dps) 칸으로 간다 ──
-test("[B1 재현] 스킬 치명타 증강(보석 건틀릿)이 아리의 평타 가중치를 20배 넘게 키운다", () => {
+test("[B1 수정] 스킬 치명타 증강(보석 건틀릿)이 아리의 가중치를 스킬 쪽으로 보낸다", () => {
   const c = champ("Ahri");
   const a = mwOf(c, []), b = mwOf(c, [aug("보석 건틀릿")]);
-  // 지금: dps 0.018 → 0.379 (21.5배), combo 0.692 → 0.520
-  assert.ok(b.dps / a.dps > 10, `dps 배수 ${(b.dps / a.dps).toFixed(1)}`);
-  assert.ok(b.combo < a.combo, `combo ${a.combo.toFixed(3)} → ${b.combo.toFixed(3)}`);
-  // ⇒ Phase 2 후: 스킬 치명타는 combo 쪽으로 가야 하므로 dps 배수가 10배 아래로 내려오고 combo 는 크게 깎이지 않는다.
+  // 수정 전: dps 0.018 → 0.379 (21.5배), combo 0.692 → 0.520 (스킬 치명타가 통째로 평타 칸으로 갔다)
+  // 수정 후: dps 0.018 → 0.099 (5.6배), combo 0.692 → 0.800
+  assert.ok(b.dps / a.dps < 10, `dps 배수 ${(b.dps / a.dps).toFixed(1)}`);
+  assert.ok(b.combo > a.combo, `combo ${a.combo.toFixed(3)} → ${b.combo.toFixed(3)}`);
+});
+
+test("[B1 수정] 평타 치명타 증강(치명적인 공격)은 그대로 평타 칸에 남는다", () => {
+  for (const id of ["Ahri", "Jinx"]) {
+    const c = champ(id);
+    const a = mwOf(c, []), b = mwOf(c, [aug("치명적인 공격")]);
+    // 순수 치명타 확률 증강은 스킬 치명타 키가 없다 → 칸 배분이 바뀌면 안 된다
+    assert.ok(Math.abs(b.dps - a.dps) < 1e-9, `${id} dps ${a.dps.toFixed(3)} → ${b.dps.toFixed(3)}`);
+  }
+});
+
+test("[B1 수정] 스킬·평타 치명타가 같이 유효한 챔피언은 양쪽 몫이 다 남는다", () => {
+  const c = champ("Jinx");
+  const a = mwOf(c, []), b = mwOf(c, [aug("보석 건틀릿")]);
+  // 징크스 본래 치명타 성향(평타)은 그대로 평타 칸에, 증강이 올린 몫만 스킬 칸으로
+  assert.ok(b.dps > 0.2, `평타 몫이 사라졌다: dps ${b.dps.toFixed(3)}`);
+  assert.ok(b.combo > a.combo, `스킬 몫이 안 늘었다: combo ${a.combo.toFixed(3)} → ${b.combo.toFixed(3)}`);
+});
+
+test("[B1 수정] 치명타 아이템 연계는 끊기지 않는다 (아리 + 보석 건틀릿)", () => {
+  const c = champ("Ahri");
+  const ctx = S.augContext([aug("보석 건틀릿")], d.rules, c);
+  // 치명타 아이템을 원하는 근거(lift.CRIT)는 그대로여야 한다 — 칸 배분만 바꾼다
+  assert.ok((ctx.lift.CRIT || 0) >= 0.5, `lift.CRIT ${ctx.lift.CRIT}`);
+  const iw = S.conceptWeights(S.profile(c, d.tags), ctx, AUG);
+  assert.ok((iw.CRIT || 0) > 0.5, `iw.CRIT ${(iw.CRIT || 0).toFixed(3)}`);
 });
 
 test("[B1 근거] 보석 건틀릿 아리에게 무한의 대검의 combo 상승은 전부 치명타에서 온다 (공격력 몫 0)", () => {

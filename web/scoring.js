@@ -252,7 +252,9 @@
       // 효과 종류 태그를 그대로 따르면 '부식'(적 방어력 감소)에 방어력 아이템, '사악한 정신'(주문력 +80)에 징크스 주문력 아이템이 들어갔다
       // (2026-10-15 추천 품질 점검). 숫자가 있는 증강의 나머지 효과는 수치 계산이 맡는다
       const scales = scaleTags(a, rule);
-      const mine = (liftBy[a.name] = liftBy[a.name] || { _scales: scales, _convert: Object.values(rule.convert || {}) });
+      // _dmg: 피해 계산에 실제로 쓰이는 능력치 (반대 유형 차단을 풀 근거). rule.lift 로 직접 정한 증강은 그 태그를 근거로 본다
+      const dmg = rule.lift ? new Set(Object.keys(rule.lift)) : scaleTags(a, rule, true);
+      const mine = (liftBy[a.name] = liftBy[a.name] || { _scales: scales, _dmg: dmg, _convert: Object.values(rule.convert || {}) });
       const up = (t, v) => { lift[t] = Math.max(lift[t] || 0, v); (liftSrc[t] = liftSrc[t] || []).push(a.name); mine[t] = Math.max(mine[t] || 0, v); };
       // rule.lift: 빌드가 따라갈 태그를 직접 정한 증강 ({}면 아이템으로 안 커짐: 티아라 매혹, 눈덩이 가속 …)
       if (rule.lift) for (const [t, v] of Object.entries(rule.lift)) up(t, v);
@@ -285,22 +287,36 @@
     AStoCRITDMG: ["AS"], AStoHASTE: ["AS"], critStackAS: ["CRIT"], onhitOnCrit: ["CRIT", "ONHIT"], effectCritDmg: ["CRIT"], skillCritDmg: ["CRIT"], ultCritDmg: ["CRIT"] };
   // 발동 방식 → 발동을 늘리는 능력치: 평타 발동은 공격 속도·적중, 스킬 발동은 스킬 가속, 치명타 확률 발동은 치명타
   const TRIGGER_TAG = { onhit: ["AS", "ONHIT"], attacks: ["AS", "ONHIT"], onattack: ["AS"], cast: ["HASTE"], boundCast: ["HASTE"] };
+  // 치명타가 '스킬·아이템 효과'에 붙는 증강 (보석 건틀릿·보석 팔찌·취약). 치명타 아이템을 원하는 건 평타 증강과 같지만(CRIT 유지),
+  // 그 치명타가 터지는 곳은 평타가 아니라 스킬이다. 2026-11-24 B1: 같은 CRIT 태그로 묶여 지표 가중치가 통째로 평타(dps) 칸으로 갔다
+  const SKILL_CRIT_KEYS = ["skillCritDmg", "effectCritDmg", "ultCritDmg"];
+  const ATTACK_TRIGGER = new Set(["onhit", "attacks", "onattack"]);
+  const CRIT_SKILL = "CRITSKILL";  // 아이템 태그가 아니다: metricWeights 가 치명타 몫을 어느 칸에 넣을지 고를 때만 쓴다
   const treeKeys = (n, out = new Set()) => {
     if (Array.isArray(n)) { for (const x of n) treeKeys(x, out); return out; }
     if (n && typeof n === "object") { for (const k of Object.keys(n.r || {})) out.add(k); for (const x of n.a || []) treeKeys(x, out); }
     return out;
   };
-  function scaleTags(a, rule) {
+  // dmgOnly: 피해 쪽 계산에 쓰이는 능력치만 (회복·보호막 계수는 뺀다).
+  // 2026-11-24 B2: '전술적 대비'(사망 시 보호막 = 주문력 300%)의 주문력이 징크스의 반대 유형 차단을 통째로 껐다.
+  // 보호막이 커지는 건 맞지만 그건 빌드 유형을 바꿀 근거가 아니다 — 피해 계수에 들어갈 때만 반대 유형을 연다
+  function scaleTags(a, rule, dmgOnly = false) {
     const st = rule.statsResolved;
     if (!(a.effects && a.effects.length) && !st) return null;
     const out = new Set();
     for (const e of a.effects || []) {
-      for (const k of [...Object.keys(e.ratios || {}), ...treeKeys(e.tree || [])]) for (const t of RATIO_TAG[k] || []) out.add(t);
-      if (e.kind !== "heal" && e.kind !== "shield") for (const t of TRIGGER_TAG[(e.trigger || {}).type] || []) out.add(t);
-      else out.add("HEALSHIELD");  // 회복·보호막 효과는 회복·보호막 효과(%) 아이템으로 커진다
-      if (e.chance === "CRIT" || e.countCrit) out.add("CRIT");
+      const heal = e.kind === "heal" || e.kind === "shield";
+      if (!(dmgOnly && heal)) for (const k of [...Object.keys(e.ratios || {}), ...treeKeys(e.tree || [])]) for (const t of RATIO_TAG[k] || []) out.add(t);
+      if (!heal) for (const t of TRIGGER_TAG[(e.trigger || {}).type] || []) out.add(t);
+      else if (!dmgOnly) out.add("HEALSHIELD");  // 회복·보호막 효과는 회복·보호막 효과(%) 아이템으로 커진다
+      if (e.chance === "CRIT" || e.countCrit) {
+        out.add("CRIT");
+        // 평타로 발동하는 효과가 아니면 그 치명타는 스킬·효과 쪽에서 터진다 (쌍둥이 불꽃: 스킬 피해 시 투사체)
+        if (!ATTACK_TRIGGER.has((e.trigger || {}).type)) out.add(CRIT_SKILL);
+      }
     }
     for (const k of Object.keys(st || {})) for (const t of MULT_TAG[k] || []) out.add(t);
+    for (const k of SKILL_CRIT_KEYS) if (st && k in st) out.add(CRIT_SKILL);
     return out;
   }
 
@@ -353,6 +369,9 @@
     const out = {};
     for (const t of Object.keys(w)) out[t] = (base[t] || 0) * champK + (lift[t] || 0) * concept.aug;
     for (const t of ctx.zero) out[t] = 0;
+    // 증강이 올린 치명타 중 '스킬·효과에 붙는' 몫 (챔피언 본래 치명타 성향은 여기 안 들어간다 → 평타 칸에 그대로 남는다)
+    if (lift[CRIT_SKILL]) out[CRIT_SKILL] = Math.min(lift[CRIT_SKILL], lift.CRIT || 0) * concept.aug;
+    if (ctx.zero.has && ctx.zero.has("CRIT")) out[CRIT_SKILL] = 0;
     return out;
   }
 
@@ -574,9 +593,13 @@
 
   // 빌드 가중치 → 지표 가중치 (합 1)
   function metricWeights(iw) {
+    // 치명타 가중치를 스킬 몫(combo)과 평타 몫(dps)으로 나눈다 (2026-11-24 B1).
+    // 둘 다 유효하면 둘 다 남는다: 징크스 + 보석 건틀릿이면 챔피언 본래 치명타는 평타 칸, 증강이 올린 몫은 스킬 칸
+    const critSkill = Math.min(iw[CRIT_SKILL] || 0, iw.CRIT || 0);
+    const critAtk = Math.max(0, (iw.CRIT || 0) - critSkill);
     const mw = {
-      combo: (iw.AP || 0) + (iw.AD || 0) + 0.5 * ((iw.LETHAL || 0) + (iw.MPEN || 0)) + 0.3 * (iw.HASTE || 0),
-      dps: (iw.AS || 0) + (iw.CRIT || 0) + 0.5 * (iw.ONHIT || 0) + 0.3 * (iw.AD || 0),
+      combo: (iw.AP || 0) + (iw.AD || 0) + 0.5 * ((iw.LETHAL || 0) + (iw.MPEN || 0)) + 0.3 * (iw.HASTE || 0) + critSkill,
+      dps: (iw.AS || 0) + critAtk + 0.5 * (iw.ONHIT || 0) + 0.3 * (iw.AD || 0),
       ehp: ((iw.HP || 0) + (iw.ARMOR || 0) + (iw.MR || 0)) / 2,
       support: iw.HEALSHIELD || 0,
       mobility: 0.4 * (iw.MS || 0),  // 기동성은 피해·생존보다 덜 중요하게
