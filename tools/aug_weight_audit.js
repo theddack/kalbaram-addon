@@ -83,9 +83,12 @@ const triage = {};
 // ── 수치 없는 증강 4분류 ───────────────────────────────────────────────────────
 // A 계산 가능하나 미구현 : 원본에 조건 없는 전투 수치가 있는데 계산에 안 들어감
 // B 조건부 근사 필요     : 원본 수치는 있으나 발동 조건·횟수·가동률을 원본만으로 정할 수 없음
-// C 직접 계산 불필요     : 소환사 주문·골드·아이템 지급·추가 대상·미니언 등 지표(한 대상 기준) 밖
+// C 직접 계산 불필요     : 효과의 값이 다른 경로로 이미 계산에 들어가거나(아이템·증강 지급) 추천에 쓸 전투 수치가 아님(소환사 주문·골드)
+// E 엔진 계산 범위 밖    : 수치가 있어도 지금 계산 모형(한 대상 · 한타 1번 · 자기 자신 기준)으로는 표현할 수 없음 — 모형을 넓혀야 들어간다
 // D 원본 부족           : 원본에 피해·회복 값 자체가 없거나 계산식 부품을 못 읽음
-const CLS = { A: "계산 가능하나 미구현", B: "조건부 근사 필요", C: "직접 수치 계산 불필요", D: "원본 데이터 부족" };
+// 2026-11-24 Phase 2: C 를 '불필요'와 '범위 밖'으로 갈랐다 (향후 개선 목록에서 둘을 섞지 않기 위해)
+const CLS = { A: "계산 가능하나 미구현", B: "조건부 근사 필요", C: "직접 수치 계산 불필요", E: "엔진 계산 범위 밖", D: "원본 데이터 부족" };
+const CLS_ORDER = ["A", "B", "C", "E", "D"];
 // 자동 규칙으로 가르기 어려운 것만 사람이 판단한 이유를 적는다 (이름 예외가 아니라 효과 성격 판단)
 const MANUAL = {
   ARAM_Quest_UrfsChampion: ["C", "퀘스트 보상이 아이템 지급 — 조건 값(QuestRequirement)은 전투 수치가 아님"],
@@ -94,10 +97,10 @@ const MANUAL = {
   Quest_UltraHydra: ["C", "퀘스트 보상이 아이템 합성 — 아이템 쪽 계산이 맡음"],
   ARAM_Quest_SteelYourHeart: ["C", "퀘스트 보상이 아이템 — 아이템 쪽 계산이 맡음"],
   ARAM_Upgrade_Sheen: ["C", "아이템 업그레이드 — 바뀐 아이템 능력치로 계산됨"],
-  ARAM_Upgrade_ZH: ["C", "원본 값은 존야 재사용 대기시간 45초(UpgradeCD)와 경직 중 이동 속도 50%(UpgradeMS) — 계산이 한타 1번 기준이라 아이템 쿨 감소는 한 번의 값을 바꾸지 않는다 (최첨단 발명가와 같은 기준)"],
+  ARAM_Upgrade_ZH: ["E", "원본 값은 존야 재사용 대기시간 45초(UpgradeCD)와 경직 중 이동 속도 50%(UpgradeMS) — 계산이 한타 1번 기준이라 아이템 쿨 감소는 한 번의 값을 바꾸지 않는다 (최첨단 발명가와 같은 기준)"],
   ARAM_Upgrade_IE: ["B", "무한의 대검 업그레이드: 치명타 확률 → 피해 전환(CritChanceToDamage 0.5)의 적용 방식(100% 초과분인지)이 설명만으로 불분명"],
-  SpellVolley: ["C", "추가 대상 2명 — 계산이 한 대상 기준이라 단일 대상 피해가 늘지 않음"],
-  Missile_Split: ["C", "투사체 분산 — 위와 같이 한 대상 기준 계산 밖"],
+  SpellVolley: ["E", "추가 대상 2명 — 계산이 한 대상 기준이라 단일 대상 피해가 늘지 않음"],
+  Missile_Split: ["E", "투사체 분산 — 위와 같이 한 대상 기준 계산 밖"],
   ARAM_EtherealWeapon: ["D", "스킬이 적중 시 효과를 발동 — 원본에 재사용 대기시간 1.5초만 있고 적용 비율이 없음"],
   ARAM_InfernalSoul: ["D", "추가 피해 값이 원본에 없음 (게임 중 집계 표기)"],
   ARAM_MountainSoul: ["D", "보호막 값이 원본에 없음"],
@@ -117,25 +120,25 @@ const MANUAL = {
   ARAM_TransmuteGold: ["C", "증강 지급"],
   ARAM_PandorasBox: ["C", "증강 전환"],
   ARAM_OmniSoul: ["C", "다른 증강(영혼)을 지급 — 지급된 쪽이 계산 대상"],
-  ARAM_Minionmancer: ["C", "미니언 강화 — 챔피언 대상 계산 밖"],
-  ARAM_ApexInventor: ["C", "아이템 가속(ItemHaste) — 아이템 사용 효과는 계산하지 않음"],
-  ARAM_ScopedWeapons: ["C", "사거리 증가 — 지표에 사거리가 없음 (태그로 반영)"],
-  ARAM_ScopierWeapons: ["C", "사거리 증가 — 위와 같음"],
-  ARAM_ScopiestWeapons: ["C", "사거리 증가 — 위와 같음"],
-  Ability_SelfAOE_DoubleCast: ["C", "자신 중심 범위 스킬 2회 시전 — 어느 스킬인지 챔피언 데이터에 없음"],
+  ARAM_Minionmancer: ["E", "미니언 강화 — 챔피언 대상 계산 밖"],
+  ARAM_ApexInventor: ["E", "아이템 가속(ItemHaste) — 아이템 사용 효과는 계산하지 않음"],
+  ARAM_ScopedWeapons: ["E", "사거리 증가 — 지표에 사거리가 없음 (태그로 반영)"],
+  ARAM_ScopierWeapons: ["E", "사거리 증가 — 위와 같음"],
+  ARAM_ScopiestWeapons: ["E", "사거리 증가 — 위와 같음"],
+  Ability_SelfAOE_DoubleCast: ["E", "자신 중심 범위 스킬 2회 시전 — 어느 스킬인지 챔피언 데이터에 없음"],
   ARAM_SpecializedRecursion: ["B", "보상 값은 원본에 있음(AbilityHasteReward 80, 최대 160) — 퀘스트 달성 단계를 원본에서 정할 수 없어 가정 필요"],
   SpecializedEmpowerment: ["B", "보상 값은 원본에 있음(DamageAmpReward 30) — 퀘스트 달성 단계 가정 필요"],
   ARAM_BangBang: ["D", "유성 피해 값이 원본에 없음 (사거리 600·범위 225·배율만 있음)"],
-  ARAM_Multishot: ["C", "퀘스트 보상이 추가 투사체(추가 대상) — 3연발과 같이 한 대상 기준 계산 밖 (퀘스트 조건 횟수는 원본에 없음)"],
-  ARAM_Typhoon: ["C", "다른 대상에게 쏘는 투사체 — 한 대상 기준 계산 밖"],
-  ARAM_WindspeakersBlessing: ["C", "회복·보호막을 준 아군의 방어력·마법 저항력 — 아군 효과 (지원 태그)"],
-  PromQueen: ["C", "궁극기 재사용 대기시간 관련 보조 효과 — 규칙이 lift 로만 처리"],
+  ARAM_Multishot: ["E", "퀘스트 보상이 추가 투사체(추가 대상) — 3연발과 같이 한 대상 기준 계산 밖 (퀘스트 조건 횟수는 원본에 없음)"],
+  ARAM_Typhoon: ["E", "다른 대상에게 쏘는 투사체 — 한 대상 기준 계산 밖"],
+  ARAM_WindspeakersBlessing: ["E", "회복·보호막을 준 아군의 방어력·마법 저항력 — 아군 효과 (지원 태그)"],
+  PromQueen: ["E", "궁극기 재사용 대기시간 관련 보조 효과 — 규칙이 lift 로만 처리"],
   ARAM_StackosaurusRex: ["B", "스킬 중첩 2배(StackModifier 100%) — 챔피언마다 중첩 스킬이 달라 평균 중첩 가정이 필요"],
   LittleExtraHelp: ["B", "공격 속도 +75%(ExtraAttackSpeed) 값은 있으나 지속 시간·발동 주기가 원본에 없어 가동률 가정이 필요"],
   Sonata: ["B", "10초마다 자동 시전(Cooldown 10)은 있으나 회복·보호막 값이 원본에 없어 아군 수·효과량 가정이 필요"],
   Sound_Barrier: ["C", "소환사 주문 교체 (음속 장벽)"],
-  GroupHug: ["C", "아군 이동 관련 효과"],
-  RISE: ["C", "아군 전체 효과 — 아군 쪽 계산"],
+  GroupHug: ["E", "아군 이동 관련 효과"],
+  RISE: ["E", "아군 전체 효과 — 아군 쪽 계산"],
   Bonk: ["B", "추가 피해 30%(DamageMultiplier)는 효과로 강화된 공격에만 — 강화 공격 비율 가정이 필요"],
   MercysStrike: ["B", "최대 체력 2.5% + 회복·보호막 효과 비례 피해(계산식 있음) — 아군 회복·보호막 시전 뒤에만 발동해 발동 비율 가정이 필요"],
   ARAM_SpiritBomb: ["B", "회복·보호막 계산식이 조건부 — 가동률 가정이 필요"],
@@ -331,13 +334,14 @@ function markdown() {
   L.push("| 분류 | 증강 수 | 뜻 |", "|---|---:|---|");
   const clsWhy = { A: "원본에 조건 없는 전투 수치가 있는데 계산에 안 들어감 — 바로 넣을 수 있음",
     B: "원본 수치는 있으나 발동 조건·횟수·가동률을 원본만으로 정할 수 없음 — 가정값 승인이 필요",
-    C: "소환사 주문·골드·아이템 지급·추가 대상·미니언·아군 효과 등 한 대상 기준 계산 밖",
+    C: "효과의 값이 다른 경로로 이미 계산에 들어가거나(아이템·증강 지급·업그레이드) 추천에 쓸 전투 수치가 아님(소환사 주문·골드·이동 수단)",
+    E: "수치가 있어도 지금 계산 모형(한 대상 · 한타 1번 · 자기 자신 기준)으로는 표현할 수 없음 — 추가 대상·아군 효과·사거리·아이템 사용 효과",
     D: "원본에 피해·회복 값 자체가 없거나 계산식 부품을 읽지 못함" };
-  for (const k of ["A", "B", "C", "D"]) L.push(`| ${CLS[k]} | ${clsCount[k] || 0} | ${clsWhy[k]} |`);
+  for (const k of CLS_ORDER) L.push(`| ${CLS[k]} | ${clsCount[k] || 0} | ${clsWhy[k]} |`);
   L.push("");
-  for (const k of ["A", "B", "C", "D"]) {
+  for (const k of CLS_ORDER) {
     const list = noNum.filter((r) => r.cls.cls === k);
-    L.push(`### 4.${["A", "B", "C", "D"].indexOf(k) + 1} ${CLS[k]} — ${list.length}개`, "");
+    L.push(`### 4.${CLS_ORDER.indexOf(k) + 1} ${CLS[k]} — ${list.length}개`, "");
     if (!list.length) { L.push("해당 없음. 수치가 없는 증강은 전부 조건·계산 범위·원본 부족 중 하나에 걸린다 — 조건 없이 바로 넣을 수 있는 수치는 하나도 없었다.", ""); continue; }
     L.push("| 증강 | 태그 | 근거 | 판단 출처 |", "|---|---|---|---|");
     for (const r of list) L.push(`| ${r.name} | ${Object.keys(r.lift).join(", ") || "-"} | ${(r.cls.why || "").replace(/\|/g, "/")} | ${r.cls.by} |`);
