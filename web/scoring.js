@@ -1305,17 +1305,21 @@
   const objId = (o) => (o && typeof o === "object" ? (objNo.get(o) || (objNo.set(o, ++objSeq), objSeq)) : null);
   function memoKey(name, list, w, chosen, fixed, champ, statOpts, extra, rules = null) {
     const T = (typeof Stats !== "undefined" && Stats.TARGET) || {};
+    // 상대 회복량(HEAL)도 키에: 치유 감소 아이템의 값이 여기서 나온다. 빠져 있어 회복량만 바뀌면 옛 빌드가 그대로 나왔다 (2026-11-24 B3)
     // 공식 추천 아이템 유무도 키에 (같은 챔피언을 공식 추천 없이 비교하는 점검·테스트가 이전 결과를 돌려받지 않게)
     return JSON.stringify([name, ids(list).join(","), champ && champ.id, (champ && champ.features) || null,
       Boolean(champ && champ.officialItems), champ && champ.similarItems ? champ.similarItems.from.join() : null, ids(chosen), ids(fixed),
-      w, statOpts, extra, objId(rules), [T.ARMOR, T.MR, T.HP]]);
+      w, statOpts, extra, objId(rules), [T.ARMOR, T.MR, T.HP, T.HEAL]]);
   }
+  let memoHit = 0, memoMiss = 0;  // 적중률 확인용 (게임 중 성능 점검·테스트에서만 읽는다)
   function remember(key, fn) {
     if (memo.has(key)) {
       const v = memo.get(key);
       memo.delete(key); memo.set(key, v);  // 최근 사용으로
+      memoHit++;
       return v;
     }
+    memoMiss++;
     const v = fn();
     memo.set(key, v);
     if (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value);
@@ -1332,12 +1336,18 @@
         () => buildConceptsRaw(items, w, chosen, fixed, rules, champ, statOpts, [c.key])[0]));
   }
   const clearMemo = () => { memo.clear(); AOW.clear(); USAGE.clear(); };
+  // 적중률: 열쇠가 맞아 다시 계산하지 않은 비율. reset 은 세는 값만 0으로 (기억한 결과는 그대로)
+  const memoStats = (reset = false) => {
+    const r = { hit: memoHit, miss: memoMiss, size: memo.size, rate: memoHit + memoMiss ? memoHit / (memoHit + memoMiss) : 0 };
+    if (reset) { memoHit = 0; memoMiss = 0; }
+    return r;
+  };
   const setMemoMax = (n) => { MEMO_MAX = n; while (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value); };
 
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, setTraitOverride, setNormMode, setNormMedian, setNormScale, setNumK, normOf, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, setTraitOverride, setNormMode, setNormMedian, setNormScale, setNumK, normOf, clearMemo, memoStats, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

@@ -479,7 +479,8 @@ function counterItems(avail, keep) {
   if (!enemyMoved()) return [];
   const d = state.data;
   // 가중치도 키에 (계산이 state.weights 를 쓴다. 빠져 있어 게임 중 가중치를 바꿔도 '🛡️ 적 대응'이 옛 목록으로 남았다, 2026-10-23 점검)
-  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts(), state.weights]);
+  // 상대 회복량(HEAL)도 키에 — 치유 감소 아이템 순위가 여기서 갈린다 (2026-11-24 B3: 캐시 여섯 곳 모두 빠져 있었다)
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL, statOpts(), state.weights]);
   if (counterCache.key === key) return counterCache.value;
   const base = atDefault(() => S.rankItems(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), state.chosen.length ? "augment" : "balanced")).filter(keep);
   const bi = new Map(base.map((r, i) => [r.item.id, i]));
@@ -933,7 +934,7 @@ let tierCache = { key: null, value: null };
 // 선택지 3장이 모두 D인 경우가 46.2%라 '도전 · 강한 선택'처럼 엇갈렸다 (2026-10-24 진단 C04). 연계 우선 버튼은 그대로 둔다
 const tierMode = () => (state.tierMode === "auto" ? "total" : state.tierMode);
 function getTiers() {
-  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts()]);
+  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL, statOpts()]);
   if (tierCache.key !== key) {
     const d = state.data;
     tierCache = { key, value: S.augmentTiers(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), tierMode()) };
@@ -1445,7 +1446,7 @@ function pushOverlay(rows, src) {
 let verdictCache = { key: null, value: [] };
 function itemVerdicts() {
   if (!state.champ || !state.items.length) return [];
-  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts()]);
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL, statOpts()]);
   if (verdictCache.key === key) return verdictCache.value;
   const d = state.data;
   const concept = state.chosen.length ? "augment" : "balanced";
@@ -1953,7 +1954,7 @@ function buyNowCurrent(gold) {
   // 결과를 바꾸는 것은 모두 키에: 살 수 있는 후보(골드는 이걸로), 가중치·칼바람·적 마법 비율(statOpts)·기준 상대 방어
   // (v0.1.55 후속 기획 A-②: 예전 키엔 가중치·statOpts·기준 상대가 없어 적 구성이 바뀌어도 옛 추천이 남을 수 있었다)
   const key = JSON.stringify([state.champ.id, level, state.items.map((i) => i.id), inv, [...cands.values()].map((c) => [c.id, c.gold]),
-    state.chosen.map((a) => a.id), tops, state.weights, statOpts(), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
+    state.chosen.map((a) => a.id), tops, state.weights, statOpts(), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]);
   if (buyNowMemo.key === key) return buyNowMemo.value;
   const have = [...state.items, ...inv.filter((id) => partOf(id) && !isItem(id)).map((id) => ({ id, name: partOf(id).name, stats: partOf(id).stats || {} }))];
   const ranked = S.buyNowGains([...cands.values()], state.weights, state.chosen, have, d.rules, state.champ, statOpts(), level);
@@ -2411,7 +2412,7 @@ function applyLive(L) {
   }
   // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
   // 계산에 들어가는 상대 값: 예상 상대 능력치 + 받는 피해의 마법 비율(statOpts enemyMagic, 0.1 단위)
-  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts().enemyMagic ?? null]);
+  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL, statOpts().enemyMagic ?? null]);
   if (key === liveLast && enemyChanged && state.champ) {
     // 적이 아이템을 샀지만 계산 값은 그대로(작은 변화): 조언(치유 감소·저항·관통)과 다음 구매만 다시 그린다
     renderNextBuy(itemRanking()); renderChosenItems(); sendOverlay("enemy");

@@ -1767,3 +1767,48 @@ test("성장 능력치: 중첩이 늘면 추정값도 따라 올라간다", asyn
   assert.ok(seen[seen.length - 1] > seen[0], `중첩이 늘면 추정값도 늘어요: ${seen}`);
   p.w.Date.now = () => Date.now();
 });
+
+// 2026-11-24 B3: 화면 쪽 캐시 다섯 곳(적 대응·연계 티어·아이템 평가·지금 살 것·게임 연동)의 열쇠에
+// 상대 회복량이 빠져 있었다. 회복량만 바뀌면 같은 결과 객체를 그대로 돌려줬다 (값이 같은지가 아니라 '다시 계산했는지'를 본다)
+test("상대 회복량만 바뀌어도 화면 쪽 캐시가 다시 계산한다", async () => {
+  const p = await loadPage();
+  p.pickChamp("Galio");
+  p.click(p.itemRow("판금 장화"));
+  const St = p.w.Stats, T = { ARMOR: 170, MR: 65, HP: 3450 };
+  St.setTarget({ ...T, HEAL: 0 });
+  const v0 = p.w.itemVerdicts(), t0 = p.w.getTiers();
+  assert.equal(p.w.itemVerdicts(), v0, "같은 값이면 기억한 결과를 그대로 (적중)");
+  assert.equal(p.w.getTiers(), t0, "같은 값이면 기억한 결과를 그대로 (적중)");
+  St.setTarget({ ...T, HEAL: 450 });
+  assert.notEqual(p.w.itemVerdicts(), v0, "회복량이 올랐는데 아이템 평가가 그대로다");
+  assert.notEqual(p.w.getTiers(), t0, "회복량이 올랐는데 연계 티어가 그대로다");
+  St.setTarget({ ...T, HEAL: 0 });
+  assert.notEqual(p.w.itemVerdicts(), v0, "회복량이 내렸는데 아이템 평가가 그대로다");
+  St.setTarget(null);
+  assert.deepEqual(p.errors, []);
+});
+
+test("게임 연동: 상대 회복량만 바뀌어도 추천을 다시 계산한다", async () => {
+  const p = await loadPage();
+  // 적 다섯 명의 아이템을 요우무(공격력·관통) ↔ 피바라기(공격력·생명력 흡수)로만 바꾼다.
+  // 둘 다 방어력·마법 저항력·체력이 0이라 기준 상대의 ARMOR·MR·HP 는 그대로고 회복량(HEAL)만 0 → 370 이 된다.
+  // 추천 결과가 눈에 띄게 바뀌는지는 챔피언마다 다르므로, '다시 계산했는가'(기억 적중/빗나감)를 본다.
+  // 예전엔 게임 연동 열쇠에 회복량이 없어 이 변화가 '작은 변화'로 분류돼 빌드·티어를 다시 계산하지 않았다
+  const foes = ["Darius", "Lux", "Malphite", "Sejuani", "Ziggs"];
+  const live = (enemyItem) => ({
+    enabled: true, inGame: true, champion: "Galio", level: 11, items: [], enemies: foes,
+    enemyBuilds: foes.map((champion) => ({ champion, level: 11, items: [enemyItem] })),
+  });
+  p.w.applyLive(live("3142"));
+  await until(() => p.qa("#build .item").length > 0);
+  await new Promise((r) => setTimeout(r, 1500));  // 나눠 계산(warmThenRender)이 끝나기를 기다린다
+  const T = p.w.Stats.TARGET, base = { ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, heal0 = T.HEAL;
+  p.w.Scoring.memoStats(true);
+  p.w.applyLive(live("3072"));
+  await until(() => p.w.Scoring.memoStats().miss > 0, 20000);
+  const st = p.w.Scoring.memoStats();
+  assert.deepEqual({ ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, base, "회복량 말고 다른 상대 값도 바뀌었다 (시험이 성립 안 함)");
+  assert.ok(T.HEAL > heal0, `회복량 추정이 안 올랐다: ${heal0} → ${T.HEAL}`);
+  assert.ok(st.miss > 0, `회복량만 바뀌었더니 다시 계산하지 않았다 (hit ${st.hit} / miss ${st.miss})`);
+  assert.deepEqual(p.errors, []);
+});

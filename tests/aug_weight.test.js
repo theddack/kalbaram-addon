@@ -1,5 +1,5 @@
-// v0.1.95 재현 테스트 (수정 전에 먼저 작성): B1·B2·B3 가 지금 어떻게 틀리는지를 숫자로 고정해 둔다.
-// 여기 적힌 값은 '지금 상태'다. Phase 2·3 에서 고치면 ⇒ 로 적힌 쪽으로 바뀌어야 하고, 그때 이 파일의 단언을 뒤집는다.
+// v0.1.95 B1·B2·B3 테스트. 먼저 결함을 재현하는 쪽으로 쓰고(Phase 1), 고친 뒤 '제대로 도는지' 쪽으로 뒤집었다
+// (B1·B2 는 Phase 2, B3 는 Phase 3). 주석에 수정 전 숫자를 남겨 둔다 — 되돌아가면 바로 보이게.
 // 특정 아이템을 몇 위로 만들자는 기준이 아니라, 효과 성격과 점수 기여도가 맞물리는지를 본다.
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -107,23 +107,66 @@ test("[B2 유지] 유형 전환 증강(적응형 능력치)은 지금처럼 전�
   // ⇒ Phase 2 후에도 0 (convert 가 있는 증강은 비정석 빌드를 막지 않는다).
 });
 
-// ── B3: 캐시 열쇠에 상대 회복량(TARGET.HEAL)이 빠져 옛 결과가 남는다 ──────────────
-test("[B3 재현] 상대 회복량만 바뀌면 빌드 계산이 옛 결과를 그대로 돌려준다", () => {
-  const c = champ("Galio");
-  const opts = { aram: true, enemyMagic: 0.5 }, T = { ARMOR: 170, MR: 65, HP: 3450 };
-  const build = () => S.buildConcepts(d.items, S.profile(c, d.tags), [], [], d.rules, c, opts, ["balanced"])[0].pick.map((p) => p.item.name).join(" / ");
+// ── B3: 캐시 열쇠에 상대 회복량(TARGET.HEAL)이 빠져 옛 결과가 남았다 (2026-11-24 Phase 3 수정) ──
+const T0 = { ARMOR: 170, MR: 65, HP: 3450 };
+const buildOf = (c, opts) => S.buildConcepts(d.items, S.profile(c, d.tags), [], [], d.rules, c, opts, ["balanced"])[0].pick.map((p) => p.item.name).join(" / ");
+
+test("[B3 수정] 상대 회복량만 올려도 빌드가 다시 계산된다", () => {
+  const c = champ("Galio"), opts = { aram: true, enemyMagic: 0.5 };
   try {
-    S.clearMemo(); St.setTarget({ ...T, HEAL: 0 });
-    const low = build();
-    St.setTarget({ ...T, HEAL: 450 });
-    const stale = build();
+    S.clearMemo(); St.setTarget({ ...T0, HEAL: 0 });
+    const low = buildOf(c, opts);
+    St.setTarget({ ...T0, HEAL: 450 });
+    const cached = buildOf(c, opts);          // 캐시를 비우지 않고 그대로
     S.clearMemo();
-    const fresh = build();
-    assert.equal(stale, low, "회복량을 올렸는데 결과가 그대로다 (지금 상태)");
-    assert.notEqual(fresh, low, "기억을 비우면 치유 감소 아이템이 들어온다");
-    assert.ok(/모렐로노미콘/.test(fresh), `새로 계산한 빌드: ${fresh}`);
-  } finally {
-    St.setTarget(null); S.clearMemo();
-  }
-  // ⇒ Phase 3 후: memoKey 와 app.js 캐시 열쇠에 HEAL 이 들어가 stale !== low 가 된다.
+    const fresh = buildOf(c, opts);           // 비우고 새로
+    assert.notEqual(cached, low, "회복량을 올렸는데 결과가 그대로다");
+    assert.equal(cached, fresh, `캐시 결과 ${cached} ≠ 새로 계산 ${fresh}`);
+    assert.ok(/모렐로노미콘/.test(cached), `치유 감소가 안 들어왔다: ${cached}`);
+  } finally { St.setTarget(null); S.clearMemo(); }
+});
+
+test("[B3 수정] 상대 회복량이 줄어도 다시 계산된다 (치유 감소가 빠진다)", () => {
+  const c = champ("Galio"), opts = { aram: true, enemyMagic: 0.5 };
+  try {
+    S.clearMemo(); St.setTarget({ ...T0, HEAL: 450 });
+    const high = buildOf(c, opts);
+    St.setTarget({ ...T0, HEAL: 0 });
+    const cached = buildOf(c, opts);
+    S.clearMemo();
+    const fresh = buildOf(c, opts);
+    assert.notEqual(cached, high, "회복량을 0으로 내렸는데 결과가 그대로다");
+    assert.equal(cached, fresh, `캐시 결과 ${cached} ≠ 새로 계산 ${fresh}`);
+    assert.ok(!/모렐로노미콘/.test(cached), `치유 감소가 안 빠졌다: ${cached}`);
+  } finally { St.setTarget(null); S.clearMemo(); }
+});
+
+test("[B3 수정] 회복량이 그대로면 기억한 결과를 다시 쓴다 (적중)", () => {
+  const c = champ("Galio"), opts = { aram: true, enemyMagic: 0.5 };
+  try {
+    S.clearMemo(); St.setTarget({ ...T0, HEAL: 300 });
+    buildOf(c, opts);
+    S.memoStats(true);                        // 세는 값만 0으로, 기억은 그대로
+    St.setTarget({ ...T0, HEAL: 300 });       // 같은 값으로 다시 설정
+    buildOf(c, opts);
+    const st = S.memoStats();
+    assert.equal(st.miss, 0, `다시 계산했다 (hit ${st.hit} / miss ${st.miss})`);
+    assert.ok(st.hit > 0, "기억을 쓰지 않았다");
+  } finally { St.setTarget(null); S.clearMemo(); }
+});
+
+test("[B3 수정] 회복량 말고 다른 상대 값이 같으면 열쇠가 그대로여야 한다 (과잉 무효화 아님)", () => {
+  const c = champ("Galio"), opts = { aram: true, enemyMagic: 0.5 };
+  try {
+    S.clearMemo(); St.setTarget({ ...T0, HEAL: 0 });
+    const a = buildOf(c, opts);
+    St.setTarget({ ...T0, HEAL: 450 });
+    buildOf(c, opts);
+    S.memoStats(true);
+    St.setTarget({ ...T0, HEAL: 0 });         // 처음 값으로 되돌림 → 첫 결과가 기억에 남아 있어야 한다
+    const back = buildOf(c, opts);
+    const st = S.memoStats();
+    assert.equal(back, a, "되돌렸는데 결과가 다르다");
+    assert.equal(st.miss, 0, `되돌렸는데 다시 계산했다 (hit ${st.hit} / miss ${st.miss})`);
+  } finally { St.setTarget(null); S.clearMemo(); }
 });
