@@ -1812,3 +1812,44 @@ test("게임 연동: 상대 회복량만 바뀌어도 추천을 다시 계산한
   assert.ok(st.miss > 0, `회복량만 바뀌었더니 다시 계산하지 않았다 (hit ${st.hit} / miss ${st.miss})`);
   assert.deepEqual(p.errors, []);
 });
+
+// ---- v0.1.95 Phase 4 C1 (2026-11-25)
+// C1: 상대 회복량 추정이 아이템 '보호막'까지 회복으로 셌다 (stats.js 가 자기 회복·보호막을 한 통에 담음).
+//     고통스러운 상처는 보호막을 막지 못하므로 치유 감소 아이템 값이 부풀려졌다.
+// 아래 아이템은 상대 기준의 방어력·마법 저항력·체력을 건드리지 않는 것으로 골랐다 (회복·보호막·추가 체력만 따로 움직이게):
+//   요우무의 유령검 3142 (공격력·관통) · 불멸의 철갑궁 6673 (보호막 560, 공격력·치명타) · 무덤꽃 3137 (회복 115, 주문력·관통)
+const FOES = ["Darius", "Lux", "Malphite", "Sejuani", "Ziggs"];
+const liveWith = (enemyItem, items = []) => ({
+  enabled: true, inGame: true, champion: "Galio", level: 11, items, enemies: FOES,
+  enemyBuilds: FOES.map((champion) => ({ champion, level: 11, items: [enemyItem] })),
+});
+
+test("게임 연동: 상대가 보호막 아이템만 사면 회복량 추정은 오르지 않는다 (C1)", async () => {
+  const p = await loadPage();
+  p.w.applyLive(liveWith("3142"));
+  await until(() => p.qa("#build .item").length > 0);
+  const T = p.w.Stats.TARGET;
+  const base = { ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, heal0 = T.HEAL;
+  p.w.applyLive(liveWith("6673"));
+  await until(() => p.qa("#build .item").length > 0);
+  assert.deepEqual({ ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, base, "보호막 아이템이 다른 상대 값까지 바꿨다 (시험이 성립 안 함)");
+  assert.equal(T.HEAL, heal0, `보호막을 회복으로 셌다: ${heal0} → ${T.HEAL}`);
+  assert.deepEqual(p.errors, []);
+});
+
+test("게임 연동: 상대가 진짜 회복 아이템을 사면 회복량 추정이 오르고 다시 계산한다 (Phase 3 보호막 아닌 조건)", async () => {
+  const p = await loadPage();
+  p.w.applyLive(liveWith("3142"));
+  await until(() => p.qa("#build .item").length > 0);
+  await new Promise((r) => setTimeout(r, 1500));  // 나눠 계산(warmThenRender)이 끝나기를 기다린다
+  const T = p.w.Stats.TARGET;
+  const base = { ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, heal0 = T.HEAL;
+  p.w.Scoring.memoStats(true);
+  p.w.applyLive(liveWith("3137"));
+  await until(() => p.w.Scoring.memoStats().miss > 0, 20000);
+  const st = p.w.Scoring.memoStats();
+  assert.deepEqual({ ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, base, "회복 아이템이 다른 상대 값까지 바꿨다 (시험이 성립 안 함)");
+  assert.ok(T.HEAL > heal0, `회복량 추정이 안 올랐다: ${heal0} → ${T.HEAL}`);
+  assert.ok(st.miss > 0, `회복량만 바뀌었더니 다시 계산하지 않았다 (hit ${st.hit} / miss ${st.miss})`);
+  assert.deepEqual(p.errors, []);
+});

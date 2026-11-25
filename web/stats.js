@@ -722,7 +722,11 @@
     out.augDps = 0;
     out.castDps = 0;  // augDps 중 스킬을 써야 나오는 몫 (시전 빈도 100% 기준)
     out.atkDps = 0;  // augDps 중 기본 공격으로 나오는 몫 (적중·기본 공격 시·N회 공격) — 실험 설정 autoUptime 용
-    out.itemSelfHp = 0;  // 아이템 효과의 자기 회복·보호막 (버티는 힘에 더함)
+    out.itemSelfHp = 0;  // 아이템 효과의 자기 회복·보호막 합 (버티는 힘에 더함)
+    // 그 합을 회복과 보호막으로 갈라 둔다 (v0.1.95 Phase 4 C1): 치유 감소(고통스러운 상처)는 보호막을 막지 못하므로
+    // 상대 회복량 추정(app.js enemyTarget)은 itemSelfHeal 만 써야 한다. 버티는 힘은 예전처럼 합(itemSelfHp)을 쓴다
+    out.itemSelfHeal = 0;
+    out.itemSelfShield = 0;
     out.castDpsUsed = 0;  // 같은 몫을 '실제로 쓰여 맞는 스킬 빈도'(× SKILL_DPS_SHARE, 효과 상한 적용)로 센 값 — 초당 피해에 쓴다
     out.effects = [];
     // 한 번에 여러 발 (rules effectCount: 탄환 세례 5발 · 마법 미사일 3발 · 쌍둥이 불꽃 1 + 치명타 확률 × 3)
@@ -785,7 +789,7 @@
         // 아이템 효과의 회복·보호막(스테락의 도전·케이닉 루컨·워모그의 갑옷 …)은 자기 자신에게만 → 버티는 힘(EHP)으로 (흡혈·생명선과 같게).
         // 2026-11-14 예전엔 '회복·보호막(지원)' 지표에 넣어, 지원 기준값(600)이 작은 탓에 메이지·서포터 계산 최적이 스테락·케이닉·워모그가 됐고
         // (공식 추천 가산이 가리고 있었음), 레오나 + 탱크 엔진의 점검표 증강 효과 2/3가 스테락 보호막 증가분이었다
-        if (e.item) { out.itemSelfHp += amt; continue; }
+        if (e.item) { out.itemSelfHp += amt; if (e.kind === "shield") out.itemSelfShield += amt; else out.itemSelfHeal += amt; continue; }
         // 챔피언 기술(패시브·규칙 효과)의 회복·보호막만 아군에게 줄 수 있다 (아이템·증강 효과는 자기 자신에게만: 스테락·케이닉 루컨)
         const sh = itemOrAugFx(e) ? { self: 1, ally: 0 } : targetShare(e.target, helps);
         row.toSelf = amt * sh.self;

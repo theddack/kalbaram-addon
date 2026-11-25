@@ -341,6 +341,11 @@ function avgSlotBonus() {
 }
 // 확인된 적 증강(소환사 주문 칸)의 능력치: 급속 성장·차원 이동처럼 체력을 올리는 것 (나머지 증강은 공식 데이터에 없다)
 const enemyAugStats = (e) => (e.augments || []).length ? S.augStatsOf(e.augments, state.data.rules, e.champ) : [];
+// 그 적이 한타 한 번에 '자기 자신을 회복'하는 양 (치유 감소 아이템 값의 근거, v0.1.93 P4-B 5단계).
+// 기술 자기 회복 + 생명력 흡수·모든 피해 흡혈 + 아이템 자기 회복만 센다. 보호막은 빼는데, 고통스러운 상처가 보호막은 막지 못해서다
+// (v0.1.95 Phase 4 C1: 예전엔 아이템 회복과 보호막이 itemSelfHp 한 통에 섞여, 스테락·케이닉 루컨·불멸의 철갑궁의 보호막까지 '회복'으로 셌다.
+//  실제 5판 중 3판에서 추정 회복량의 33~76%가 보호막이었다). 아군이 주는 회복은 아직 안 센다 (Phase 4 C4 검토 중)
+const selfHealOf = (m) => (m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHeal || 0);
 // 적 전원의 18레벨 능력치 평균: 산 아이템 그대로 + 아직 안 산 칸은 평균 빌드만큼 산다고 본다 (게임 초반에 상대가 너무 약하게 잡히지 않게)
 function enemyTarget() {
   const b = state.enemyBuilds || [];
@@ -353,13 +358,8 @@ function enemyTarget() {
     for (const k of Object.keys(sum)) sum[k] += (t[k] + empty * sb[k]) / b.length;
   }
   const r5 = (v) => Math.round(v / 5) * 5;  // 5 단위: 작은 차이로 계산을 전부 다시 하지 않게
-  // 적들이 한타 한 번에 자기 자신을 회복하는 양의 평균 (치유 감소 아이템 값의 근거, v0.1.93 P4-B 5단계).
-  // 기술 회복·생명력 흡수·아이템 자기 회복만 센다 (보호막은 고통스러운 상처가 안 막는다). 산 아이템만 본다 (안 산 칸은 0)
   let heal = 0;
-  for (const e of b) {
-    const m = St.evaluate(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).m;
-    heal += ((m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHp || 0)) / b.length;
-  }
+  for (const e of b) heal += selfHealOf(St.evaluate(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).m) / b.length;
   return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50, HEAL: Math.round(heal / 10) * 10 };
 }
 // 지금 상대 (실제 레벨 + 산 아이템만): '지금 수치'(능력치 패널)와 조언·기록에 쓴다.
@@ -747,8 +747,7 @@ function setTargetChamp(id) {
     const items = b.pick.map((p) => p.item);
     const t = St.computeStats(enemy, 18, items, [], statOpts()).total;
     // 그 챔피언이 한타에 자기를 회복하는 양 (치유 감소 아이템 값의 근거, enemyTarget 과 같은 계산)
-    const em = St.evaluate(enemy, 18, items, [], statOpts()).m;
-    const heal = (em.selfHeal || 0) + (em.vampHeal || 0) + (em.itemSelfHp || 0);
+    const heal = selfHealOf(St.evaluate(enemy, 18, items, [], statOpts()).m);
     St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP), HEAL: Math.round(heal / 10) * 10 });
   }
   showTarget();
