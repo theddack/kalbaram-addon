@@ -100,3 +100,40 @@ test("scoring.js 는 계산 엔진을 파일에서 읽는다 (global.Stats 교�
   const rows = S.rankItems(d.items, S.profile(c, d.tags), [], [], d.rules, c, { aram: true }, "balanced");
   assert.ok(rows.length > 0 && rows[0].score > 0);
 });
+
+// ---- 4. 무엇이 달라진 비교인지 가리는가 (2026-11-25)
+const fpWith = (stats, scoring, data, inputs) => ({
+  engine: { files: { "web/stats.js": { sha256: stats.repeat(64).slice(0, 64) },
+    "web/scoring.js": { sha256: scoring.repeat(64).slice(0, 64) },
+    "web/data.json": { sha256: data.repeat(64).slice(0, 64) } }, at: "t", node: "v" },
+  inputs,
+});
+const kindOf = (a, b) => FP.compareKind({ ...a.engine, inputs: a.inputs }, { ...b.engine, inputs: b.inputs }).kind;
+
+test("비교 종류: 엔진 변경 · 데이터 변경 · 입력값 민감도 · 동일 조건 재현을 가린다", () => {
+  const base = fpWith("1", "2", "3", { 조건: "기본" });
+  assert.equal(kindOf(base, base), FP.KINDS.same);
+  assert.equal(kindOf(base, fpWith("9", "2", "3", { 조건: "기본" })), FP.KINDS.engine);   // stats.js
+  assert.equal(kindOf(base, fpWith("1", "9", "3", { 조건: "기본" })), FP.KINDS.engine);   // scoring.js
+  assert.equal(kindOf(base, fpWith("1", "2", "9", { 조건: "기본" })), FP.KINDS.data);
+  assert.equal(kindOf(base, fpWith("9", "2", "9", { 조건: "기본" })), FP.KINDS.both);
+  assert.equal(kindOf(base, fpWith("1", "2", "3", { 조건: "기준상대 바꿈" })), FP.KINDS.input);
+  assert.equal(kindOf(base, { engine: { files: {} } }), FP.KINDS.unknown);
+});
+
+test("비교 종류: '동일 조건 재현' 이면 결과도 같아야 한다고 알린다", () => {
+  const base = fpWith("1", "2", "3", { 조건: "기본" });
+  const k = FP.compareKind({ ...base.engine, inputs: base.inputs }, { ...base.engine, inputs: base.inputs });
+  assert.equal(k.same, true);
+  assert.match(k.why, /결과도 같아야 한다/);
+  assert.equal(k.engineMoved, false);
+  assert.equal(k.dataMoved, false);
+});
+
+test("비교 종류: 세 파일 중 data.json 만 달라도 잡는다 (stats.js 만 보던 때는 못 잡았다)", () => {
+  const a = fpWith("1", "2", "3", { 조건: "기본" }), b = fpWith("1", "2", "9", { 조건: "기본" });
+  assert.equal(FP.engineDiff(a.engine, b.engine).ok, false);           // 옛 판정: stats.js 가 같다
+  const k = FP.compareKind({ ...a.engine, inputs: a.inputs }, { ...b.engine, inputs: b.inputs });
+  assert.equal(k.dataMoved, true);                                     // 새 판정: 데이터가 달라졌다
+  assert.equal(k.same, false);
+});

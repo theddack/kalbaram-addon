@@ -1,5 +1,5 @@
 // v0.1.95 Phase 4 C9-A1·A2·A2.5 검증: 저항 감소 공통 계산 순서를 넣은 뒤 추천 결과가 그대로인지 수정 전후로 견준다.
-//   node tools/c9_shred_check.js --dump <결과파일> [--scenes game] [--limit N]   지금 web/stats.js 로 계산해 저장
+//   node tools/c9_shred_check.js --dump <결과파일> [--scenes game] [--limit N] [--inputs 라벨]   지금 web/stats.js 로 계산해 저장
 //   node tools/c9_shred_check.js --cmp <전> <후>     저장한 두 결과를 견준다 (엔진 지문부터 찍는다)
 //   node tools/c9_shred_check.js --positive          양성 대조: 엔진을 일부러 틀리게 바꿔 끼우고 '차이를 잡는지' 본다
 //   node tools/c9_shred_check.js                     수정 뒤 값만 본다 (핏빛 저주·음수 저항)
@@ -68,7 +68,8 @@ if (argv[0] === "--dump") {
     const r = rankOf(d, sc);
     if (r) game[`${sc.game}:${sc.t}`] = { top: r.top, raw: r.raw, input: { champ: sc.champ, level: sc.level, items: sc.items, augs: sc.augs, target: sc.target } };
   }
-  fs.writeFileSync(argv[1], JSON.stringify({ engine: FP.fingerprint(), baseline: base, game, version: d.version, builtAt: d.builtAt }, null, 0));
+  const inputs = { 조건: flag("--inputs", "기본"), 장면: onlyGame ? "실게임만" : "기준선+실게임", 상한: limit || "없음" };
+  fs.writeFileSync(argv[1], JSON.stringify({ engine: FP.fingerprint(), inputs, baseline: base, game, version: d.version, builtAt: d.builtAt }, null, 0));
   console.log(`저장 ${argv[1]} — 기준선 ${Object.keys(base.scenes).length}장면 · 실게임 ${Object.keys(game).length}장면 (${Date.now() - t0}ms)`);
   process.exit(0);
 }
@@ -97,11 +98,15 @@ module.exports = { cmpGame, anyMove, gameScenes };
 
 if (argv[0] === "--cmp") {
   const a = JSON.parse(fs.readFileSync(argv[1], "utf8")), b = JSON.parse(fs.readFileSync(argv[2], "utf8"));
-  const eng = FP.printEngines(a.engine, b.engine);
-  if (!eng.ok) console.log("  (아래 '달라진 것 없음' 은 이 상태에서는 근거가 되지 않는다)");
+  const eng = FP.printEngines(a, b);
+  if (eng.same) console.log("  (아래 '달라진 것 없음' 은 이 상태에서는 근거가 되지 않는다)");
   console.log("\n=== 1. 기준선 장면 (solo 173 · aug 48 · tiers 16 · game 26)");
   console.log(`  장면 ${Object.keys(b.baseline.scenes).length}개`);
-  if (Object.keys(b.baseline.scenes).length) R.report(R.compare(a.baseline, b.baseline), a.baseline, b.baseline);
+  if (Object.keys(b.baseline.scenes).length) {
+    // report() 는 글을 돌려주기만 한다 (찍지 않는다) — 2026-11-25 이전에는 이 줄이 아무것도 안 찍고 있었다
+    const sum = R.compare(a.baseline, b.baseline);
+    console.log(R.report(sum, a.baseline, b.baseline).replace(/^/gm, "  "));
+  }
   else console.log("  건너뜀 (--scenes game 으로 뜬 결과)");
   console.log("\n=== 2. 실게임 기록 장면");
   const r = cmpGame(a.game, b.game);
@@ -141,7 +146,7 @@ if (argv[0] === "--positive") {
   }
   if (ok) {
     const a = JSON.parse(fs.readFileSync(before, "utf8")), b = JSON.parse(fs.readFileSync(after, "utf8"));
-    const eng = FP.printEngines(a.engine, b.engine);
+    const eng = FP.printEngines(a, b);
     const r = cmpGame(a.game, b.game);
     console.log(`\n=== 양성 대조 (장면 ${r.장면}개, 저항 배수를 1% 틀리게 바꾼 엔진)`);
     console.log(`  1순위 ${r.top1} · Top3 ${r.top3} · Top6 ${r.top6} · 점수 ${r.score} (최대 ${r.maxd}) · 계산 순서 ${r.rawMoved}`);

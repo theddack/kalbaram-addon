@@ -8,8 +8,8 @@ const FP = require("./engine_fp.js");
 
 if (process.argv[2] === "--cmp") {
   const a = JSON.parse(fs.readFileSync(process.argv[3], "utf8")), b = JSON.parse(fs.readFileSync(process.argv[4], "utf8"));
-  const eng = FP.printEngines(a.engine, b.engine);
-  if (!eng.ok) console.log("  (아래 '달라진 것 없음' 은 이 상태에서는 근거가 되지 않는다)");
+  const eng = FP.printEngines(a, b);
+  if (eng.same) console.log("  (아래 '달라진 것 없음' 은 이 상태에서는 근거가 되지 않는다)");
   const A = a.scenes || a, B = b.scenes || b;   // 지문 없던 옛 결과 파일도 읽는다
   const per = {};
   for (const k of Object.keys(B)) {
@@ -35,21 +35,31 @@ S.attachSimilar(d.champions, null, d.items);
 const OPTS = { aram: true };
 const AUG_VAMP = "ARAM_SustainingStrike", AUG_CIRCLE = "ARAM_CircleofDeath";
 const augOf = (id) => d.augments.find((a) => a.id === id);
-const COMBOS = [["없음", []], ["흡수", [AUG_VAMP]], ["죽음의 순환", [AUG_CIRCLE]], ["둘 다", [AUG_VAMP, AUG_CIRCLE]]];
+const AUG_VEIL = "VeilOfWarding";
+const byName = new Map(d.items.map((i) => [i.name, i]));
+// 증강 조합 · 미리 산 아이템 (정령의 형상 = 받는 회복·보호막 25% 증가 → 분류 수정이 닿는 자리)
+const COMBOS = [
+  ["없음", [], []], ["흡수", [AUG_VAMP], []], ["죽음의 순환", [AUG_CIRCLE], []], ["둘 다", [AUG_VAMP, AUG_CIRCLE], []],
+  ["감시의 장막", [AUG_VEIL], []], ["장막+죽음의 순환", [AUG_VEIL, AUG_CIRCLE], []],
+  ["정령의 형상", [], ["정령의 형상"]], ["정령의 형상+죽음의 순환", [AUG_CIRCLE], ["정령의 형상"]],
+  ["정령의 형상+장막", [AUG_VEIL], ["정령의 형상"]],
+];
 const out = {};
-for (const [label, ids] of COMBOS) {
+for (const [label, ids, itemNames] of COMBOS) {
   const chosen = ids.map(augOf).filter(Boolean);
+  const fixed = itemNames.map((n) => byName.get(n)).filter(Boolean);
   for (const c of d.champions) {
     const as = chosen.length ? S.augStatsOf(chosen, d.rules, c) : [];
-    const m = St.evaluate(c, 18, [], as, OPTS).m;
+    const m = St.evaluate(c, 18, fixed, as, OPTS).m;
     const w = S.profile(c, d.tags);
-    const rows = S.rankItems(d.items, w, chosen, [], d.rules, c, OPTS, chosen.length ? "augment" : "balanced");
+    const rows = S.rankItems(d.items, w, chosen, fixed, d.rules, c, OPTS, chosen.length ? "augment" : "balanced");
     out[`${label}:${c.id}`] = {
       top3: rows.filter((r) => r.item.kind === "legendary").slice(0, 3).map((r) => r.item.name),
       score3: rows.filter((r) => r.item.kind === "legendary").slice(0, 3).map((r) => Math.round(r.score * 1e4) / 1e4),
-      m: { selfHealAll: m.selfHealAll, heal: m.heal, shield: m.shield, support: m.support, ehp: m.ehp, combo: m.combo },
+      m: { selfHealAll: m.selfHealAll, selfShieldAll: m.selfShieldAll, selfHpAll: m.selfHpAll, selfAbsorbAll: m.selfAbsorbAll,
+        heal: m.heal, shield: m.shield, support: m.support, ehp: m.ehp, combo: m.combo },
     };
   }
 }
-fs.writeFileSync(process.argv[2], JSON.stringify({ engine: FP.fingerprint(), scenes: out }));
+fs.writeFileSync(process.argv[2], JSON.stringify({ engine: FP.fingerprint(), inputs: { 조건: "기본" }, scenes: out }));
 console.log(`저장 ${process.argv[2]} — ${Object.keys(out).length}장면`);

@@ -35,10 +35,12 @@ function fingerprint() {
   };
 }
 
-const engineHash = (fp) => (fp && fp.files && fp.files["web/stats.js"] || {}).sha256 || null;
 const short = (h) => (h ? h.slice(0, 12) : "모름");
 
-// 두 결과 파일이 정말 '다른 엔진' 으로 만들어졌는가
+const hashOf = (fp, rel) => (fp && fp.files && fp.files[rel] || {}).sha256 || null;
+const engineHash = (fp) => hashOf(fp, "web/stats.js");
+
+// 두 결과 파일이 정말 '다른 엔진' 으로 만들어졌는가 (stats.js 만 본다 — 옛 호출부 호환)
 function engineDiff(a, b) {
   const ha = engineHash(a), hb = engineHash(b);
   if (!ha || !hb) return { ok: false, why: "지문 없음 (옛 결과 파일) — 같은 엔진끼리 견주고 있는지 알 수 없다" };
@@ -46,7 +48,35 @@ function engineDiff(a, b) {
   return { ok: true, why: `엔진이 다르다 (${short(ha)} → ${short(hb)})` };
 }
 
-// 비교 도구가 쓰는 공통 머리말. ok 가 아니면 눈에 띄게 알린다 (판정은 부르는 쪽에서)
+// 무엇이 달라진 비교인지 가린다 (2026-11-25): 세 파일 해시 + 입력 조건 라벨을 함께 본다.
+//   엔진 변경   stats.js·scoring.js 가 다름           → 결과가 달라지는 게 정상일 수 있다
+//   데이터 변경  data.json 이 다름 (패치·규칙값 수정)   → 〃
+//   입력값 민감도 세 파일은 같고 입력 조건만 다름        → 〃 (기준 상대·규칙값을 메모리에서 바꿔 본 경우)
+//   동일 조건 재현 전부 같음                           → 결과도 같아야 한다. 다르면 계산이 불안정한 것
+// 결과 파일의 inputs 는 '무슨 조건으로 쟀는지' 라벨이다 (없으면 '안 적음').
+const KINDS = { engine: "엔진 변경", data: "데이터 변경", both: "엔진+데이터 변경", input: "입력값 민감도", same: "동일 조건 재현", unknown: "알 수 없음" };
+function compareKind(a, b) {
+  const h = (rel) => [hashOf(a, rel), hashOf(b, rel)];
+  const [sa, sb] = h("web/stats.js"), [ca, cb] = h("web/scoring.js"), [da, db] = h("web/data.json");
+  if (!sa || !sb || !ca || !cb || !da || !db) return { kind: KINDS.unknown, engineMoved: false, dataMoved: false, inputMoved: false, why: "지문이 없는 결과 파일이 있다 (옛 파일) — 무엇이 달라진 비교인지 알 수 없다" };
+  const engineMoved = sa !== sb || ca !== cb;
+  const dataMoved = da !== db;
+  const ia = (a.inputs == null ? null : JSON.stringify(a.inputs)), ib = (b.inputs == null ? null : JSON.stringify(b.inputs));
+  const inputMoved = ia !== ib;
+  const parts = [];
+  if (sa !== sb) parts.push(`stats.js ${short(sa)} → ${short(sb)}`);
+  if (ca !== cb) parts.push(`scoring.js ${short(ca)} → ${short(cb)}`);
+  if (dataMoved) parts.push(`data.json ${short(da)} → ${short(db)}`);
+  if (inputMoved) parts.push(`입력 조건 ${ia || "안 적음"} → ${ib || "안 적음"}`);
+  const kind = engineMoved && dataMoved ? KINDS.both : engineMoved ? KINDS.engine : dataMoved ? KINDS.data
+    : inputMoved ? KINDS.input : KINDS.same;
+  const why = kind === KINDS.same
+    ? "세 파일 해시와 입력 조건이 모두 같다 → 결과도 같아야 한다 (다르면 계산이 불안정한 것)"
+    : `${kind}: ${parts.join(" · ")}`;
+  return { kind, engineMoved, dataMoved, inputMoved, why, same: kind === KINDS.same };
+}
+
+// 비교 도구가 쓰는 공통 머리말. 무엇이 달라진 비교인지까지 찍는다 (판정은 부르는 쪽에서)
 function printEngines(a, b) {
   const line = (label, fp) => {
     if (!fp) return console.log(`  ${label}: 지문 없음`);
@@ -55,11 +85,13 @@ function printEngines(a, b) {
       + ` · data ${short((f["web/data.json"] || {}).sha256)} · 커밋 ${fp.git && fp.git.head || "모름"}`
       + (fp.git && fp.git.작업중변경.length ? ` · 작업중 변경 ${fp.git.작업중변경.length}개` : "") + ` · ${fp.at || ""}`);
   };
-  console.log("=== 0. 무슨 엔진으로 쟀나");
-  line("전", a); line("후", b);
-  const v = engineDiff(a, b);
-  console.log(`  → ${v.ok ? "" : "⚠ "}${v.why}`);
-  return v;
+  console.log("=== 0. 무슨 엔진·데이터로 쟀나");
+  line("전", a.engine || a); line("후", b.engine || b);
+  const k = compareKind({ ...(a.engine || a), inputs: a.inputs }, { ...(b.engine || b), inputs: b.inputs });
+  console.log(`  → [${k.kind}] ${k.why}`);
+  const v = engineDiff(a.engine || a, b.engine || b);
+  if (!v.ok && !k.dataMoved && !k.inputMoved) console.log(`  ⚠ ${v.why}`);
+  return { ...v, ...k };
 }
 
-module.exports = { fingerprint, engineDiff, printEngines, engineHash, FILES, ROOT };
+module.exports = { fingerprint, engineDiff, compareKind, printEngines, engineHash, hashOf, KINDS, FILES, ROOT };
