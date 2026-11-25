@@ -1387,3 +1387,51 @@ test("C9-A2 고정 저항 감소는 더해서 합친다", () => {
   near(sum.mrFlatShred, 16, 1e-12, "고정 마법 저항력 감소");
   near(sum.armorFlatShred, 5, 1e-12, "고정 방어력 감소");
 });
+
+test("C9-A2.5 핏빛 저주는 중첩 평균 1.5 가정을 그대로 쓰고 결과가 바뀌지 않는다", () => {
+  const rule = (d.rules.items || {})["핏빛 저주"];
+  assert.ok(rule && rule.stats, "핏빛 저주 규칙이 있어야 해요");
+  near(rule.stats.mrShred, 0.1125, 1e-12, "중첩 평균 1.5 × 7.5% 가정 (C9-A3 전까지 그대로)");
+  // 공통 자리로 옮겨도 깎인 마법 저항력과 피해 배율이 예전 식과 같다
+  const blight = item("핏빛 저주");
+  assert.ok(blight, "핏빛 저주 아이템이 있어야 해요");
+  const cv = St.computeStats(champ("Lux"), 18, [blight], [], { aram: true }).conv;
+  near(cv.mrShred, 0.1125, 1e-12, "아이템 하나면 곱·합이 같다");
+  near(St.mitigation(St.TARGET.MR, 0, 0, cv.mrShred, 0),
+    100 / (100 + St.TARGET.MR * (1 - 0.1125)), 1e-12, "예전 식(MR × (1 − mrShred))과 같은 값");
+});
+
+test("C9-A2.5 중첩 평균 식: 포화 전·후 두 갈래가 손 계산과 같다", () => {
+  // 칠흑(6% ×5, 6초, 초당 1.5회): s* = min(5, 9) = 5 · t_r = 3.33초 ≤ 6초 → 5 × (1 − 3.33/12) = 3.611
+  const a = St.shredExpect({ perStack: 0.06, maxStacks: 5, rate: 1.5, dur: 6, fightSec: 6 });
+  near(a.saturated, 5, 1e-12, "포화 중첩");
+  near(a.stackAvg, 5 * (1 - (5 / 1.5) / 12), 1e-12, "포화 전 갈래");
+  near(a.value, a.stackAvg * 0.06, 1e-12, "깎는 양");
+  // 부식(1.5% ×20, 4초, 초당 2회): s* = min(20, 8) = 8 · t_r = 4초 ≤ 6초 → 8 × (1 − 4/12) = 5.333
+  const b = St.shredExpect({ perStack: 0.015, maxStacks: 20, rate: 2, dur: 4, fightSec: 6 });
+  near(b.stackAvg, 8 * (1 - 4 / 12), 1e-12, "부식");
+  // 포화가 한타보다 오래 걸리는 경우: 한타 내내 쌓기만 한다 → rate × T / 2
+  const c = St.shredExpect({ perStack: 0.01, maxStacks: 30, rate: 2, dur: 60, fightSec: 6 });
+  near(c.stackAvg, 2 * 6 / 2, 1e-12, "포화 후 갈래");
+  assert.ok(c.stackAvg <= c.saturated, "평균이 포화 중첩을 넘으면 안 돼요");
+});
+
+test("C9-A2.5 중첩 평균은 0 아래로도 포화 위로도 안 간다 (발동 0회 포함)", () => {
+  for (const o of [{ rate: 0, dur: 6, maxStacks: 5 }, { rate: 2, dur: 0, maxStacks: 5 }, { rate: 2, dur: 6, maxStacks: 0 },
+    { rate: -1, dur: 6, maxStacks: 5 }, { rate: 0, dur: 0, maxStacks: 0 }]) {
+    const r = St.shredExpect({ perStack: 0.06, ...o, fightSec: 6 });
+    assert.equal(r.stackAvg, 0, `발동이 없으면 0 이어야 해요: ${JSON.stringify(o)}`);
+    assert.ok(Number.isFinite(r.value), `값이 숫자여야 해요: ${JSON.stringify(o)}`);
+  }
+  // 어떤 조합에서도 0 ≤ 평균 ≤ 포화 중첩 (예전 식은 포화 시간이 한타보다 길면 음수가 됐다)
+  for (const rate of [0.1, 0.5, 1, 2, 5]) for (const dur of [0.5, 2, 4, 6, 20]) for (const maxStacks of [1, 4, 5, 20]) {
+    const r = St.shredExpect({ perStack: 0.01, rate, dur, maxStacks, fightSec: 6 });
+    assert.ok(r.stackAvg >= 0 && r.stackAvg <= r.saturated + 1e-12, `${rate}/${dur}/${maxStacks} → ${r.stackAvg} (포화 ${r.saturated})`);
+  }
+});
+
+test("C9-A2.5 중첩 평균을 1.5 로 고정하면 핏빛 저주의 지금 값이 그대로 나온다", () => {
+  const r = St.shredExpect({ perStack: 0.075, maxStacks: 4, rate: 1, dur: 6, pinnedAvg: 1.5 });
+  near(r.value, 0.1125, 1e-12, "지금 규칙 값 (중첩 평균 1.5 × 7.5%)");
+  near(r.value, (d.rules.items["핏빛 저주"].stats || {}).mrShred, 1e-12, "데이터 규칙과 같은 값");
+});

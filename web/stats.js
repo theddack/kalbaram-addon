@@ -455,6 +455,23 @@
   function convAdd(conv, k, v) {
     conv[k] = PCT_SHRED.has(k) ? 1 - (1 - (conv[k] || 0)) * (1 - v) : (conv[k] || 0) + v;
   }
+  // 중첩으로 쌓이는 저항 감소의 한타 평균 (C9-A2.5, docs/v0.1.95_Phase4_C9_저항감소_조사.md 7.1).
+  //   rate  1초에 쌓는 횟수 (조건 on 에 따라 평타 공격 속도 · 스킬 빈도 · 둘의 합)
+  //   dur   한 중첩이 남아 있는 시간(초) · maxStacks 최대 중첩 · perStack 중첩 하나가 깎는 양
+  // 쌓는 동안에도 중첩은 선형으로 올라가므로 그 구간의 평균은 절반이다 (앞 식은 그 구간을 0 으로 쳐서 음수가 나왔다).
+  //   포화까지 걸린 시간 t_r ≤ 한타 T :  s̄ = s* × (1 − t_r / (2T))
+  //   t_r > T                        :  s̄ = min(s*, rate × T / 2)   … 한타 내내 쌓기만 한다
+  // 항상 0 ≤ s̄ ≤ s* 다. 발동이 아예 없으면(rate·dur·maxStacks 중 하나가 0 이하) 0 을 준다 (t_r 이 0/0 이 되지 않게).
+  // pinnedAvg 를 주면 그 중첩 평균을 그대로 쓴다 (핏빛 저주의 기존 가정 1.5 를 유지해 결과를 고정할 때).
+  function shredExpect({ perStack = 0, maxStacks = 1, rate = 0, dur = 0, fightSec = null, pinnedAvg = null } = {}) {
+    const T = Math.max(1e-9, fightSec != null ? fightSec : EXP.fightSec);
+    if (pinnedAvg != null) return { stackAvg: pinnedAvg, saturated: pinnedAvg, value: pinnedAvg * perStack };
+    if (!(rate > 0) || !(dur > 0) || !(maxStacks > 0)) return { stackAvg: 0, saturated: 0, value: 0 };
+    const sat = Math.min(maxStacks, rate * dur);
+    const tr = sat / rate;
+    const avg = tr <= T ? sat * (1 - tr / (2 * T)) : Math.min(sat, rate * T / 2);
+    return { stackAvg: avg, saturated: sat, value: avg * perStack };
+  }
 
   // 기준 상대: 전 챔피언 173명의 18레벨 균형 빌드 능력치 중앙값 (패치 16.20, tools/target_median.js 로 계산)
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
@@ -939,7 +956,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt, mitigation };
+  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt, mitigation, shredExpect };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);
