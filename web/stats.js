@@ -825,13 +825,6 @@
       else if (tr.type === "boundCast") { const v = hit * out.boundCastRate; out.augCombo += hit * (targetable ? weave : 0); out.augDps += v; out.castDps += v; out.castDpsUsed += v * EXP.skillShare; }
       else out.augCombo += hit;
     }
-    // 흡수: 스킬로 준 피해(방어 적용 후)의 일부를 회복, 죽음의 순환: 회복량의 일부를 마법 피해로
-    if (cv.skillVamp) out.heal += out.spells.reduce((a, sp) => a + sp.dmg, 0) * cv.skillVamp * (aram.healing || 1) * (1 + t.HSP);
-    if (cv.healToDamage && out.heal > 0) {
-      const hd = out.heal * cv.healToDamage * magMit * dealt;
-      out.augCombo += hd;
-      out.effects.push({ src: "회복 → 피해", kind: "magic", value: out.heal * cv.healToDamage, hit: hd, trigger: "once" });
-    }
     out.combo += out.augCombo;
     // 치유 감소(고통스러운 상처 40%): 상대가 한타에서 회복할 양 중 못 하게 막는 몫 = 그만큼 더 깎은 것과 같다 → 한타 피해에 더한다.
     // 기준 상대의 회복량(TARGET.HEAL)은 상대를 모르면 0 이라 기본 추천에서는 값이 0 이다 (위 TARGET 설명)
@@ -850,9 +843,28 @@
     // 예전엔 흡혈 수치를 합계만 내고 점수엔 안 써서 '마도사의 주스 상자'(모든 피해 흡혈 10%)가 누구에게나 이득 0 → D 였다 (2026-10-22 점검)
     const autoCombo = out.autoDps * COMBO_WINDOW;
     out.vampHeal = ((t.LS || 0) * autoCombo + (t.OMNIVAMP || 0) * (autoCombo + out.combo)) * (aram.healing || 1);
+    // 흡수(skillVamp): 스킬로 준 피해(방어 적용 후)의 일부를 '내' 체력으로 회복 → 흡혈과 같은 칸에 넣는다.
+    // v0.1.95 Phase 4 E1 전에는 out.heal(아군에게 준 회복)에 더해, 버티는 힘에서 빠지고 지원 지표를 부풀리고
+    // 상대 회복량 추정(app.js selfHealOf)에도 안 잡혔다. 생명력 흡수·모든 피해 흡혈과는 출처가 달라 겹치지 않는다
+    if (cv.skillVamp) {
+      out.skillVampHeal = out.spells.reduce((a, sp) => a + sp.dmg, 0) * cv.skillVamp * (aram.healing || 1) * (1 + t.HSP);
+      out.vampHeal += out.skillVampHeal;
+    }
     // 정령의 형상 '무한한 활력': 자신이 받는 회복·보호막 증가 → 자기 회복(생명선·흡혈·아이템 자기 회복·보호막)에 곱한다
     // 챔피언 기술의 자기 회복·보호막(out.selfHeal·selfShield)도 버티는 힘으로 (v0.1.93 P4-A, 예전엔 지원 지표에 들어갔다)
-    const extraHp = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHp + out.selfHeal + out.selfShield) * (1 + (cv.selfHealMult || 0));
+    // 네 칸을 갈라 둔다 (E1): 자기 회복 selfHealAll · 아군 회복 heal · 자기 보호막 selfShieldAll · 아군 보호막 shield
+    out.selfHealAll = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHeal + out.selfHeal) * (1 + (cv.selfHealMult || 0));
+    out.selfShieldAll = (out.itemSelfShield + out.selfShield) * (1 + (cv.selfHealMult || 0));
+    // 죽음의 순환(healToDamage): 원본은 '체력을 회복하거나 재생하면 그 70% 만큼 가장 가까운 적에게 마법 피해'.
+    // 그래서 자기 회복만 센다 — 보호막은 회복이 아니고(E2 전에는 아군에게 준 회복을 읽었다), 체력 재생은 아직 모델에 없다.
+    // 한 번만 돈다: 이 피해로 다시 흡혈하지 않는다 (피해 → 회복 → 피해 순환을 끊으려고 흡혈을 먼저 구한 뒤에 더한다)
+    if (cv.healToDamage && out.selfHealAll > 0) {
+      const hd = out.selfHealAll * cv.healToDamage * magMit * dealt;
+      out.augCombo += hd;
+      out.combo += hd;
+      out.effects.push({ src: "회복 → 피해", kind: "magic", value: out.selfHealAll * cv.healToDamage, hit: hd, trigger: "once" });
+    }
+    const extraHp = out.selfHealAll + out.selfShieldAll;
     // 무적·피해 감소(존야 시간 정지·천상의 구원 …): 그동안 '안 받는 피해'는 저항을 지난 뒤 단위(받는 피해 초당)예요.
     // 버티는 힘은 맞을 수 있는 생피해 단위라, 바꿀 때 기준 상대의 저항 배수를 써요. 내 저항으로 곱하면 방어력이 높을수록
     // 무적이 커져 탱커가 최대 2.5배 과대평가됐어요 (2026-11-16 존야 실험에서 드러남, docs/v0.1.93_P4B_1단계_존야.md).

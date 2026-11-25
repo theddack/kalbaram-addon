@@ -183,7 +183,8 @@ test("중첩형: 나서스 Q 는 평균 중첩만큼, 베이가는 주문력 중
 
 test("새로 숫자로 계산되는 증강: 흡수(스킬 피해 회복), 죽음의 순환(회복 → 피해)", () => {
   const lux = champ("Lux");
-  const heal = (augs) => St.evaluate(lux, 18, [], S.augStatsOf(augs, d.rules, lux)).m.heal;
+  // 흡수는 '내' 체력을 회복하는 효과라 자기 회복 칸에 들어간다 (v0.1.95 Phase 4 E1 전에는 아군 회복 칸이었다)
+  const heal = (augs) => St.evaluate(lux, 18, [], S.augStatsOf(augs, d.rules, lux)).m.selfHealAll;
   assert.ok(heal([aug("ARAM_SustainingStrike")]) > heal([]));
   const sor = champ("Soraka");
   const combo = (augs) => St.evaluate(sor, 18, [], S.augStatsOf(augs, d.rules, sor)).m.combo;
@@ -1287,4 +1288,62 @@ test("향로·흐르는 물: 아군 회복·보호막이 있는 챔피언만 발
   assert.equal(Math.round(gain("Nunu", censer)), 0, "아군 회복·보호막이 없으면 발동 안 함");
   assert.equal(Math.round(gain("Nunu", staff)), 0, "흐르는 물의 지팡이도 같음");
   assert.equal(Math.round(gain("Jinx", censer)), 0, "아군 지원 챔피언이 아니면 그대로 0");
+});
+
+// E1·E2 (v0.1.95 Phase 4, 2026-11-25): 자기 회복 / 아군 회복 / 자기 보호막 / 아군 보호막을 가른다.
+//   E1 증강 '흡수'(skillVamp)는 내 체력을 회복하는 효과인데 아군에게 준 회복(out.heal) 칸에 들어가
+//      ① 버티는 힘에서 빠지고 ② 지원 지표를 부풀리고 ③ 상대 회복량 추정에도 안 잡혔다.
+//   E2 '죽음의 순환'(healToDamage)은 원본이 '내 체력을 회복·재생하면'인데 아군에게 준 회복을 읽었다.
+const AUG_VAMP = "ARAM_SustainingStrike", AUG_CIRCLE = "ARAM_CircleofDeath";
+const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b} (허용 ${tol})`);
+const mOf = (c, augs, items = []) => St.evaluate(c, 18, items, S.augStatsOf(augs.map(aug), d.rules, c), { aram: true }).m;
+
+test("E1 흡수: 스킬 피해로 내가 회복하는 양은 자기 회복이다 (아군 지원 아님)", () => {
+  const lux = champ("Lux");
+  const a = mOf(lux, []), b = mOf(lux, [AUG_VAMP]);
+  assert.ok(b.selfHealAll > a.selfHealAll, `자기 회복이 안 올랐다: ${a.selfHealAll} → ${b.selfHealAll}`);
+  assert.equal(b.heal, a.heal, `아군에게 준 회복 칸이 움직였다: ${a.heal} → ${b.heal}`);
+  assert.ok(b.ehp > a.ehp, `자기 회복인데 버티는 힘이 그대로다: ${a.ehp} → ${b.ehp}`);
+  assert.equal(b.support - a.support, 0, "지원 지표가 자기 회복으로 올랐다");
+});
+
+test("E2 죽음의 순환: 자기 회복만 있는 챔피언에서도 피해가 난다", () => {
+  const vlad = champ("Vladimir");  // 자기 회복 있음 · 아군 회복 0
+  const a = mOf(vlad, []), b = mOf(vlad, [AUG_CIRCLE]);
+  assert.equal(a.heal, 0, "시험 전제: 이 챔피언은 아군에게 주는 회복이 없어요");
+  assert.ok(a.selfHealAll > 0, "시험 전제: 자기 회복이 있어야 해요");
+  assert.ok(b.combo > a.combo, `자기 회복을 못 읽어 피해가 0 이다: ${a.combo} → ${b.combo}`);
+});
+
+test("E2 죽음의 순환: 아군에게 준 회복으로는 피해가 나지 않는다", () => {
+  const sor = champ("Soraka");  // 아군 회복 1045 · 자기 회복 135
+  const a = mOf(sor, []), b = mOf(sor, [AUG_CIRCLE]);
+  const fx = b.effects.find((e) => e.src === "회복 → 피해");
+  assert.ok(fx, "회복 → 피해 효과가 있어야 해요");
+  assert.ok(fx.value < a.heal * 0.7, `아군에게 준 회복까지 피해로 셌다: ${fx.value} (아군 회복 ${Math.round(a.heal)})`);
+  near(fx.value, a.selfHealAll * 0.7, a.selfHealAll * 0.05, "자기 회복의 70% 여야 해요");
+});
+
+test("E1+E2 중복 없음: 흡수와 죽음의 순환을 같이 골라도 회복을 한 번만 센다", () => {
+  const lux = champ("Lux");
+  const v = mOf(lux, [AUG_VAMP]), both = mOf(lux, [AUG_VAMP, AUG_CIRCLE]);
+  const fx = both.effects.find((e) => e.src === "회복 → 피해");
+  assert.ok(fx, "회복 → 피해 효과가 있어야 해요");
+  near(fx.value, v.selfHealAll * 0.7, v.selfHealAll * 0.02, "자기 회복 합의 70% (두 번 세면 두 배가 된다)");
+});
+
+test("E2 순환 참조 없음: 죽음의 순환이 낸 피해로 다시 흡혈하지 않는다", () => {
+  const lux = champ("Lux"), omni = item("마도사의 주스 상자") || item("리안드리의 고통");
+  const a = mOf(lux, [], [omni]), b = mOf(lux, [AUG_CIRCLE], [omni]);
+  near(b.vampHeal, a.vampHeal, Math.max(1e-9, a.vampHeal * 1e-9), "회복 → 피해가 흡혈을 다시 늘렸다 (한 번만 돌아야 해요)");
+});
+
+test("회복·보호막 네 칸은 서로 겹치지 않는다 (자기 회복·아군 회복·자기 보호막·아군 보호막)", () => {
+  for (const id of ["Soraka", "Sona", "Lux", "Vladimir", "Garen"]) {
+    const m = mOf(champ(id), []);
+    near(m.selfHealAll, ((m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHeal || 0)) * (1 + 0), Math.max(1, m.selfHealAll * 0.001) + 1e-6,
+      `${id}: 자기 회복 합이 갈래 합과 다르다`);
+    near(m.selfShieldAll, (m.selfShield || 0) + (m.itemSelfShield || 0), 1e-6, `${id}: 자기 보호막 합이 갈래 합과 다르다`);
+    assert.equal(m.support, m.shield + m.heal + m.allyDmg + (m.allySupport || 0), `${id}: 지원 지표에 자기 몫이 섞였다`);
+  }
 });
