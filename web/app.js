@@ -412,11 +412,13 @@ function applyEnemyTarget() {
   const T = St.TARGET;
   // 이미 적 기준으로 잡혀 있고, 새 값이 모든 항목에서 TARGET_STEP 안이면 그대로 (변화가 쌓여 넘으면 그때 바꾼다)
   // 회복량(HEAL)은 0에서 시작해 기준 비율로는 재기 어려워서 값이 바뀌면 바로 반영한다 (치유 감소 아이템 순위가 걸려 있다)
-  // 추가 체력은 '체력'의 밴드로 잰다 (체력의 일부이고 같은 50 단위로 반올림한다).
-  // 자기 값의 5%로 재면 추가 체력이 300 일 때 밴드(15)가 반올림 단위(50)보다 작아, 적이 아이템을 살 때마다
-  // 계산 기억이 전부 무효가 됐다 — 408 번 중 408 번 (2026-11-25 tools/heal_churn.js 로 재 봄)
-  const small = next && state.targetFromEnemy && next.HEAL === T.HEAL
-    && Math.abs(next.bonusHP - T.BONUS_HP) < Math.abs(T.HP) * TARGET_STEP
+  // 추가 체력도 회복량처럼 값이 바뀌면 바로 반영한다 (거인 학살 계열 순위가 걸려 있다).
+  // 밴드로 재 본 두 방식 모두 안 됐다 (2026-11-25 tools/heal_churn.js · tools/band_check.js 로 408 이벤트에서 측정):
+  //   ① 자기 값의 5% → 추가 체력 300 일 때 밴드(15)가 반올림 단위(50)보다 작아 408 번 중 408 번 재계산
+  //   ② 체력의 5% → 추가 체력은 체력보다 작게 움직여 '추가 체력을 아예 안 보는 것'과 숫자가 같았다
+  //      (재계산 57 번으로 같고, 추가 체력이 최대 150 달라도 기준을 안 바꿔 127 자리가 묵은 값으로 남았다.
+  //       그중 4 자리는 1순위·Top3·다음 구매가 실제로 달라졌다)
+  const small = next && state.targetFromEnemy && next.HEAL === T.HEAL && next.bonusHP === T.BONUS_HP
     && ["ARMOR", "MR", "HP"].every((k) => Math.abs(next[k] - T[k]) < Math.abs(T[k]) * TARGET_STEP);
   if (!small) { St.setTarget(next); state.targetFromEnemy = !!next; }
   showTarget();

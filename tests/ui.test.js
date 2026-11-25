@@ -1899,3 +1899,26 @@ test("기준 상대를 잠깐 바꿨다 되돌리는 모든 길에서 추가 체
   St.setTarget(null);
   assert.deepEqual(p.errors, []);
 });
+
+// C2 갱신 조건 (2026-11-25): 추가 체력은 완충 밴드에서 빼고 값이 바뀌면 바로 반영한다.
+// 밴드로 재면 추가 체력이 최대 150 달라도 기준이 안 바뀌어 묵은 값으로 추천했다 (tools/band_check.js: 408 중 127 자리).
+// 적 5명 중 2명만 체력 250 아이템을 사면 평균 추가 체력은 100 오른다 — 체력 밴드(약 160)보다 작아서 예전엔 통째로 넘어갔다
+const liveMix = (n, hpItem = "3814", base = "3142") => ({
+  enabled: true, inGame: true, champion: "Galio", level: 11, items: [], enemies: FOES,
+  enemyBuilds: FOES.map((champion, i) => ({ champion, level: 11, items: [i < n ? hpItem : base] })),
+});
+
+test("게임 연동: 적 일부만 체력 아이템을 사도 추가 체력이 바로 반영된다 (C2 갱신 조건)", async () => {
+  const p = await loadPage();
+  p.w.applyLive(liveMix(0));
+  await until(() => p.qa("#build .item").length > 0);
+  const T = p.w.Stats.TARGET;
+  const bonus0 = T.BONUS_HP, heal0 = T.HEAL, hp0 = T.HP;
+  p.w.applyLive(liveMix(2));
+  await until(() => p.qa("#build .item").length > 0);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(T.HEAL, heal0, "이 아이템은 회복이 없어야 해요 (시험이 성립 안 함)");
+  assert.ok(Math.abs(T.HP - hp0) < hp0 * 0.05, `최대 체력 변화가 밴드를 넘으면 예전 코드도 갱신해서 시험이 성립 안 해요: ${hp0} → ${T.HP}`);
+  assert.ok(T.BONUS_HP > bonus0, `밴드 안이라고 추가 체력 갱신을 통째로 넘겼다: ${bonus0} → ${T.BONUS_HP}`);
+  assert.deepEqual(p.errors, []);
+});

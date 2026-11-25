@@ -89,8 +89,8 @@ for (const g of games) {
   for (const x of enemies) {
     events++;
     const next = enemyTarget(x.builds);
-    const small = next && fromEnemy && next.HEAL === T.HEAL
-      && Math.abs(next.bonusHP - T.bonusHP) < Math.abs(T.HP) * TARGET_STEP
+    // web/app.js applyEnemyTarget() 과 같게: 추가 체력은 밴드에서 빼고 값이 바뀌면 바로 갱신한다
+    const small = next && fromEnemy && next.HEAL === T.HEAL && next.bonusHP === T.bonusHP
       && ["ARMOR", "MR", "HP"].every((k) => Math.abs(next[k] - T[k]) < Math.abs(T[k]) * TARGET_STEP);
     if (small) {
       skipped++;
@@ -139,10 +139,10 @@ console.log("\n※ 추가 체력은 최대 체력의 일부라, 최대 체력이
 // ---- ③ 갱신 기준을 바꿔 보면 재계산 횟수와 '빠진 갱신' 이 어떻게 달라지나 (고르기 위한 비교, 바꾸지는 않는다)
 console.log("\n=== ③ 추가 체력 갱신 기준 비교 (재계산 횟수 ↔ 추천이 달라진 자리)");
 const POLICIES = [
-  ["지금: 최대 체력의 5%", (T) => Math.abs(T.HP) * TARGET_STEP],
+  ["지금(2026-11-25 뒤): 차이가 있으면 항상", () => 1],
+  ["예전: 최대 체력의 5%", (T) => Math.abs(T.HP) * TARGET_STEP],
   ["고정 200", () => 200],
   ["고정 100", () => 100],
-  ["차이가 있으면 항상", () => 1],
   ["Phase 3 이전: 추가 체력을 안 봄", () => Infinity],
 ];
 for (const [label, bandOf] of POLICIES) {
@@ -172,4 +172,29 @@ for (const [label, bandOf] of POLICIES) {
     }
   }
   console.log(`  ${label}: 재계산 ${recalc}/${events} · 추가 체력이 달랐는데 넘어간 자리 ${missed} (최대 차이 ${worst}) · 그중 1순위·Top3·다음구매·빌드가 달라지는 자리 ${missedChanged}`);
+}
+
+// ---- ④ 지금 규칙에서 재계산이 실제로 얼마나 걸리나 (한 번 = 화면이 다시 그려질 때 도는 묶음)
+console.log("");
+console.log("=== ④ 재계산 한 번에 걸리는 시간 (web/app.js warmThenRender 와 같은 묶음)");
+{
+  const probe = champOf("Ahri") || d.champions[0];
+  const weights = S.profile(probe, d.tags);
+  const bundle = () => {
+    S.buildConcepts(d.items, weights, [], [], d.rules, probe, OPTS, ["balanced"]);
+    S.numericAugmentGains(d.augments, d.items, weights, [], [], d.rules, probe, OPTS);
+  };
+  const T0 = { ARMOR: 113, MR: 63, HP: 3148, bonusHP: 300, HEAL: 0 };
+  St.setTarget(T0); bundle();                      // 데워 두기
+  const cold = [], warm = [];
+  for (let i = 0; i < 10; i++) {
+    St.setTarget({ ...T0, bonusHP: 300 + 50 * (i + 1) });  // 기준이 바뀌어 기억이 무효가 된 상태
+    let t = process.hrtime.bigint(); bundle(); cold.push(Number(process.hrtime.bigint() - t) / 1e6);
+    t = process.hrtime.bigint(); bundle(); warm.push(Number(process.hrtime.bigint() - t) / 1e6);  // 같은 기준으로 한 번 더 (기억 적중)
+  }
+  const med = (a) => a.slice().sort((x, y) => x - y)[Math.floor(a.length / 2)];
+  console.log(`  기준이 바뀐 뒤 첫 계산: 중앙값 ${med(cold).toFixed(0)}ms (최소 ${Math.min(...cold).toFixed(0)} · 최대 ${Math.max(...cold).toFixed(0)})`);
+  console.log(`  같은 기준으로 다시 계산: 중앙값 ${med(warm).toFixed(0)}ms (기억 적중)`);
+  console.log(`  → 갱신을 29 번 더 하면 한 판에 약 ${(med(cold) * 29 / 1000).toFixed(1)}초가 더 든다 (판 전체에 흩어진다)`);
+  St.setTarget(null);
 }
