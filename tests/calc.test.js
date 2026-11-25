@@ -1445,17 +1445,34 @@ const e4m = (id, itemNames = [], augIds = []) => {
 };
 const e4dmg = (m) => { const fx = (m.effects || []).find((e) => e.src === "회복 → 피해"); return fx ? fx.value : 0; };
 
-test("E4 원형질 안전벨트: 회복 400 과 최대 체력 증가 300 을 따로 센다 (합은 예전과 같은 700)", () => {
+test("E4 원형질 안전벨트: 회복과 최대 체력 증가를 따로 센다 (18레벨·추가 저항 0 이면 400 + 300)", () => {
   const rule = d.rules.items[BELT].stats;
-  assert.equal(rule.selfHeal, 400);
-  assert.equal(rule.selfHp, 300);
-  assert.equal(item(BELT).passiveStats.selfHeal, 400, "data.json 에 구워진 값도 같아야 해요");
-  assert.equal(item(BELT).passiveStats.selfHp, 300);
+  assert.deepEqual(rule.selfHeal.lvl, [100, 400], "원본: 회복 100~400 (레벨 비례)");
+  assert.deepEqual(rule.selfHeal.ratios, { bonusARMOR: 1.75, bonusMR: 1.75 }, "원본: 추가 방어력·마법 저항력의 175%");
+  assert.deepEqual(rule.selfHp.lvl, [100, 300], "원본: 최대 체력 100~300 (레벨 비례)");
+  assert.deepEqual(item(BELT).passiveStats, rule, "data.json 에 구워진 값도 같아야 해요");
   const bare = e4m("Rammus"), belt = e4m("Rammus", [BELT]);
-  assert.equal(Math.round(belt.selfHealAll - bare.selfHealAll), 400);
+  assert.equal(Math.round(belt.selfHealAll - bare.selfHealAll), 400, "추가 저항이 없으면 18레벨 400");
   assert.equal(Math.round(belt.selfHpAll), 300);
   // 한 아이템을 두 칸에 중복으로 더하지 않는다 (합 700, 1400 이 아님)
   assert.equal(Math.round(belt.selfHealAll + belt.selfHpAll + belt.selfShieldAll + belt.selfAbsorbAll), 700);
+});
+
+test("E4 원형질 안전벨트 원본 계수: 레벨 비례 보간과 추가 저항 175%", () => {
+  const c = champ("Rammus"), belt = item(BELT);
+  const at = (L, items = [belt]) => St.computeStats(c, L, items, [], { aram: true });
+  // 레벨 보간은 1~18레벨 직선 (구원·미카엘의 축복과 같은 방식)
+  near(at(1).conv.selfHeal, 100, 1e-9, "1레벨 회복");
+  near(at(18).conv.selfHeal, 400, 1e-9, "18레벨 회복");
+  near(at(1).conv.selfHp, 100, 1e-9, "1레벨 최대 체력");
+  near(at(18).conv.selfHp, 300, 1e-9, "18레벨 최대 체력");
+  near(at(10).conv.selfHeal, 100 + 300 * 9 / 17, 1e-9, "10레벨은 직선 보간");
+  // 아이템으로 얻는 추가 저항이 회복에 들어간다 (마법 저항력 40 → +70)
+  const mr = item("밴시의 장막");
+  const t = at(18, [belt, mr]).total;
+  near(at(18, [belt, mr]).conv.selfHeal, 400 + 1.75 * (t.bonusARMOR + t.bonusMR), 1e-9, "추가 저항의 175%");
+  // 최대 체력 증가는 저항을 안 탄다
+  near(at(18, [belt, mr]).conv.selfHp, 300, 1e-9, "최대 체력은 그대로");
 });
 
 test("F12 감시의 장막: 주문 방어막은 회복이 아니라 피해 흡수 칸으로", () => {
@@ -1478,9 +1495,10 @@ test("E4·F12 죽음의 순환은 '실제 자기 회복' 만 피해로 바꾼다
 });
 
 test("E4·F12 정령의 형상은 회복·보호막만 25% 올린다 (최대 체력·주문 방어막은 그대로)", () => {
-  const spirit = e4m("Rammus", [SPIRIT]), beltSpirit = e4m("Rammus", [BELT, SPIRIT]);
-  const bare = e4m("Rammus"), belt = e4m("Rammus", [BELT]);
-  near((beltSpirit.selfHealAll - spirit.selfHealAll) / (belt.selfHealAll - bare.selfHealAll), 1.25, 1e-9, "회복은 1.25배");
+  const beltSpirit = e4m("Rammus", [BELT, SPIRIT]), belt = e4m("Rammus", [BELT]);
+  // 정령의 형상은 마법 저항력 50 도 같이 주므로 회복 바탕값 자체가 커진다 → 규칙값 × 1.25 와 견준다
+  const cv = St.computeStats(champ("Rammus"), 18, [item(BELT), item(SPIRIT)], [], { aram: true }).conv;
+  near(beltSpirit.selfHealAll, cv.selfHeal * 1.25, 1e-9, "회복은 규칙값의 1.25배");
   near(beltSpirit.selfHpAll / belt.selfHpAll, 1, 1e-9, "최대 체력 증가는 그대로");
   const veil = e4m("Rammus", [], ["VeilOfWarding"]), veilSpirit = e4m("Rammus", [SPIRIT], ["VeilOfWarding"]);
   near(veilSpirit.selfAbsorbAll / veil.selfAbsorbAll, 1, 1e-9, "주문 방어막도 그대로");

@@ -71,10 +71,17 @@ console.log("\n=== 3. 중복 합산과 증폭");
   chk.push([`자기 회복 칸에 들어간 몫 ${belt.selfHealAll} · 최대 체력 칸 ${belt.selfHpAll}`, true]);
   chk.push([`장막은 주문 방어막 칸으로만 (흡수 ${veil.selfAbsorbAll} · 회복 ${r1(veil.selfHealAll - bare.selfHealAll)})`, true]);
   // 정령의 형상: 받는 회복·보호막 25% 증가 → 자기 회복만 1.25배, 최대 체력·주문 방어막은 그대로여야 한다
-  const healAmp = (beltSpirit.selfHealAll - spirit.selfHealAll) / Math.max(1e-9, belt.selfHealAll - bare.selfHealAll);
+  // 정령의 형상은 마법 저항력 50 을 같이 준다 → 원본 계수를 넣은 뒤로는 회복 바탕값 자체가 커진다.
+  // 그래서 '바탕값 × 1.25' 와 견준다 (배율만 떼어 보려고)
+  const beltOnlySpirit = St.computeStats(champOf("Rammus"), 18, [byName.get(BELT), byName.get(SPIRIT)], [], OPTS);
+  const ruleHeal = (cv) => cv.selfHeal || 0;
+  const expectHeal = ruleHeal(beltOnlySpirit.conv) * 1.25;
+  const healAmp = (beltSpirit.selfHealAll - bare.selfHealAll * 1.25) / Math.max(1e-9, ruleHeal(beltOnlySpirit.conv));
   const hpAmp = beltSpirit.selfHpAll / Math.max(1e-9, belt.selfHpAll);
   const absorbAmp = veilSpirit.selfAbsorbAll / Math.max(1e-9, veil.selfAbsorbAll);
-  chk.push([`정령의 형상이 자기 회복에 곱하는 배율 ${r1(healAmp * 100) / 100} (1.25 여야 한다)`, Math.abs(healAmp - 1.25) < 0.01]);
+  chk.push([`정령의 형상 뒤 자기 회복 ${r1(beltSpirit.selfHealAll)} = 규칙값 ${r1(ruleHeal(beltOnlySpirit.conv))} × 1.25 (${r1(expectHeal)}) 여야 한다`,
+    Math.abs(beltSpirit.selfHealAll - expectHeal) < 1]);
+  chk.push([`회복에 걸린 배율 ${r1(healAmp * 100) / 100} (1.25 여야 한다)`, Math.abs(healAmp - 1.25) < 0.01]);
   chk.push([`정령의 형상이 최대 체력 증가에 곱하는 배율 ${r1(hpAmp * 100) / 100} (1 이어야 한다)`, Math.abs(hpAmp - 1) < 0.01 || belt.selfHpAll === 0]);
   chk.push([`정령의 형상이 주문 방어막에 곱하는 배율 ${r1(absorbAmp * 100) / 100} (1 이어야 한다)`, Math.abs(absorbAmp - 1) < 0.01 || veil.selfAbsorbAll === 0]);
   // 죽음의 순환은 '실제 자기 회복' 만 환산해야 한다
@@ -127,12 +134,22 @@ console.log("\n=== 5. 추가 저항이 낮은/높은 챔피언에서 안전벨�
   }
   rows.sort((a, b) => a.bonus - b.bonus);
   const pick = [rows[0], rows[1], rows[rows.length >> 1], rows[rows.length - 2], rows[rows.length - 1]];
+  // 그 챔피언의 균형 빌드에 안전벨트를 더 끼웠을 때 '안전벨트가 주는 몫' 만 떼어 본다
+  // (selfHealAll 에는 챔피언 스킬 회복·흡혈도 섞여 있어 그대로 쓰면 안 된다)
+  const beltGain = (c, build) => {
+    const no = St.computeStats(c, 18, build, [], OPTS).conv, yes = St.computeStats(c, 18, [...build, byName.get(BELT)], [], OPTS).conv;
+    const t = St.computeStats(c, 18, [...build, byName.get(BELT)], [], OPTS).total;
+    return { 회복: r1((yes.selfHeal || 0) - (no.selfHeal || 0)), 최대체력: r1((yes.selfHp || 0) - (no.selfHp || 0)),
+      추가저항: r1(t.bonusARMOR + t.bonusMR) };
+  };
+  out.저항별 = [];
   for (const r of pick) {
     const c = champOf(r.name);
-    const v = mOf(c, [BELT], []);
-    console.log(`  ${r.name.padEnd(10)} 추가 저항 ${String(r.bonus).padStart(6)} → 자기 회복 ${String(v.selfHealAll).padStart(7)} · 최대 체력 ${String(v.selfHpAll).padStart(5)}`);
+    const build = S.buildConcepts(d.items, S.profile(c, d.tags), [], [], d.rules, c, OPTS, ["balanced"])[0].pick.map((p) => p.item).slice(0, 5);
+    const g = beltGain(c, build);
+    console.log(`  ${r.name.padEnd(10)} 빌드 추가 저항 ${String(g.추가저항).padStart(6)} → 안전벨트 회복 ${String(g.회복).padStart(7)} · 최대 체력 ${String(g.최대체력).padStart(5)}`);
+    out.저항별.push({ name: r.name, ...g });
   }
-  out.저항별 = pick.map((r) => ({ ...r, ...mOf(champOf(r.name), [BELT], []) }));
 }
 
 // ---- 6. 캐시 적중과 초기화 뒤 결과가 같은가
