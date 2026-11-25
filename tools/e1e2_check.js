@@ -8,7 +8,10 @@ const d = require(W + "data.json");
 const OPTS = { aram: true };
 const AUG_VAMP = "ARAM_SustainingStrike", AUG_CIRCLE = "ARAM_CircleofDeath";
 
-// 같은 과정에서 '수정 전 stats.js' 와 '지금 stats.js' 를 번갈아 쓴다 (scoring.js 는 global.Stats 를 호출 때마다 읽는다)
+// 주의 (2026-11-25 정정): scoring.js 3번째 줄은 require("./stats.js") 로 계산 엔진을 '파일에서' 읽는다.
+// 아래처럼 global.Stats 를 바꿔치기해도 점수·추천(top3Of) 쪽은 안 바뀐다 → 1절의 Top3 비교는 믿을 수 없다.
+//   지표(metricsOf)는 ctx.St 로 직접 부르므로 맞다. 추천까지 견주려면 stats.js 파일을 바꿔 끼우고 따로 돌려야 한다
+//   (tools/aug_top3_dump.js · tools/c9_shred_check.js 가 그 방식).
 function load(statsPath) {
   for (const k of Object.keys(require.cache)) if (/stats\.js$|scoring\.js$/.test(k)) delete require.cache[k];
   global.Stats = require(statsPath);
