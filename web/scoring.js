@@ -1309,7 +1309,7 @@
     // 공식 추천 아이템 유무도 키에 (같은 챔피언을 공식 추천 없이 비교하는 점검·테스트가 이전 결과를 돌려받지 않게)
     return JSON.stringify([name, ids(list).join(","), champ && champ.id, (champ && champ.features) || null,
       Boolean(champ && champ.officialItems), champ && champ.similarItems ? champ.similarItems.from.join() : null, ids(chosen), ids(fixed),
-      w, statOpts, extra, objId(rules), [T.ARMOR, T.MR, T.HP, T.HEAL]]);
+      w, statOpts, extra, objId(rules), [T.ARMOR, T.MR, T.HP, T.BONUS_HP, T.HEAL]]);
   }
   let memoHit = 0, memoMiss = 0;  // 적중률 확인용 (게임 중 성능 점검·테스트에서만 읽는다)
   function remember(key, fn) {

@@ -1813,9 +1813,10 @@ test("게임 연동: 상대 회복량만 바뀌어도 추천을 다시 계산한
   assert.deepEqual(p.errors, []);
 });
 
-// ---- v0.1.95 Phase 4 C1 (2026-11-25)
+// ---- v0.1.95 Phase 4 C1·C2 (2026-11-25)
 // C1: 상대 회복량 추정이 아이템 '보호막'까지 회복으로 셌다 (stats.js 가 자기 회복·보호막을 한 통에 담음).
 //     고통스러운 상처는 보호막을 막지 못하므로 치유 감소 아이템 값이 부풀려졌다.
+// C2: 상대 추가 체력(BONUS_HP)이 enemyTarget() 에서 아예 안 넘어와 늘 기본값 300 이었다 (도미닉 경의 인사가 탱커 상대에도 같은 값).
 // 아래 아이템은 상대 기준의 방어력·마법 저항력·체력을 건드리지 않는 것으로 골랐다 (회복·보호막·추가 체력만 따로 움직이게):
 //   요우무의 유령검 3142 (공격력·관통) · 불멸의 철갑궁 6673 (보호막 560, 공격력·치명타) · 무덤꽃 3137 (회복 115, 주문력·관통)
 const FOES = ["Darius", "Lux", "Malphite", "Sejuani", "Ziggs"];
@@ -1851,5 +1852,50 @@ test("게임 연동: 상대가 진짜 회복 아이템을 사면 회복량 추�
   assert.deepEqual({ ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, base, "회복 아이템이 다른 상대 값까지 바꿨다 (시험이 성립 안 함)");
   assert.ok(T.HEAL > heal0, `회복량 추정이 안 올랐다: ${heal0} → ${T.HEAL}`);
   assert.ok(st.miss > 0, `회복량만 바뀌었더니 다시 계산하지 않았다 (hit ${st.hit} / miss ${st.miss})`);
+  assert.deepEqual(p.errors, []);
+});
+
+test("게임 연동: 상대 추가 체력이 기준 상대에 들어간다 (C2)", async () => {
+  const p = await loadPage();
+  p.w.applyLive(liveWith("3142"));
+  await until(() => p.qa("#build .item").length > 0);
+  const T = p.w.Stats.TARGET;
+  const bonus0 = T.BONUS_HP;
+  assert.ok(bonus0 > 0, "추가 체력이 0 이면 안 돼요");
+  p.w.applyLive(liveWith("3083"));  // 워모그의 갑옷: 체력 1000
+  await until(() => T.BONUS_HP !== bonus0, 20000);
+  assert.ok(T.BONUS_HP > bonus0 + 500, `상대가 체력 1000 아이템을 샀는데 추가 체력이 그대로다: ${bonus0} → ${T.BONUS_HP}`);
+  assert.ok(T.BONUS_HP < T.HP, "추가 체력이 최대 체력보다 클 수는 없어요");
+  assert.deepEqual(p.errors, []);
+});
+
+test("상대 추가 체력만 바뀌어도 화면 쪽 캐시가 다시 계산한다 (C2 캐시 열쇠)", async () => {
+  const p = await loadPage();
+  p.pickChamp("Jinx");
+  p.click(p.itemRow("도미닉 경의 인사"));
+  const St = p.w.Stats, T = { ARMOR: 170, MR: 65, HP: 3450, HEAL: 0 };
+  St.setTarget({ ...T, bonusHP: 300 });
+  const v0 = p.w.itemVerdicts(), t0 = p.w.getTiers();
+  assert.equal(p.w.itemVerdicts(), v0, "같은 값이면 기억한 결과를 그대로 (적중)");
+  assert.equal(p.w.getTiers(), t0, "같은 값이면 기억한 결과를 그대로 (적중)");
+  St.setTarget({ ...T, bonusHP: 2000 });
+  assert.notEqual(p.w.itemVerdicts(), v0, "추가 체력이 올랐는데 아이템 평가가 그대로다");
+  assert.notEqual(p.w.getTiers(), t0, "추가 체력이 올랐는데 연계 티어가 그대로다");
+  St.setTarget(null);
+  assert.deepEqual(p.errors, []);
+});
+
+test("기준 상대를 잠깐 바꿨다 되돌리는 모든 길에서 추가 체력이 남는다 (C2 복원)", async () => {
+  const p = await loadPage();
+  p.pickChamp("Jinx");
+  const St = p.w.Stats;
+  St.setTarget({ ARMOR: 170, MR: 65, HP: 3450, bonusHP: 1800, HEAL: 120 });
+  const snap = () => [St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.BONUS_HP, St.TARGET.HEAL].join();
+  const before = snap();
+  p.w.atDefault(() => assert.equal(St.TARGET.BONUS_HP, St.DEFAULT_TARGET.BONUS_HP, "기본 상대 안에서는 기본 추가 체력"));
+  assert.equal(snap(), before, "atDefault 뒤 추가 체력이 사라졌다");
+  p.w.withNowTarget(() => true);
+  assert.equal(snap(), before, "withNowTarget 뒤 추가 체력이 사라졌다");
+  St.setTarget(null);
   assert.deepEqual(p.errors, []);
 });

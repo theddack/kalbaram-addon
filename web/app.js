@@ -337,6 +337,8 @@ function avgSlotBonus() {
   }
   const D = St.DEFAULT_TARGET;
   slotBonus = Object.fromEntries(Object.keys(sum).map((k) => [k, Math.max(0, (D[k] - sum[k]) / S.SLOTS)]));
+  // 빈 칸이 올려 주는 추가 체력은 체력과 같다: 아이템이 올리는 체력은 전부 추가 체력이다 (stats.js bonusHP = HP - base.HP)
+  slotBonus.bonusHP = slotBonus.HP;
   return slotBonus;
 }
 // 확인된 적 증강(소환사 주문 칸)의 능력치: 급속 성장·차원 이동처럼 체력을 올리는 것 (나머지 증강은 공식 데이터에 없다)
@@ -351,16 +353,19 @@ function enemyTarget() {
   const b = state.enemyBuilds || [];
   if (!b.length) return null;
   const sb = avgSlotBonus();
-  const sum = { ARMOR: 0, MR: 0, HP: 0 };
+  const sum = { ARMOR: 0, MR: 0, HP: 0, bonusHP: 0 };
   for (const e of b) {
     const t = St.computeStats(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).total;
     const empty = Math.max(0, S.SLOTS - e.items.length);
-    for (const k of Object.keys(sum)) sum[k] += (t[k] + empty * sb[k]) / b.length;
+    for (const k of Object.keys(sum)) sum[k] += ((k === "bonusHP" ? t.bonusHP : t[k]) + empty * sb[k]) / b.length;
   }
   const r5 = (v) => Math.round(v / 5) * 5;  // 5 단위: 작은 차이로 계산을 전부 다시 하지 않게
   let heal = 0;
   for (const e of b) heal += selfHealOf(St.evaluate(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).m) / b.length;
-  return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50, HEAL: Math.round(heal / 10) * 10 };
+  // 추가 체력(BONUS_HP)도 함께: 상대 추가 체력 비례 피해(도미닉 경의 인사)가 쓴다. 예전엔 안 돌려줘 늘 기본값 300 이었다
+  // (v0.1.95 Phase 4 C2 · 실제 5판 상대 평균은 50~1500 이었다). 체력과 같은 50 단위로 맞춘다
+  return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50,
+    bonusHP: Math.round(sum.bonusHP / 50) * 50, HEAL: Math.round(heal / 10) * 10 };
 }
 // 지금 상대 (실제 레벨 + 산 아이템만): '지금 수치'(능력치 패널)와 조언·기록에 쓴다.
 // 아이템·증강 순위는 '18레벨 완성' 기준이라 위의 예상 상대(enemyTarget)를 쓴다 (2026-10-15 검토: 둘을 섞지 않는다)
@@ -380,8 +385,8 @@ function enemyNow() {
 function withNowTarget(fn) {
   const now = !state.target && enemyNow();
   if (!now) return fn();
-  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: St.TARGET.HEAL };
-  St.setTarget({ ...now, HEAL: St.TARGET.HEAL });  // 회복량(치유 감소 근거)은 예상 상대 기준 그대로
+  const saved = savedTarget();
+  St.setTarget({ ...now, bonusHP: St.TARGET.BONUS_HP, HEAL: St.TARGET.HEAL });  // 회복량·추가 체력(치유 감소·거인 학살 근거)은 예상 상대 기준 그대로
   try { return fn(); } finally { St.setTarget(saved); }
 }
 // 적이 실제로 산 방어 아이템 수 (조언 근거: 예상 빌드가 아니라 산 것만)
@@ -395,18 +400,27 @@ function enemyResistItems() {
 // 상대가 아이템을 살 때마다 체력 3000 → 2950(1.7%) 같은 작은 변화에도 계산 기억이 전부 무효가 되어
 // 게임 중(0.5코어) 추천 계산이 0.9~2.2초씩 걸렸다 (2026-10-24 벨코즈 판: 느린 계산 11번 중 8번이 상대 변화 직후)
 const TARGET_STEP = 0.05;
+// 기준 상대를 잠깐 바꿨다 되돌릴 때 챙겨야 할 값 (setTarget 이 받는 이름 그대로).
+// 빠뜨리면 setTarget 이 나머지를 기본값으로 되돌려 버린다 — 추가 체력이 여기 없어 C2 전에는 복원이 안 됐다
+const savedTarget = () => ({ ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, bonusHP: St.TARGET.BONUS_HP, HEAL: St.TARGET.HEAL });
+// 계산 기억(캐시) 열쇠에 넣는 기준 상대 값: 추천 계산이 보는 상대 값 전부
+const targetKey = () => [St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.BONUS_HP, St.TARGET.HEAL];
 function applyEnemyTarget() {
   if (state.target) return false;  // 상대를 직접 골랐으면 그대로
-  const before = JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]);
+  const before = JSON.stringify(targetKey());
   const next = enemyTarget();
   const T = St.TARGET;
   // 이미 적 기준으로 잡혀 있고, 새 값이 모든 항목에서 TARGET_STEP 안이면 그대로 (변화가 쌓여 넘으면 그때 바꾼다)
   // 회복량(HEAL)은 0에서 시작해 기준 비율로는 재기 어려워서 값이 바뀌면 바로 반영한다 (치유 감소 아이템 순위가 걸려 있다)
+  // 추가 체력은 '체력'의 밴드로 잰다 (체력의 일부이고 같은 50 단위로 반올림한다).
+  // 자기 값의 5%로 재면 추가 체력이 300 일 때 밴드(15)가 반올림 단위(50)보다 작아, 적이 아이템을 살 때마다
+  // 계산 기억이 전부 무효가 됐다 — 408 번 중 408 번 (2026-11-25 tools/heal_churn.js 로 재 봄)
   const small = next && state.targetFromEnemy && next.HEAL === T.HEAL
+    && Math.abs(next.bonusHP - T.BONUS_HP) < Math.abs(T.HP) * TARGET_STEP
     && ["ARMOR", "MR", "HP"].every((k) => Math.abs(next[k] - T[k]) < Math.abs(T[k]) * TARGET_STEP);
   if (!small) { St.setTarget(next); state.targetFromEnemy = !!next; }
   showTarget();
-  return JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]) !== before;
+  return JSON.stringify(targetKey()) !== before;
 }
 function showTarget() {
   const T = St.TARGET, id = state.target;
@@ -460,7 +474,7 @@ function enemyMoved() {
   return Object.keys(T_MOVED).some((k) => Math.abs(T[k] - D[k]) >= D[k] * T_MOVED[k]);
 }
 function atDefault(fn) {
-  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: St.TARGET.HEAL };
+  const saved = savedTarget();
   St.setTarget(null);
   try { return fn(); } finally { St.setTarget(saved); }
 }
@@ -480,7 +494,7 @@ function counterItems(avail, keep) {
   const d = state.data;
   // 가중치도 키에 (계산이 state.weights 를 쓴다. 빠져 있어 게임 중 가중치를 바꿔도 '🛡️ 적 대응'이 옛 목록으로 남았다, 2026-10-23 점검)
   // 상대 회복량(HEAL)도 키에 — 치유 감소 아이템 순위가 여기서 갈린다 (2026-11-24 B3: 캐시 여섯 곳 모두 빠져 있었다)
-  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL, statOpts(), state.weights]);
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), ...targetKey(), statOpts(), state.weights]);
   if (counterCache.key === key) return counterCache.value;
   const base = atDefault(() => S.rankItems(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), state.chosen.length ? "augment" : "balanced")).filter(keep);
   const bi = new Map(base.map((r, i) => [r.item.id, i]));
@@ -748,7 +762,7 @@ function setTargetChamp(id) {
     const t = St.computeStats(enemy, 18, items, [], statOpts()).total;
     // 그 챔피언이 한타에 자기를 회복하는 양 (치유 감소 아이템 값의 근거, enemyTarget 과 같은 계산)
     const heal = selfHealOf(St.evaluate(enemy, 18, items, [], statOpts()).m);
-    St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP), HEAL: Math.round(heal / 10) * 10 });
+    St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP), bonusHP: Math.round(t.bonusHP), HEAL: Math.round(heal / 10) * 10 });
   }
   showTarget();
   if ($("#target-champ").value !== state.target) $("#target-champ").value = state.target;
@@ -933,7 +947,7 @@ let tierCache = { key: null, value: null };
 // 선택지 3장이 모두 D인 경우가 46.2%라 '도전 · 강한 선택'처럼 엇갈렸다 (2026-10-24 진단 C04). 연계 우선 버튼은 그대로 둔다
 const tierMode = () => (state.tierMode === "auto" ? "total" : state.tierMode);
 function getTiers() {
-  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL, statOpts()]);
+  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, ...targetKey(), statOpts()]);
   if (tierCache.key !== key) {
     const d = state.data;
     tierCache = { key, value: S.augmentTiers(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), tierMode()) };
@@ -1445,7 +1459,7 @@ function pushOverlay(rows, src) {
 let verdictCache = { key: null, value: [] };
 function itemVerdicts() {
   if (!state.champ || !state.items.length) return [];
-  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL, statOpts()]);
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target, ...targetKey(), statOpts()]);
   if (verdictCache.key === key) return verdictCache.value;
   const d = state.data;
   const concept = state.chosen.length ? "augment" : "balanced";
@@ -1953,7 +1967,7 @@ function buyNowCurrent(gold) {
   // 결과를 바꾸는 것은 모두 키에: 살 수 있는 후보(골드는 이걸로), 가중치·칼바람·적 마법 비율(statOpts)·기준 상대 방어
   // (v0.1.55 후속 기획 A-②: 예전 키엔 가중치·statOpts·기준 상대가 없어 적 구성이 바뀌어도 옛 추천이 남을 수 있었다)
   const key = JSON.stringify([state.champ.id, level, state.items.map((i) => i.id), inv, [...cands.values()].map((c) => [c.id, c.gold]),
-    state.chosen.map((a) => a.id), tops, state.weights, statOpts(), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]);
+    state.chosen.map((a) => a.id), tops, state.weights, statOpts(), ...targetKey()]);
   if (buyNowMemo.key === key) return buyNowMemo.value;
   const have = [...state.items, ...inv.filter((id) => partOf(id) && !isItem(id)).map((id) => ({ id, name: partOf(id).name, stats: partOf(id).stats || {} }))];
   const ranked = S.buyNowGains([...cands.values()], state.weights, state.chosen, have, d.rules, state.champ, statOpts(), level);
@@ -2411,7 +2425,7 @@ function applyLive(L) {
   }
   // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
   // 계산에 들어가는 상대 값: 예상 상대 능력치 + 받는 피해의 마법 비율(statOpts enemyMagic, 0.1 단위)
-  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL, statOpts().enemyMagic ?? null]);
+  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, ...targetKey(), statOpts().enemyMagic ?? null]);
   if (key === liveLast && enemyChanged && state.champ) {
     // 적이 아이템을 샀지만 계산 값은 그대로(작은 변화): 조언(치유 감소·저항·관통)과 다음 구매만 다시 그린다
     renderNextBuy(itemRanking()); renderChosenItems(); sendOverlay("enemy");
