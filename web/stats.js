@@ -886,6 +886,13 @@
     // 네 칸을 갈라 둔다 (E1): 자기 회복 selfHealAll · 아군 회복 heal · 자기 보호막 selfShieldAll · 아군 보호막 shield
     out.selfHealAll = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHeal + out.selfHeal) * (1 + (cv.selfHealMult || 0));
     out.selfShieldAll = (out.itemSelfShield + out.selfShield) * (1 + (cv.selfHealMult || 0));
+    // v0.1.95 Phase 4 E4·F12: 회복도 보호막도 아닌 두 갈래를 따로 둔다.
+    //   selfHp     최대 체력·현재 체력 증가 (원형질 안전벨트 '생명선' 의 최대 체력 몫)
+    //   selfAbsorb 주문 방어막·피해 흡수 (감시의 장막 '적의 다음 스킬을 막아 주는 주문 방어막')
+    // 둘 다 '자신이 받는 회복·보호막 효과 증가'(정령의 형상 무한한 활력)의 대상이 아니라 곱하지 않는다.
+    // 버티는 힘에는 네 갈래 모두 들어가고, 죽음의 순환(회복 → 피해)은 selfHealAll 만 읽는다.
+    out.selfHpAll = cv.selfHp || 0;
+    out.selfAbsorbAll = cv.selfAbsorb || 0;
     // 죽음의 순환(healToDamage): 원본은 '체력을 회복하거나 재생하면 그 70% 만큼 가장 가까운 적에게 마법 피해'.
     // 그래서 자기 회복만 센다 — 보호막은 회복이 아니고(E2 전에는 아군에게 준 회복을 읽었다), 체력 재생은 아직 모델에 없다.
     // 한 번만 돈다: 이 피해로 다시 흡혈하지 않는다 (피해 → 회복 → 피해 순환을 끊으려고 흡혈을 먼저 구한 뒤에 더한다)
@@ -895,7 +902,7 @@
       out.combo += hd;
       out.effects.push({ src: "회복 → 피해", kind: "magic", value: out.selfHealAll * cv.healToDamage, hit: hd, trigger: "once" });
     }
-    const extraHp = out.selfHealAll + out.selfShieldAll;
+    const extraHp = out.selfHealAll + out.selfShieldAll + out.selfHpAll + out.selfAbsorbAll;
     // 무적·피해 감소(존야 시간 정지·천상의 구원 …): 그동안 '안 받는 피해'는 저항을 지난 뒤 단위(받는 피해 초당)예요.
     // 버티는 힘은 맞을 수 있는 생피해 단위라, 바꿀 때 기준 상대의 저항 배수를 써요. 내 저항으로 곱하면 방어력이 높을수록
     // 무적이 커져 탱커가 최대 2.5배 과대평가됐어요 (2026-11-16 존야 실험에서 드러남, docs/v0.1.93_P4B_1단계_존야.md).

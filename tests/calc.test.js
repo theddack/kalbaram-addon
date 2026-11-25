@@ -1435,3 +1435,65 @@ test("C9-A2.5 중첩 평균을 1.5 로 고정하면 핏빛 저주의 지금 값�
   near(r.value, 0.1125, 1e-12, "지금 규칙 값 (중첩 평균 1.5 × 7.5%)");
   near(r.value, (d.rules.items["핏빛 저주"].stats || {}).mrShred, 1e-12, "데이터 규칙과 같은 값");
 });
+
+// ---- v0.1.95 Phase 4 E4·F12: 자기 회복 / 최대 체력 증가 / 일반 보호막 / 주문 방어막·피해 흡수를 가른다
+const BELT = "원형질 안전벨트", SPIRIT = "정령의 형상";
+const e4m = (id, itemNames = [], augIds = []) => {
+  const c = champ(id);
+  const as = augIds.length ? S.augStatsOf(augIds.map(aug).filter(Boolean), d.rules, c) : [];
+  return St.evaluate(c, 18, itemNames.map(item).filter(Boolean), as, { aram: true }).m;
+};
+const e4dmg = (m) => { const fx = (m.effects || []).find((e) => e.src === "회복 → 피해"); return fx ? fx.value : 0; };
+
+test("E4 원형질 안전벨트: 회복 400 과 최대 체력 증가 300 을 따로 센다 (합은 예전과 같은 700)", () => {
+  const rule = d.rules.items[BELT].stats;
+  assert.equal(rule.selfHeal, 400);
+  assert.equal(rule.selfHp, 300);
+  assert.equal(item(BELT).passiveStats.selfHeal, 400, "data.json 에 구워진 값도 같아야 해요");
+  assert.equal(item(BELT).passiveStats.selfHp, 300);
+  const bare = e4m("Rammus"), belt = e4m("Rammus", [BELT]);
+  assert.equal(Math.round(belt.selfHealAll - bare.selfHealAll), 400);
+  assert.equal(Math.round(belt.selfHpAll), 300);
+  // 한 아이템을 두 칸에 중복으로 더하지 않는다 (합 700, 1400 이 아님)
+  assert.equal(Math.round(belt.selfHealAll + belt.selfHpAll + belt.selfShieldAll + belt.selfAbsorbAll), 700);
+});
+
+test("F12 감시의 장막: 주문 방어막은 회복이 아니라 피해 흡수 칸으로", () => {
+  assert.equal((d.rules.augments.VeilOfWarding.statsResolved || {}).selfAbsorb, 396);
+  assert.equal((d.rules.augments.VeilOfWarding.statsResolved || {}).selfHeal, undefined);
+  const bare = e4m("Rammus"), veil = e4m("Rammus", [], ["VeilOfWarding"]);
+  assert.equal(Math.round(veil.selfAbsorbAll), 396);
+  assert.equal(Math.round(veil.selfHealAll - bare.selfHealAll), 0, "회복 칸은 그대로여야 해요");
+});
+
+test("E4·F12 죽음의 순환은 '실제 자기 회복' 만 피해로 바꾼다", () => {
+  const belt = e4m("Rammus", [BELT], ["ARAM_CircleofDeath"]);
+  const rate = d.rules.augments.ARAM_CircleofDeath.statsResolved.healToDamage;
+  near(e4dmg(belt), belt.selfHealAll * rate, 1e-9, "자기 회복 몫만");
+  assert.ok(Math.abs(e4dmg(belt) - (belt.selfHealAll + belt.selfHpAll) * rate) > 100, "최대 체력 증가까지 세면 안 돼요");
+  // 주문 방어막만 있으면 피해로 바뀌는 몫이 없다
+  const bare = e4m("Rammus", [], ["ARAM_CircleofDeath"]);
+  const veil = e4m("Rammus", [], ["VeilOfWarding", "ARAM_CircleofDeath"]);
+  near(e4dmg(veil), e4dmg(bare), 1e-9, "주문 방어막은 회복이 아니에요");
+});
+
+test("E4·F12 정령의 형상은 회복·보호막만 25% 올린다 (최대 체력·주문 방어막은 그대로)", () => {
+  const spirit = e4m("Rammus", [SPIRIT]), beltSpirit = e4m("Rammus", [BELT, SPIRIT]);
+  const bare = e4m("Rammus"), belt = e4m("Rammus", [BELT]);
+  near((beltSpirit.selfHealAll - spirit.selfHealAll) / (belt.selfHealAll - bare.selfHealAll), 1.25, 1e-9, "회복은 1.25배");
+  near(beltSpirit.selfHpAll / belt.selfHpAll, 1, 1e-9, "최대 체력 증가는 그대로");
+  const veil = e4m("Rammus", [], ["VeilOfWarding"]), veilSpirit = e4m("Rammus", [SPIRIT], ["VeilOfWarding"]);
+  near(veilSpirit.selfAbsorbAll / veil.selfAbsorbAll, 1, 1e-9, "주문 방어막도 그대로");
+  // 일반 보호막(럭스 W)은 예전처럼 1.25배
+  const luxBare = e4m("Lux"), luxSpirit = e4m("Lux", [SPIRIT]);
+  near(luxSpirit.selfShieldAll / luxBare.selfShieldAll, 1.25, 1e-9, "일반 보호막은 올라가요");
+});
+
+test("E4 네 갈래 모두 버티는 힘에는 들어간다", () => {
+  const c = champ("Rammus");
+  const bare = St.evaluate(c, 18, [], [], { aram: true }).m;
+  for (const [label, items, augs] of [["회복+최대 체력", [BELT], []], ["주문 방어막", [], ["VeilOfWarding"]]]) {
+    const m = e4m("Rammus", items, augs);
+    assert.ok(m.ehp > bare.ehp, `${label} 이 버티는 힘에 들어가야 해요 (${m.ehp} vs ${bare.ehp})`);
+  }
+});

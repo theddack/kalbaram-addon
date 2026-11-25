@@ -347,7 +347,10 @@ const enemyAugStats = (e) => (e.augments || []).length ? S.augStatsOf(e.augments
 // 기술 자기 회복 + 생명력 흡수·모든 피해 흡혈 + 아이템 자기 회복만 센다. 보호막은 빼는데, 고통스러운 상처가 보호막은 막지 못해서다
 // (v0.1.95 Phase 4 C1: 예전엔 아이템 회복과 보호막이 itemSelfHp 한 통에 섞여, 스테락·케이닉 루컨·불멸의 철갑궁의 보호막까지 '회복'으로 셌다.
 //  실제 5판 중 3판에서 추정 회복량의 33~76%가 보호막이었다). 아군이 주는 회복은 아직 안 센다 (Phase 4 C4 검토 중)
-const selfHealOf = (m) => (m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHeal || 0);
+// v0.1.95 Phase 4 E4: 규칙값으로 들어오는 자기 회복(원형질 안전벨트 '생명선' 등)이 세 칸 어디에도 없어 빠져 있었다
+// → stats.js 가 한 칸으로 묶어 주는 selfHealAll 을 쓴다 (기술 자기 회복 + 흡혈 + 아이템 회복 + 규칙값, 받는 회복 증가까지).
+// 최대 체력 증가(selfHpAll)·주문 방어막(selfAbsorbAll)·보호막(selfShieldAll)은 회복이 아니라 여전히 안 센다.
+const selfHealOf = (m) => (m.selfHealAll != null ? m.selfHealAll : (m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHeal || 0));
 // 적 전원의 18레벨 능력치 평균: 산 아이템 그대로 + 아직 안 산 칸은 평균 빌드만큼 산다고 본다 (게임 초반에 상대가 너무 약하게 잡히지 않게)
 function enemyTarget() {
   const b = state.enemyBuilds || [];
@@ -1111,7 +1114,7 @@ const TRIGGER_TIP = {
 // 능력치(규칙 statsResolved) → 쓰는 법. 효과 종류 태그보다 먼저 본다 (태그는 '적 방어력 감소'도 방어력으로 적혀 있다)
 const STAT_TIP = [
   [["ARPEN", "MPENP", "LETHALITY", "MPEN", "trueBonus"], "단단한 적(탱커)을 상대로 특히 세요."],
-  [["HSP", "skillVamp", "OMNIVAMP", "LS", "selfHeal", "shieldMult"], "오래 붙어 싸울수록 이득이에요."],
+  [["HSP", "skillVamp", "OMNIVAMP", "LS", "selfHeal", "selfHp", "selfAbsorb", "shieldMult"], "오래 붙어 싸울수록 이득이에요."],
   [["controlSec", "fearPerCast"], "적을 묶고 아군과 같이 들어가세요."],
   [["HASTE", "basicHaste", "slotHaste", "AStoHASTE", "APtoHASTE", "refundPct", "refundAll"], "스킬을 쉬지 않고 돌리세요."],
   [["ultHaste", "ultHasteAdd", "ultRefundEvery"], "궁극기를 아끼지 말고 한타마다 쓰세요."],
