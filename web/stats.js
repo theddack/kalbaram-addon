@@ -131,7 +131,7 @@
         // 그 아이템을 가졌을 때만 붙는 능력치 (굶주린 히드라 업그레이드: 굶주린 히드라 생명력 흡수 +8%)
         else if (k === "itemStats") { for (const [nm, st] of Object.entries(v)) if (items.some((it) => it.name === nm)) for (const [sk, sv] of Object.entries(st)) if (sk in add) addTo(sk, sv); }
         else if (k in flags) flags[k] += v;
-        else conv[k] = (conv[k] || 0) + v;
+        else convAdd(conv, k, v);
       }
     }
     const aram = (opts.aram !== false && champ.aram) || {};
@@ -276,7 +276,7 @@
         if (conv.APtoCRIT) t.CRIT = Math.min(1, t.CRIT + ap * conv.APtoCRIT);
       } else if (k in t && typeof t[k] === "number") { t[k] += v; if (k === "AD") t.bonusAD += v; }
       else if (k in flags) flags[k] += v;
-      else conv[k] = (conv[k] || 0) + v;
+      else convAdd(conv, k, v);
     }
     // 원 히트 원더(conv.HASTEtoDmg)·핏빛 코발트(conv.markCdRefund)는 스킬 하나에만 걸리는 스킬 증강이라 metrics 의 스킬 계산에서 처리한다
     return { total: t, base, flags, aram, effects, conv };
@@ -439,9 +439,21 @@
   }
   const STAT_BUFF = /^(bonus|flat|percent)?(ad|ap|attackdamage|abilitypower|armor|mr|magicresist|ms|movespeed|movementspeed|as|attackspeed)$/i;
 
-  function mitigation(resist, pctPen, flatPen) {
-    const eff = Math.max(0, resist * (1 - pctPen) - flatPen);
+  // 저항(방어력·마법 저항력)이 피해를 얼마나 줄이는가. 적용 순서는 게임과 같다 (v0.1.95 Phase 4 C9-A1):
+  //   ① 고정 감소(flatRed) → ② 비율 감소(pctRed) → ③ 비율 관통(pctPen) → ④ 고정 관통(flatPen)
+  // 감소는 '그 대상을 때리는 모두'에게, 관통은 '나만' 적용된다 — 순서가 달라지면 값이 달라진다.
+  // 음수 저항은 1차 구현에서 지금처럼 0 에서 자른다 (실제로 음수가 생기는 조합이 있는지는 C9 에서 따로 잰다)
+  function mitigation(resist, pctPen, flatPen, pctRed = 0, flatRed = 0) {
+    const reduced = (resist - flatRed) * (1 - pctRed);
+    const eff = Math.max(0, reduced * (1 - pctPen) - flatPen);
     return 100 / (100 + eff);
+  }
+  // 저항 감소 합치기 규칙 (C9-A2): 비율 감소는 관통 %처럼 곱하고, 고정 감소는 더한다.
+  // 지금 데이터에 비율 마법 저항력 감소(mrShred)는 핏빛 저주 하나뿐이라 결과는 바뀌지 않는다 (출처가 둘 이상 되면 달라진다)
+  const PCT_SHRED = new Set(["mrShred", "armorShred"]);
+  const SHRED_CAP = 0.9;  // 비율 감소 상한 (예전 mrShred 상한을 그대로 둔다)
+  function convAdd(conv, k, v) {
+    conv[k] = PCT_SHRED.has(k) ? 1 - (1 - (conv[k] || 0)) * (1 - v) : (conv[k] || 0) + v;
   }
 
   // 기준 상대: 전 챔피언 173명의 18레벨 균형 빌드 능력치 중앙값 (패치 16.20, tools/target_median.js 로 계산)
@@ -604,8 +616,10 @@
     // 마법 저항력 감소(핏빛 저주 '썩은 부식')는 상대 마법 저항력 자체를 줄인다
     // 체력 조건 피해 증가 (그림자불꽃: 체력 40% 아래 대상에게 마법·고정 피해 +20%): 조건 아래에서 들어가는 피해 비율만큼 (targetBelowShare)
     const lowAmp = cv.lowHpAt ? (cv.lowHpMagicTrueAmp || 0) * targetBelowShare(cv.lowHpAt) : 0;
-    const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY) * (1 + (cv.physDmgMult || 0));
-    const magMit = mitigation(TARGET.MR * (1 - Math.min(0.9, cv.mrShred || 0)), t.MPENP, t.MPEN) * (1 + (cv.magicDmgMult || 0) + lowAmp);
+    const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY,
+      Math.min(SHRED_CAP, cv.armorShred || 0), cv.armorFlatShred || 0) * (1 + (cv.physDmgMult || 0));
+    const magMit = mitigation(TARGET.MR, t.MPENP, t.MPEN,
+      Math.min(SHRED_CAP, cv.mrShred || 0), cv.mrFlatShred || 0) * (1 + (cv.magicDmgMult || 0) + lowAmp);
     const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
     const ranks = ranksAt(L, champ.spells);
     const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0 };
@@ -925,7 +939,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt };
+  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt, mitigation };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);

@@ -1347,3 +1347,43 @@ test("회복·보호막 네 칸은 서로 겹치지 않는다 (자기 회복·�
     assert.equal(m.support, m.shield + m.heal + m.allyDmg + (m.allySupport || 0), `${id}: 지원 지표에 자기 몫이 섞였다`);
   }
 });
+
+// ---- v0.1.95 Phase 4 C9-A1·A2: 저항 감소 공통 계산 순서
+test("C9-A1 적용 순서: 고정 감소 → 비율 감소 → 비율 관통 → 고정 관통", () => {
+  // 저항 100, 고정 감소 20, 비율 감소 50%, 비율 관통 40%, 고정 관통 10
+  //   맞는 순서: ((100 − 20) × 0.5) × 0.6 − 10 = 14 → 100/114
+  const got = St.mitigation(100, 0.4, 10, 0.5, 20);
+  near(got, 100 / 114, 1e-12, "순서가 틀렸다");
+  // 순서를 바꾸면 값이 달라진다 (관통을 먼저 걸면: (100 × 0.6 − 10 − 20) × 0.5 = 15 → 100/115)
+  assert.notEqual(Math.round(got * 1e6), Math.round((100 / 115) * 1e6), "관통을 먼저 건 값과 같으면 안 돼요");
+});
+
+test("C9-A1 기본값은 항등: 감소 인자를 안 주면 예전 식과 같다", () => {
+  for (const [r, pp, fp] of [[113, 0, 0], [113, 0.35, 18], [63, 0.4, 10], [0, 0.5, 5]]) {
+    near(St.mitigation(r, pp, fp), 100 / (100 + Math.max(0, r * (1 - pp) - fp)), 1e-12, `저항 ${r}`);
+    near(St.mitigation(r, pp, fp, 0, 0), St.mitigation(r, pp, fp), 1e-12, `저항 ${r} 0 인자`);
+  }
+});
+
+test("C9-A1 비율 관통은 저항이 0 이하면 아무 일도 하지 않는다", () => {
+  near(St.mitigation(30, 0.5, 0, 0, 40), 1, 1e-12, "고정 감소로 0 아래가 된 저항");
+  near(St.mitigation(30, 0, 0, 0, 30), 1, 1e-12, "저항이 정확히 0");
+});
+
+test("C9-A2 비율 저항 감소는 곱해서 합친다 (관통 %와 같은 규칙)", () => {
+  // 7.5% 감소 두 번 → 1 − 0.925 × 0.925 = 14.4375% (더하면 15%)
+  const two = St.computeStats(champ("Lux"), 18, [], [{ mrShred: 0.075 }, { mrShred: 0.075 }], { aram: true }).conv.mrShred;
+  near(two, 1 - 0.925 * 0.925, 1e-12, "두 출처를 더했다 (곱해야 해요)");
+  assert.ok(two < 0.15, "더한 값(0.15)보다 작아야 해요");
+  // 아이템 쪽 출처와 섞여도 곱한다 (핏빛 저주 11.25% + 가상 7.5%)
+  const mixed = St.computeStats(champ("Lux"), 18, [item("핏빛 저주")], [{ mrShred: 0.075 }], { aram: true }).conv.mrShred;
+  near(mixed, 1 - 0.8875 * 0.925, 1e-12, "아이템·증강 출처를 더했다");
+  assert.ok(mixed < 0.1125 + 0.075, "더한 값보다 작아야 해요");
+});
+
+test("C9-A2 고정 저항 감소는 더해서 합친다", () => {
+  const sum = St.computeStats(champ("Lux"), 18, [],
+    [{ mrFlatShred: 10 }, { armorFlatShred: 5 }, { mrFlatShred: 6 }], { aram: true }).conv;
+  near(sum.mrFlatShred, 16, 1e-12, "고정 마법 저항력 감소");
+  near(sum.armorFlatShred, 5, 1e-12, "고정 방어력 감소");
+});
