@@ -42,7 +42,13 @@ function run(list, label) {
   const rows = list.map(mixOf);
   const worst = rows.slice().sort((a, b) => Math.abs(b.gap) - Math.abs(a.gap))[0];
   console.log(`\n[${label}] ${rows.length}명`);
-  console.log(`  물리 ${pct(med(rows.map((r) => r.pPhys)))} · 마법 ${pct(med(rows.map((r) => r.pMag)))} · 고정 ${pct(med(rows.map((r) => r.pTrue)))} (지표마다 따로 낸 중앙값)`);
+  // 중앙값은 지표마다 '다른 챔피언' 에서 나오므로 셋을 더해도 100% 가 안 된다 (챔피언 한 명 안에서는 언제나 100%).
+  // 그래서 합이 맞는 평균도 같이 찍는다 (2026-11-25 정정).
+  const avg = (a) => a.reduce((x, y) => x + y, 0) / (a.length || 1);
+  const ms = [med(rows.map((r) => r.pPhys)), med(rows.map((r) => r.pMag)), med(rows.map((r) => r.pTrue))];
+  const as = [avg(rows.map((r) => r.pPhys)), avg(rows.map((r) => r.pMag)), avg(rows.map((r) => r.pTrue))];
+  console.log(`  물리 ${pct(ms[0])} · 마법 ${pct(ms[1])} · 고정 ${pct(ms[2])} (지표마다 따로 낸 중앙값 — 합 ${pct(ms[0] + ms[1] + ms[2])}, 100% 가 아닌 게 정상)`);
+  console.log(`  평균으로는 물리 ${pct(as[0])} · 마법 ${pct(as[1])} · 고정 ${pct(as[2])} (합 ${pct(as[0] + as[1] + as[2])})`);
   console.log(`  갈라낸 합과 실제 피해의 차이: 중앙값 ${pct(med(rows.map((r) => Math.abs(r.gap))))} · 가장 큰 ${worst.name} ${pct(worst.gap)} (1차식이 아닌 효과가 있으면 커진다)`);
   const srt = rows.slice().sort((a, b) => b.pMag - a.pMag);
   console.log(`  마법 비중 높은 쪽: ${srt.slice(0, 3).map((r) => `${r.name} ${pct(r.pMag)}`).join(" · ")}`);
