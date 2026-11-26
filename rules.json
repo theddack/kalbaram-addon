@@ -1696,25 +1696,16 @@
     },
     "ARAM_Erosion": {
       "stats": {
-        "ARPEN": {
-          "dv": "Shred",
-          "times": 10
-        },
-        "MPENP": {
-          "dv": "Shred",
-          "times": 10
-        }
+        "_shred": [
+          {"stat": "armorShred", "perStack": 0.015, "maxStacks": 20, "dur": 4, "on": "both",
+           "_why": "C9-A5: 관통이 아니라 상대 저항을 깎는 효과다 (게임 데이터 값 Shred = 1.5%). 중첩 평균은 공통 식이 낸다"},
+          {"stat": "mrShred", "perStack": 0.015, "maxStacks": 20, "dur": 4, "on": "both"}
+        ]
       },
       "basis": {
-        "calc": "중첩당 방어력·마법 저항력 1.5% 감소 × 평균 10중첩 = 15% 관통으로 계산",
-        "assume": [
-          {
-            "what": "평균 10중첩 (최대 20)",
-            "why": "피해를 줄 때마다 1중첩이고 4초 유지라, 한타 중 절반 정도 쌓여 있다고 봤어요",
-            "noData": true
-          }
-        ]
-      }
+        "calc": "적에게 피해를 입히면 방어력·마법 저항력 1.5% 감소(최대 20중첩 30%, 4초) → 관통 자리에서 저항 감소 자리로 옮기고, 중첩 평균은 공통 식(평타 + 스킬 빈도)이 낸다"
+      },
+      "_why": "v0.1.95 Phase 4 C9-A5: 예전에는 '평균 10중첩 = 관통 15%' 라는 가정값을 ARPEN·MPENP 에 넣어 두었다 (관통은 나만, 감소는 상대 저항 자체라 적용 자리가 다르다)"
     },
     "ARAM_SustainingStrike": {
       "stats": {

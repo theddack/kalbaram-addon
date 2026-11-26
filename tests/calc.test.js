@@ -1518,6 +1518,64 @@ test("C9-A4 악의: 궁극기가 막히면(증강) 감소가 0 이다", () => {
   assert.equal(m.shredAdj.magic, 1, "차이가 없으면 보정도 1 이에요");
 });
 
+// ---- v0.1.95 Phase 4 C9-A5: 부식 — 관통 자리에서 저항 감소 자리로
+const EROSION = () => d.augments.find((a) => a.id === "ARAM_Erosion");
+const withEro = (id, items = []) => {
+  const c = champ(id), as = S.augStatsOf([EROSION()], d.rules, c);
+  const picked = items.map(item).filter(Boolean);
+  return { cs: St.computeStats(c, 18, picked, as, { aram: true }), m: St.evaluate(c, 18, picked, as, { aram: true }).m };
+};
+
+test("C9-A5 부식: 관통이 아니라 저항 감소로 들어간다 (두 자리에 겹치지 않는다)", () => {
+  const rule = d.rules.augments.ARAM_Erosion;
+  assert.ok(rule.statsResolved && rule.statsResolved._shred, "부식이 공통 중첩 규칙으로 적혀 있어야 해요");
+  assert.equal(rule.statsResolved.ARPEN, undefined, "관통 자리에 남아 있으면 두 번 세요");
+  assert.equal(rule.statsResolved.MPENP, undefined);
+  for (const id of ["Garen", "Lux", "Ashe"]) {
+    const { cs, m } = withEro(id);
+    assert.equal(cs.total.ARPEN, 0, `${id}: 방어구 관통력이 오르면 안 돼요`);
+    assert.equal(cs.total.MPENP, 0, `${id}: 마법 관통력이 오르면 안 돼요`);
+    assert.ok(m.shred.armorShred > 0 && m.shred.mrShred > 0, `${id}: 방어력·마법 저항력 둘 다 깎여야 해요`);
+    near(m.shred.armorShred, m.shred.mrShred, 1e-12, "원본이 같은 값이라 둘이 같아야 해요");
+    assert.ok(m.shred.armorShred <= 0.3 + 1e-12, "최대 20중첩 × 1.5% = 30% 를 넘으면 안 돼요");
+  }
+});
+
+test("C9-A5 부식: 공격 속도·스킬 빈도가 오르면 중첩이 는다", () => {
+  const slow = withEro("Ashe").m.shred.armorShred;
+  const fast = withEro("Ashe", ["광전사의 군화", "구인수의 격노검"]).m.shred.armorShred;
+  assert.ok(fast > slow, `공격 속도가 오르면 더 쌓여야 해요 (${fast} vs ${slow})`);
+  // 스킬 가속이 오르면 시전 빈도가 올라 중첩도 는다
+  const haste = withEro("Lux", ["악의"]).m.shred.armorShred;
+  assert.ok(haste > withEro("Lux").m.shred.armorShred, "스킬 가속이 오르면 더 쌓여야 해요");
+});
+
+test("C9-A5 부식 + 칠흑·핏빛 저주·악의: 비율은 곱, 고정은 합", () => {
+  const ero = withEro("Garen").m.shred.armorShred;
+  const cle = St.evaluate(champ("Garen"), 18, [item(CLEAVER)], [], { aram: true }).m.shred.armorShred;
+  const both = withEro("Garen", [CLEAVER]).m.shred;
+  assert.ok(both.armorShred < ero + cle, "더하면 과대평가예요 (곱해야 해요)");
+  assert.ok(both.armorShred > Math.max(ero, cle), "둘을 같이 쓰면 하나보다는 커야 해요");
+  // 핏빛 저주(마법 비율)와 악의(마법 고정)를 같이
+  const all = withEro("Lux", ["핏빛 저주", MALIGN]).m.shred;
+  // 같은 조합 안에서 두 몫을 꺼내 곱이 맞는지 본다 (중첩 속도는 아이템에 따라 달라지므로 따로 재면 안 된다)
+  const eroMr = all.detail.find((x) => x.stat === "mrShred" && x.on === "both").value;
+  const blightMr = all.detail.find((x) => x.stat === "mrShred" && x.on === "skill").value;
+  assert.ok(all.mrShred > blightMr && all.mrShred > eroMr, "비율끼리 쌓여야 해요");
+  near(all.mrShred, 1 - (1 - blightMr) * (1 - eroMr), 1e-12, "더하지 말고 곱해야 해요");
+  assert.ok(all.mrShred < blightMr + eroMr, "더하면 과대평가예요");
+  near(all.mrFlatShred, 5, 1e-12, "고정 감소는 악의 몫 그대로 (한타 기준)");
+});
+
+test("C9-A5 부식 + 관통: 감소 → 관통 순서가 그대로다", () => {
+  const { cs, m } = withEro("Lux", ["공허의 지팡이"]);
+  const want = St.mitigation(St.TARGET.MR, cs.total.MPENP, cs.total.MPEN, m.shred.mrShred, m.shred.mrFlatShred);
+  const byHand = 100 / (100 + Math.max(0,
+    (St.TARGET.MR - m.shred.mrFlatShred) * (1 - m.shred.mrShred) * (1 - cs.total.MPENP) - cs.total.MPEN));
+  near(want, byHand, 1e-12, "고정 감소 → 비율 감소 → 비율 관통 → 고정 관통");
+  assert.ok(cs.total.MPENP > 0, "관통은 아이템에서만 와야 해요");
+});
+
 test("C9-A3 저항 감소 → 관통 순서를 그대로 지킨다", () => {
   // 고정 감소 → 비율 감소 → 비율 관통 → 고정 관통
   const R = 100, pctRed = 0.2, flatRed = 10, pctPen = 0.3, flatPen = 5;
