@@ -1821,6 +1821,15 @@ def main():
                     if not any(e.get("name") == nm for e in sp["effects"]):
                         stack_warn.append(f"{c['name']}: dropEffects {slot} '{nm}' 효과가 없음 (패치로 이름 바뀜?)")
                 sp["effects"] = [e for e in sp["effects"] if e.get("name") not in names]
+        if rc and rc.get("dpsRate"):  # 장기 초당 피해의 발동 간격 (v0.1.95 F5-B, basis 에 근거)
+            # 게임 파일에 충전 값이 있다고 모두 같게 세지 않는다. 바로 들어가는 피해인 스킬만 규칙에 적어 켠다
+            # (설치물·평타 강화형은 적중 조건이 달라 여기서 켜지 않는다).
+            for slot, how in rc["dpsRate"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                if sp is None or (how == "ammo" and not sp.get("ammo")):
+                    stack_warn.append(f"{c['name']}: dpsRate {slot} '{how}' 에 쓸 값이 없음")
+                    continue
+                sp["dpsRate"] = how
         if rc and rc.get("allyDealt"):  # 아군이 넣는 추가 피해 (나미 E 등): 서포터 자기 피해가 아니라 기준 아군의 적중 피해로 센다 (v0.1.93 P1)
             for slot, names in rc["allyDealt"].items():
                 sp = next((s for s in c["spells"] if s["slot"] == slot), None)
@@ -1838,7 +1847,7 @@ def main():
             c["fightBasis"] = rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if buff_basis:
             c["fightBasis"] = (c.get("fightBasis") or []) + buff_basis
-        if rc and rc.get("dropEffects") and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
+        if rc and (rc.get("dropEffects") or rc.get("dpsRate")) and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("effectTarget") and not (rc.get("fight") or rc.get("rangeAt18")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])

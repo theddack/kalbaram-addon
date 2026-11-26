@@ -701,6 +701,13 @@
       }
       // 한 번 쓸 때 피해 = 기대 배수, 재사용 대기시간 = 피해 기준 기대 발동 빈도에 맞춘 값 (콤보는 한 번, 초당 피해는 빈도)
       const cd = !cdBase ? cdNormal : (ohwK || cobalt) ? eMult / Math.max(eRateMult, 1e-9) : cdNormal;
+      // v0.1.95 F5-B 충전형: 오래 싸울 때의 발동 간격은 '충전 1개가 차는 시간' 이다 (게임 파일 값).
+      // 켜는 스킬은 rules.json 의 dpsRate 로 하나씩 적는다 — 설치물·평타 강화형은 적중 조건이 달라 켜지 않는다.
+      // 한타 한 번 피해(combo)는 그대로 한 번만 센다. 처음 들고 있는 충전량을 초당 피해와 콤보에 두 번 세지 않으려는 것이다.
+      const ammoSec = sp.dpsRate === "ammo" && sp.ammo
+        ? (sp.ammo.recharge[Math.max(0, Math.min(rank, sp.ammo.recharge.length) - 1)] || 0) : 0;
+      const rateBase = ammoSec || cdBase;  // 초당 피해에 들어갈지 가리는 바탕값
+      const rateCd = ammoSec ? (sp.ammo.noHaste ? ammoSec : ammoSec * 100 / (100 + haste)) : cd;
       if (!disabled && cdBase > 0) out.boundCastRate += eCobaltRate * weave;
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
       let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0, ally = 0, selfShield = 0, selfHeal = 0;
@@ -732,7 +739,7 @@
           else { heal += amt * sh.ally; selfHeal += amt * sh.self; }
         }
       }
-      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit, ...(ally ? { ally } : {}), ...(selfShield || selfHeal ? { selfShield, selfHeal } : {}) });
+      out.spells.push({ slot: sp.slot, rank, cd: rateCd, values: vals, dmg, shield, heal, disabled, onhit, ...(ally ? { ally } : {}), ...(selfShield || selfHeal ? { selfShield, selfHeal } : {}) });
       out.spellOnhit += onhit;
       out.combo += dmg;
       out.comboRaw += raw;
@@ -743,7 +750,7 @@
       out.kitShield += shield;  // 서포터 아이템 발동(향로·월석)은 아군에게 준 몫만 (자기 보호막으로는 발동하지 않는다)
       out.kitHeal += heal;
       // 원래 재사용 대기시간이 아주 짧은 스킬(징크스 Q 같은 전환형)은 DPS에서 제외, 가속으로 짧아진 건 0.5초까지만
-      if (cdBase > 0.5) out.skillDps += dmg / Math.max(cd, 0.5);
+      if (rateBase > 0.5) out.skillDps += dmg / Math.max(rateCd, 0.5);
     });
     // 증강·아이템 고유 효과·패시브: 발동 빈도에 따라 콤보·DPS·회복/보호막에 더한다
     const casts = out.spells.filter((s) => !s.disabled).length;

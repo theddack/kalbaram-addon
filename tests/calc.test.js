@@ -1544,3 +1544,43 @@ test("F5-A 이름이 비슷하다고 자동으로 빼지 않는다 (규칙에 �
   // 같은 모양('기본 + 강화')인데 규칙에 없는 스킬은 그대로 둔다 — 엔진의 대안 처리(spellPlan)가 맡는다
   assert.ok(f5spell("Rengar", "Q").effects.length > 1, "렝가 Q 는 데이터에 둘 다 남아 있어요");
 });
+
+// ---------------------------------------------------------------- F5-B 충전형 스킬의 장기 발동 간격
+test("F5-B 충전 값은 규칙으로 켠 스킬에만 쓴다 (설치물·평타 강화형은 그대로 제외)", () => {
+  const on = [];
+  for (const c of d.champions) for (const s of c.spells) if (s.dpsRate === "ammo") on.push(`${c.id} ${s.slot}`);
+  assert.deepEqual(on.sort(), ["Karthus Q", "Nilah E", "Rengar E", "Rengar W", "Rumble E"]);
+  // 게임 파일에 충전 값이 있어도 켜지 않은 스킬 (설치물 4개 + 평타를 대체하는 렝가 Q)
+  const off = ["Gangplank E", "Ivern W", "Caitlyn W", "Teemo R", "Rengar Q"];
+  for (const key of off) {
+    const [id, slot] = key.split(" ");
+    const sp = champ(id).spells.find((s) => s.slot === slot);
+    assert.ok(sp.ammo, `${key} 는 충전 값이 데이터에 있어야 해요`);
+    assert.equal(sp.dpsRate, undefined, `${key} 는 아직 초당 피해에 넣지 않아요`);
+  }
+});
+
+test("F5-B 카서스 Q 가 초당 스킬 피해에 들어간다 (충전 1초)", () => {
+  const m = St.evaluate(champ("Karthus"), 18, [], [], { aram: true }).m;
+  const q = m.spells.find((s) => s.slot === "Q");
+  assert.ok(q.cd <= 1 && q.cd > 0, `발동 간격은 1초 이하여야 해요 (${q.cd})`);
+  assert.ok(m.skillDps > q.dmg / 2, `Q 피해가 초당 피해에 들어가야 해요 (${m.skillDps} vs ${q.dmg})`);
+});
+
+test("F5-B 닐라 E 는 스킬 가속을 받지 않는다 (게임 파일 표시)", () => {
+  const sp = champ("Nilah").spells.find((s) => s.slot === "E");
+  assert.equal(sp.ammo.noHaste, true);
+  const bare = St.evaluate(champ("Nilah"), 18, [], [], { aram: true }).m.spells.find((s) => s.slot === "E");
+  const haste = St.evaluate(champ("Nilah"), 18, [item("명석함의 아이오니아 장화")].filter(Boolean), [], { aram: true })
+    .m.spells.find((s) => s.slot === "E");
+  assert.equal(Math.round(bare.cd * 100), Math.round(haste.cd * 100), "가속을 줘도 발동 간격이 같아야 해요");
+});
+
+test("F5-B 한타 한 번 피해는 그대로 한 번만 센다 (처음 들고 있는 충전량을 두 번 세지 않는다)", () => {
+  for (const id of ["Karthus", "Rengar", "Nilah", "Rumble"]) {
+    const m = St.evaluate(champ(id), 18, [], [], { aram: true }).m;
+    const sum = m.spells.reduce((a, s) => a + (s.dmg || 0), 0);
+    assert.ok(Math.abs(m.combo - sum) < m.combo * 0.5 + 1e-6,
+      `${id}: 콤보가 스킬 한 번씩의 합에서 크게 벗어나면 안 돼요 (${m.combo} vs ${sum})`);
+  }
+});
