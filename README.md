@@ -26,7 +26,7 @@
 
 ## 3단계로 시작
 
-1. [릴리스](https://github.com/theddack/kalbaram-addon/releases/latest)에서 `KalbaramAddon-Windows.zip`(또는 Mac)을 받아요. 압축을 풀기 전에 **[받은 파일 확인](https://theddack.github.io/kalbaram-addon/verify.html)**에 끌어다 놓아 ✅인지 보고, 압축을 풀고 실행해요.
+1. [릴리스](https://github.com/theddack/kalbaram-addon/releases/latest)에서 `KalbaramAddon-Windows.zip` 을 받아요. 압축을 풀기 전에 **[받은 파일 확인](https://theddack.github.io/kalbaram-addon/verify.html)**에 끌어다 놓아 ✅인지 보고, 압축을 풀고 실행해요.
 2. 롤 설정 → 비디오 → 창 모드를 **테두리 없음**으로 바꿔요.
 3. 프로그램에서 **게임 연동**과 **게임 화면 표시**를 켜고 게임을 시작해요.
 

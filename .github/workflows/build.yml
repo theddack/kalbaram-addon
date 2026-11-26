@@ -67,59 +67,11 @@ jobs:
           path: KalbaramAddon-Windows.zip
           retention-days: 30
 
-  mac:
-    needs: test
-    # macos-14 실행기는 GitHub 에서 지원이 끝나 작업이 시작도 못 하고 취소됐다 (2026-11-08 v0.1.81 빌드)
-    runs-on: macos-15
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
-        with:
-          persist-credentials: false
-
-      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97  # v7.0.0
-        with:
-          python-version: "3.12"
-
-      - name: 도구 설치
-        run: python -m pip install -r requirements-build.txt
-
-      # 실행 파일 이름은 영어로: 한글 실행 파일 이름이면 codesign 이 서명 도중 멈춰서(Bus error)
-      # 서명이 깨진 앱이 되고, 받은 사람 맥에서 "손상되었기 때문에 열 수 없습니다"가 뜬다 (v0.1.3 까지)
-      - name: 빌드
-        run: >
-          pyinstaller --noconfirm --windowed --name KalbaramAddon
-          --osx-bundle-identifier io.github.theddack.aramaugment
-          --add-data "web:web" --add-data "rules.json:."
-          --hidden-import build_data --hidden-import champion_data --hidden-import lol_calc
-          --hidden-import lcu --hidden-import patch_check --hidden-import overlay --hidden-import augocr --hidden-import hudicons --hidden-import gamelog --hidden-import xxhash --exclude-module PIL
-          desktop.py
-
-      - name: 이름·서명
-        run: |
-          APP=dist/칼바람증강Addon.app
-          mv dist/KalbaramAddon.app "$APP"
-          /usr/libexec/PlistBuddy -c "Set :CFBundleName 칼바람증강Addon" "$APP/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string 칼바람증강Addon" "$APP/Contents/Info.plist" \
-            || /usr/libexec/PlistBuddy -c "Set :CFBundleDisplayName 칼바람증강Addon" "$APP/Contents/Info.plist"
-          codesign --force --deep --sign - "$APP"
-          codesign --verify --deep --strict --verbose=2 "$APP"
-          if find "$APP" -name "*.cstemp" | grep -q .; then echo "서명 임시 파일이 남음"; exit 1; fi
-
-      - name: 압축
-        run: |
-          test -d dist/칼바람증강Addon.app
-          ditto -c -k --sequesterRsrc --keepParent dist/칼바람증강Addon.app KalbaramAddon-Mac.zip
-          ls -la KalbaramAddon-Mac.zip
-
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9  # v7.0.2
-        with:
-          name: mac
-          path: KalbaramAddon-Mac.zip
-          retention-days: 30
-
+  # 맥 빌드는 뺐다 (2026-11-26): 윈도우 1분·테스트 4분인데 맥만 10분 넘게 걸려 릴리스 전체가 맥에 묶였다.
+  # 맥에서 쓰려면 build_mac.sh 로 직접 빌드한다.
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [windows, mac]
+    needs: [windows]
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -142,12 +94,10 @@ jobs:
       # 배포 파일 변조 확인용: SHA-256 체크섬 + GitHub 빌드 출처 증명 (이 저장소의 이 워크플로가 만든 파일인지)
       - name: 체크섬
         run: |
-          cd out && sha256sum KalbaramAddon-Windows.zip KalbaramAddon-Mac.zip > SHA256SUMS.txt && cat SHA256SUMS.txt
+          cd out && sha256sum KalbaramAddon-Windows.zip > SHA256SUMS.txt && cat SHA256SUMS.txt
       - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8  # v4.2.2
         with:
-          subject-path: |
-            out/KalbaramAddon-Windows.zip
-            out/KalbaramAddon-Mac.zip
+          subject-path: out/KalbaramAddon-Windows.zip
       - name: 릴리스 설명 (업데이트내역.md 의 그 버전 + 체크섬)
         env:
           TAG: ${{ github.ref_name }}
@@ -158,5 +108,4 @@ jobs:
           body_path: notes.md
           files: |
             out/KalbaramAddon-Windows.zip
-            out/KalbaramAddon-Mac.zip
             out/SHA256SUMS.txt
