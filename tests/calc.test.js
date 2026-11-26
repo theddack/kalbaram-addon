@@ -1633,3 +1633,63 @@ test("F5-D 규칙으로 채운 쿨타임은 두 자리뿐이다 (쉬바나 R·�
   assert.deepEqual(filled.sort(), ["TahmKench R", "Veigar W"]);
   assert.equal(champ("Shyvana").spells.find((s) => s.slot === "R").cooldown[0], 0, "쉬바나 R 은 분노로 쓰는 스킬이라 그대로예요");
 });
+
+// ---------------------------------------------------------------- 16.23.1 새 증강
+const a1623 = (id) => d.augments.find((x) => x.id === id);
+const plain1623 = (id) => a1623(id).desc.replace(/<[^>]+>/g, "");
+const with1623 = (champId, ids, items = []) => {
+  const c = champ(champId);
+  const as = S.augStatsOf(ids.map(a1623).filter(Boolean), d.rules, c);
+  return St.computeStats(c, 18, items.map(item).filter(Boolean), as, { aram: true }).total;
+};
+
+test("16.23 요새화·신비한 방호·더욱 굳건한 태세: 설명 수치가 그대로인가 (패치 감시)", () => {
+  assert.match(plain1623("Fortified"), /20의 방어력[\s\S]*추가 방어력이 25% 증가/);
+  assert.match(plain1623("MysticGuard"), /20의 마법 저항력[\s\S]*추가 마법 저항력이 25% 증가/);
+  assert.match(plain1623("SteadfastPresence"), /추가 방어력 및 마법 저항력이 16% 증가/);
+});
+
+test("16.23 저항 증강은 추가 저항만 올린다 (기본 저항은 그대로)", () => {
+  const b = with1623("Garen", []), f = with1623("Garen", ["Fortified"]);
+  assert.equal(Math.round((b.ARMOR - b.bonusARMOR) * 100), Math.round((f.ARMOR - f.bonusARMOR) * 100),
+    "레벨로 얻는 기본 방어력은 올라가면 안 돼요");
+  assert.ok(Math.abs(f.bonusARMOR - (b.bonusARMOR + 20) * 1.25) < 1e-6,
+    `추가 방어력 = (원래 + 20) × 1.25 여야 해요 (${f.bonusARMOR})`);
+  assert.equal(Math.round(f.bonusMR * 100), Math.round(b.bonusMR * 100), "요새화는 마법 저항력을 올리지 않아요");
+  const g = with1623("Garen", ["MysticGuard"]);
+  assert.equal(Math.round(g.bonusARMOR * 100), Math.round(b.bonusARMOR * 100), "신비한 방호는 방어력을 올리지 않아요");
+});
+
+test("16.23 저항 증강 여러 개는 더해서 센다", () => {
+  const b = with1623("Garen", []), both = with1623("Garen", ["Fortified", "SteadfastPresence"]);
+  assert.ok(Math.abs(both.bonusARMOR - (b.bonusARMOR + 20) * (1 + 0.25 + 0.16)) < 1e-6,
+    `25% + 16% 가 더해져야 해요 (${both.bonusARMOR})`);
+});
+
+test("16.23 저항 증강은 원형질 안전벨트 회복(추가 저항 175%)을 키운다", () => {
+  const m = (ids) => St.evaluate(champ("Garen"), 18, [item("원형질 안전벨트")],
+    S.augStatsOf(ids.map(a1623).filter(Boolean), d.rules, champ("Garen")), { aram: true }).m;
+  const bare = m([]), fort = m(["Fortified"]);
+  const t0 = with1623("Garen", [], ["원형질 안전벨트"]), t1 = with1623("Garen", ["Fortified"], ["원형질 안전벨트"]);
+  const gain = (t1.bonusARMOR - t0.bonusARMOR) * 1.75;
+  assert.ok(Math.abs((fort.selfHealAll - bare.selfHealAll) - gain) < 1, `늘어난 추가 방어력의 175% 만큼이어야 해요`);
+  assert.equal(Math.round(fort.selfHpAll), Math.round(bare.selfHpAll), "최대 체력 증가 몫은 저항과 상관없어요");
+});
+
+test("16.23 점액 천지는 6초마다 상대 최대 체력 비례 피해", () => {
+  const fx = a1623("ARAM_SlimeTime").effects;
+  assert.equal(fx.length, 2, "기본 피해 + 최대 체력 비례 둘");
+  for (const e of fx) assert.equal(e.trigger.sec, 6);
+  assert.ok(JSON.stringify(fx).includes("TGT_MAXHP"), "상대 최대 체력 비례가 들어가야 해요");
+  const bare = St.evaluate(champ("Garen"), 18, [], [], { aram: true }).m;
+  const slime = St.evaluate(champ("Garen"), 18, [],
+    S.augStatsOf([a1623("ARAM_SlimeTime")], d.rules, champ("Garen")), { aram: true }).m;
+  assert.ok(slime.combo > bare.combo && slime.dps > bare.dps, "피해가 들어가야 해요");
+});
+
+test("16.23 사라진 증강 4개는 기록용으로 남는다", () => {
+  const gone = (d.removedAugs || []).map((x) => x.id).sort();
+  assert.deepEqual(gone, ["PatOnTheBack", "SharkTempest", "Snowbomb", "SurgeField"]);
+  for (const x of d.removedAugs) assert.equal(x.removedIn, "16.23.1");
+  for (const id of gone) assert.equal(d.augments.find((a) => a.id === id), undefined, "추천 목록에는 없어야 해요");
+});

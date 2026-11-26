@@ -172,10 +172,12 @@
     t.bonusAD = t.AD - base.AD;
     t.baseAD = base.AD;
     t.AP = AP * (1 + mult.APmult);
+    // 추가 저항 증가: 둘 다 올리는 것(해신 작쇼 bonusResistMult)과 한쪽만 올리는 것(16.23 요새화·신비한 방호)을 더해서 센다.
+    // '추가' 저항에만 걸린다 — 챔피언이 레벨로 얻는 기본 저항은 올라가지 않는다 (설명: '추가 방어력이 25% 증가')
     const resMult = 1 + (conv.bonusResistMult || 0);
-    t.bonusARMOR = add.ARMOR * resMult;
+    t.bonusARMOR = add.ARMOR * (resMult + (conv.bonusARMORmult || 0));
     t.ARMOR = base.ARMOR + t.bonusARMOR;
-    t.bonusMR = add.MR * resMult;
+    t.bonusMR = add.MR * (resMult + (conv.bonusMRmult || 0));
     t.MR = base.MR + t.bonusMR;
     // 람머스 패시브: 방어력·마법 저항력의 일부만큼 공격력 (설명 '15% 방어력 + 15% 마법 저항력')
     if (conv.resistToAD) { const ad = (t.ARMOR + t.MR) * conv.resistToAD; t.AD += ad; t.bonusAD += ad; }
