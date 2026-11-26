@@ -8,15 +8,21 @@ const S = require("../web/scoring.js");
 
 const d = R.load();
 S.attachSimilar(d.champions, null, d.items);
-const base = JSON.parse(fs.readFileSync(R.FILE, "utf8"));
+// 패치마다 기준선 파일이 따로 있다 (v0.1.95 Phase 5A). 지금 데이터에 맞는 것을 고른다
+const picked = R.pickBase(d);
+const base = picked ? picked.base : JSON.parse(fs.readFileSync(R.FILE, "utf8"));
 const champ = (id) => d.champions.find((c) => c.id === id);
 const PICK = ["Varus", "Jinx", "Caitlyn", "Jhin", "Vayne", "Kayle", "Lux", "Malphite"];
 // 매일 데이터 갱신(refresh.yml)은 새 데이터로 테스트한다: 게임 데이터가 바뀌면 비교는 건너뛴다 (기준선은 사람이 보고 새로 저장)
 // (게임 패치(Data Dragon version)가 바뀐 것도 본다: 2026-10-21 커뮤니티 드래곤 표기는 16.20 인데 증강은 16.21 로 바뀌어 있었다)
 // 같은 패치라도 위키 값이 바뀌면(2026-10-21 위키 복구) 추천이 달라진다 → 데이터를 만든 시각(builtAt)이 다르면 건너뜀.
 // 매일 갱신(refresh.yml)은 늘 새 데이터라 건너뛰고, 코드 PR 은 저장소의 data.json 과 기준선이 같아 비교한다
-const stale = (base.dataVersion !== d.dataVersion || base.version !== d.version || (base.builtAt && base.builtAt !== d.builtAt))
-  && "게임 데이터가 기준선과 달라요: node tools/rec_baseline.js 로 보고 --update";
+// 건너뛸 때는 '무엇과 무엇이 달라서'인지 그대로 보여 준다 (2026-11-26: 16.22 기준선으로 16.23 을 보는 동안
+// 회귀 테스트가 꺼져 있는 줄 아무도 몰랐다). 매일 데이터 갱신(refresh.yml)은 늘 새 데이터라 여전히 건너뛴다
+const stale = !picked && R.whyNoBase(d);
+test("기준선: 지금 패치에 맞는 기준선 파일이 있다 (없으면 비교 테스트가 건너뛰어진다)", { todo: stale || false }, () => {
+  assert.ok(picked, "기준선 파일 없음");
+});
 
 test("기준선: 같은 입력을 두 번 계산해도 순위·점수가 같다", () => {
   for (const id of PICK) assert.deepStrictEqual(R.ranking(d, champ(id), [], []), R.ranking(d, champ(id), [], []), id);

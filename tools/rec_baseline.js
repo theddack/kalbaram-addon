@@ -13,8 +13,33 @@ const WEB = path.join(__dirname, "..", "web");
 global.Stats = global.Stats || require(path.join(WEB, "stats.js"));
 const S = require(path.join(WEB, "scoring.js"));
 require("./exp_env")(S, global.Stats);  // 실험 설정 (tools/exp_env.js)
-const FILE = path.join(__dirname, "..", "tests", "data", "rec_baseline.json");
-const GAMES = path.join(__dirname, "..", "tests", "data", "games");
+const DATADIR = path.join(__dirname, "..", "tests", "data");
+const FILE = path.join(DATADIR, "rec_baseline.json");            // 맨 처음 기준선 (16.22.1) — 지우지도 덮어쓰지도 않는다
+const GAMES = path.join(DATADIR, "games");
+
+// 패치마다 기준선을 따로 둔다 (v0.1.95 Phase 5A, 2026-11-26).
+// 왜: 게임 데이터가 바뀌면 예전 기준선과는 비교할 수 없어 테스트가 통째로 건너뛰어졌다 (16.22 기준선으로 16.23 을 보던 동안
+// 회귀 테스트가 꺼져 있었다). 이제 지금 패치에 맞는 기준선 파일이 있으면 그걸로 비교하고, 없을 때만 건너뛴다.
+const baseFileFor = (ver) => path.join(DATADIR, `rec_baseline_${String(ver || "").replace(/[^\w.-]/g, "_")}.json`);
+// 지금 데이터에 맞는 기준선 파일 (없으면 null). 맨 처음 기준선도 후보에 넣는다
+function pickBase(d) {
+  for (const f of [baseFileFor(d.version), FILE]) {
+    if (!fs.existsSync(f)) continue;
+    const b = JSON.parse(fs.readFileSync(f, "utf8"));
+    if (b.dataVersion === d.dataVersion && b.version === d.version && (!b.builtAt || b.builtAt === d.builtAt)) return { file: f, base: b };
+  }
+  return null;
+}
+// 왜 비교를 못 하는지 한 줄로 (테스트가 건너뛸 때 이 문장을 그대로 보여 준다)
+function whyNoBase(d) {
+  const f = baseFileFor(d.version);
+  const seen = [FILE, f].filter((p) => fs.existsSync(p)).map((p) => {
+    const b = JSON.parse(fs.readFileSync(p, "utf8"));
+    return `${path.basename(p)}=${b.version}(${b.builtAt || "시각 없음"})`;
+  });
+  return `기준선 없음 — 지금 데이터 ${d.version}(${d.builtAt || "시각 없음"}) · 가진 기준선 [${seen.join(" · ")}]`
+    + ` → 바뀐 점을 보고(node tools/rec_baseline.js) 이 패치의 기준선을 저장하세요(--update → ${path.basename(f)})`;
+}
 
 // augment_quality 대표 12명 + 정확도 기획서 우선 챔피언 (바루스·징크스·케이틀린·진·베인·케일)
 const REPS = ["Jinx", "Ezreal", "Lux", "Annie", "Malphite", "Garen", "Zed", "Sona", "Darius", "Yasuo", "Vayne", "Nami",
@@ -222,16 +247,20 @@ if (require.main === module) {
   const now = snapshot(load());
   const ms = Date.now() - t0;
   if (process.argv.includes("--update")) {
-    fs.writeFileSync(FILE, JSON.stringify(now, null, 1) + "\n");
-    console.log(`기준선 저장: 장면 ${Object.keys(now.scenes).length}개 (${ms}ms)`);
+    // 맨 처음 기준선(rec_baseline.json)은 그 패치 그대로 둔다. 지금 패치용 파일에 따로 저장한다
+    const out = now.version === JSON.parse(fs.existsSync(FILE) ? fs.readFileSync(FILE, "utf8") : "{}").version ? FILE : baseFileFor(now.version);
+    fs.writeFileSync(out, JSON.stringify(now, null, 1) + "\n");
+    console.log(`기준선 저장: 장면 ${Object.keys(now.scenes).length}개 → ${path.basename(out)} (${ms}ms)`);
   } else if (!fs.existsSync(FILE)) {
     console.log("기준선이 없어요. --update 로 먼저 저장하세요.");
     process.exitCode = 1;
   } else {
-    const base = JSON.parse(fs.readFileSync(FILE, "utf8"));
+    const picked = pickBase(now);
+    const base = picked ? picked.base : JSON.parse(fs.readFileSync(FILE, "utf8"));
+    if (!picked) console.log(`⚠️ ${whyNoBase(now)}\n(아래는 패치가 다른 기준선과의 비교라 '바뀐 점'에 패치 차이가 섞여 있어요)`);
     const sum = compare(base, now);
     console.log(process.argv.includes("--json") ? JSON.stringify(sum, null, 1) : report(sum, base, now) + `\n(계산 ${ms}ms)`);
   }
 }
 
-module.exports = { snapshot, compare, report, ranking, rankRows, load, REPS, FILE };
+module.exports = { snapshot, compare, report, ranking, rankRows, load, REPS, FILE, pickBase, whyNoBase, baseFileFor };
