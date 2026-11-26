@@ -68,6 +68,16 @@ def main():
         it = items_by_name.get(name)
         if it is None:
             sys.exit(f"web/data.json 에 아이템 '{name}' 이 없다")
+        # dropEffects: 설명에서 자동으로 뽑혔지만 따로 세면 안 되는 효과를 뺀다 (build_data.py 2023줄과 같은 처리)
+        if src.get("dropEffects"):
+            gone = [e for e in (it.get("effects") or []) if e.get("name") in src["dropEffects"]]
+            for n in set(src["dropEffects"]) - {e.get("name") for e in (it.get("effects") or [])}:
+                warn.append(f"아이템 {name}: dropEffects '{n}' 에 해당하는 효과가 없음")
+            it["effects"] = [e for e in (it.get("effects") or []) if e.get("name") not in src["dropEffects"]]
+            if gone:
+                changed.append(f"아이템 {name}: 효과 뺌 {[e.get('name') for e in gone]}")
+        if not src.get("stats"):
+            continue
         # build_data.py 와 같은 조건: 확인 문구(check)가 설명에 있어야 규칙을 적용한다
         chk = src.get("check")
         plain_desc = re.sub(r"<[^>]+>", "", (it.get("passiveHtml") or "") + it.get("desc", ""))

@@ -171,8 +171,10 @@ console.log("== 8. 173명 전부 · 관련 증강 단독과 복합 조합 ==");
       if (!Number.isFinite(m.combo + m.ehp + m.dps + m.support)) { bad2++; console.log(`    깨짐 복합 ${c.id}/${n}/${AUG[i].name}+${AUG[j].name}`); }
       // 값이 커지는지로는 볼 수 없다 — 증강 자체가 값을 낮출 수 있다 (메이지가 묵직한 한 방을 고르면 공격 속도를 잃는다).
       // 대신 '이번에 넣은 효과가 두 번 들어가지 않았는지'와 '다시 계산해도 같은지'를 본다
+      // 그 아이템이 원래 내는 효과 줄 수(아이템만 들었을 때)와 같아야 한다 — 증강 때문에 같은 효과가 더 생기면 중복이다
+      const want = ((ev(c, it, []).m.effects) || []).filter((e) => e.src === n).length;
       const rows = (m.effects || []).filter((e) => e.src === n);
-      if (rows.length > 1) { bad2++; console.log(`    효과가 ${rows.length}번 ${c.id}/${n}/${AUG[i].name}+${AUG[j].name}`); }
+      if (rows.length !== want) { bad2++; console.log(`    효과 줄 ${want} → ${rows.length} ${c.id}/${n}/${AUG[i].name}+${AUG[j].name}`); }
       const again = ev(c, it, [AUG[i], AUG[j]]).m;
       if (again.combo !== m.combo || again.ehp !== m.ehp) { bad2++; console.log(`    다시 계산하니 다름 ${c.id}/${n}/${AUG[i].name}+${AUG[j].name}`); }
     }
