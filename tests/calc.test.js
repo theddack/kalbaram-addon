@@ -1515,3 +1515,32 @@ test("E4 네 갈래 모두 버티는 힘에는 들어간다", () => {
     assert.ok(m.ehp > bare.ehp, `${label} 이 버티는 힘에 들어가야 해요 (${m.ehp} vs ${bare.ehp})`);
   }
 });
+
+// ---------------------------------------------------------------- F5-A 서로 대안인 피해를 둘 다 세지 않는다
+const f5spell = (id, slot) => champ(id).spells.find((s) => s.slot === slot);
+
+test("F5-A 카서스 Q 는 단일 대상 값만 센다 (설명: '하나의 적만 맞힐 경우')", () => {
+  const names = f5spell("Karthus", "Q").effects.map((e) => e.name);
+  assert.deepEqual(names, ["qsingletargetdamage"], "여러 명 값(qdamage)은 함께 들어가지 않아요");
+});
+
+test("F5-A 럼블 E 는 기본 값만 센다 (강화는 위험 상태일 때만)", () => {
+  const names = f5spell("Rumble", "E").effects.map((e) => e.name);
+  assert.deepEqual(names, ["totaldamage"], "강화 값(empdamage)은 함께 들어가지 않아요");
+});
+
+test("F5-A 칼리스타 E 는 둘 다 센다 (대안이 아니라 창 2개 몫)", () => {
+  const names = f5spell("Kalista", "E").effects.map((e) => e.name);
+  assert.deepEqual(names, ["normaldamage", "additionaldamage"],
+    "기본 + 두 번째 창은 함께 들어가는 피해예요 (창 3개부터는 규칙의 fight 효과가 센다)");
+  const rule = d.rules.champions.Kalista;
+  assert.ok(rule && JSON.stringify(rule.fight).includes("RendPerSpear"), "창 하나당 피해가 규칙에 있어야 해요");
+});
+
+test("F5-A 이름이 비슷하다고 자동으로 빼지 않는다 (규칙에 적은 것만)", () => {
+  const drops = Object.entries(d.rules.champions)
+    .filter(([, r]) => r && r.dropEffects).map(([id]) => id).sort();
+  assert.deepEqual(drops, ["Karthus", "Rumble"], "뺀 자리는 규칙에 적은 두 챔피언뿐이에요");
+  // 같은 모양('기본 + 강화')인데 규칙에 없는 스킬은 그대로 둔다 — 엔진의 대안 처리(spellPlan)가 맡는다
+  assert.ok(f5spell("Rengar", "Q").effects.length > 1, "렝가 Q 는 데이터에 둘 다 남아 있어요");
+});

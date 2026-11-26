@@ -1809,6 +1809,18 @@ def main():
                         stack_warn.append(f"{c['name']}: effectTarget {slot} '{nm}' 효과가 없음")
                     for e in hit:
                         e["target"] = tgt
+        if rc and rc.get("dropEffects"):  # 서로 대안인 피해를 둘 다 세던 자리 (v0.1.95 F5-A, basis 에 근거)
+            # 설명 원문이 '~한 경우' 로 갈라 놓은 값은 함께 들어가지 않는다 (카서스 Q 단일 대상, 럼블 E 위험 상태).
+            # 이름이 비슷하다는 이유로 자동으로 빼지 않는다 — 챔피언·스킬·효과 이름을 규칙에 직접 적은 것만 뺀다.
+            for slot, names in rc["dropEffects"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                if sp is None:
+                    stack_warn.append(f"{c['name']}: dropEffects {slot} 스킬이 없음")
+                    continue
+                for nm in names:
+                    if not any(e.get("name") == nm for e in sp["effects"]):
+                        stack_warn.append(f"{c['name']}: dropEffects {slot} '{nm}' 효과가 없음 (패치로 이름 바뀜?)")
+                sp["effects"] = [e for e in sp["effects"] if e.get("name") not in names]
         if rc and rc.get("allyDealt"):  # 아군이 넣는 추가 피해 (나미 E 등): 서포터 자기 피해가 아니라 기준 아군의 적중 피해로 센다 (v0.1.93 P1)
             for slot, names in rc["allyDealt"].items():
                 sp = next((s for s in c["spells"] if s["slot"] == slot), None)
@@ -1826,6 +1838,8 @@ def main():
             c["fightBasis"] = rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if buff_basis:
             c["fightBasis"] = (c.get("fightBasis") or []) + buff_basis
+        if rc and rc.get("dropEffects") and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
+            c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("effectTarget") and not (rc.get("fight") or rc.get("rangeAt18")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("allyBasis"):  # 아군이 넣는 추가 피해(allyDealt)의 근거
