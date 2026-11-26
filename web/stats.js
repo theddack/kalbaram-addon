@@ -35,6 +35,7 @@
       AS: s.attackspeed,
       asLevelBonus: growth(s.attackspeedperlevel, L) / 100,
       RANGE: s.attackrange,
+      HP5: s.hpregen + growth(s.hpregenperlevel, L),  // 5초당 체력 재생 (죽음의 순환이 '회복하거나 재생하면'을 본다)
     };
   }
 
@@ -655,7 +656,9 @@
   // (173명 중 101명이 0 · 중앙값 0 · 평균 271). 그래서 상대를 모를 때 치유 감소(고통스러운 상처)의 값은 0 이고,
   // 실제 판에서는 app.js 가 그 판 적들의 회복량 평균을 넣어 준다 (v0.1.93 P4-B 5단계)
   // 16.23.1 에서 다시 잼 (tools/target_median.js, 2026-11-26): 방어력 113→111 · 마법 저항력 63→67 · 체력 3148→3190
-  const TARGET = { ARMOR: 111, MR: 67, HP: 3190, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600, HEAL: 0 };
+  // SHIELD = 기준 상대가 한타 한 번에 받는 보호막 (자기 보호막 + 아군이 씌워 주는 보호막, 적 수로 나눈 1인분).
+  // HEAL 과 같은 꼴이고 상대를 모르면 0 이다 (v0.1.95 Phase 5 — 독사의 송곳니 '보호막 파괴자'가 쓴다)
+  const TARGET = { ARMOR: 111, MR: 67, HP: 3190, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600, HEAL: 0, SHIELD: 0 };
   // 기준 아군 (v0.1.93 P1 아군 지원): 아군 공격 속도·공격력·적중 시 피해·피해량 강화를 '아군이 더 넣는 피해'로 바꿀 때 쓴다.
   // 원거리 딜러(첫 역할 Marksman, 원거리) 29명의 18레벨 균형 빌드(증강 없음) 지표 중앙값 (tools/ally_model.js, 기준 상대 TARGET 과 같은 방식).
   // 원딜은 주문력 계수가 거의 없어 아군 주문력 버프(흐르는 물의 지팡이)는 기준 아군에선 0 이다 (메이지 아군이면 커짐, 미반영)
@@ -668,7 +671,7 @@
   const DEFAULT_TARGET = { ...TARGET };
   // 기준 상대 바꾸기: {ARMOR, MR, HP} (실제 상대 챔피언의 18레벨 빌드 능력치 등). 인자 없으면 기본값
   function setTarget(t) {
-    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP, ...(t.bonusHP != null ? { BONUS_HP: t.bonusHP } : {}), ...(t.HEAL != null ? { HEAL: t.HEAL } : {}) } : {});
+    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP, ...(t.bonusHP != null ? { BONUS_HP: t.bonusHP } : {}), ...(t.HEAL != null ? { HEAL: t.HEAL } : {}), ...(t.SHIELD != null ? { SHIELD: t.SHIELD } : {}) } : {});
   }
   // 초당 피해에 스킬을 써야 나오는 피해를 넣는 비율 (스킬을 재사용 대기시간마다 계속 맞히는 일은 드물다, ASSUMPTIONS).
   // 스킬에 딸린 효과(스킬 사용 시·지정 스킬 표식)는 '실제로 쓰여 맞는 스킬 빈도' = 시전 빈도 × 이 비율로 보고, 그다음 효과 자체의
@@ -1166,6 +1169,14 @@
       out.combo += out.healCut;
       out.effects.push({ src: "치유 감소", kind: "true", value: out.healCut, hit: out.healCut, trigger: "once" });
     }
+    // v0.1.95 Phase 5: 보호막 감소(독사의 송곳니 '보호막 파괴자') — 치유 감소와 같은 꼴이다.
+    // 상대가 한타에서 받을 보호막 중 못 받게 막는 몫 = 그만큼 더 깎은 것과 같다 → 한타 피해에 더한다.
+    // 상대를 모르면 TARGET.SHIELD 가 0 이라 기본 추천 순위는 안 바뀐다 (치유 감소와 같은 기준)
+    if (cv.shieldCut && TARGET.SHIELD > 0) {
+      out.shieldCut = TARGET.SHIELD * Math.min(1, cv.shieldCut);
+      out.combo += out.shieldCut;
+      out.effects.push({ src: "보호막 감소", kind: "true", value: out.shieldCut, hit: out.shieldCut, trigger: "once" });
+    }
     const critMul = 1 + (t.critAuto ?? t.CRIT) * (t.CRITDMG - 1);
     // 한 발에 두 놈: 치명타 평타는 적중 효과를 한 번 더 (conv.onhitOnCrit 번) → 적중 효과에 (1 + 치명타 확률 × 횟수)
     // 구인수의 격노검: 다 쌓인 뒤 세 번째 평타마다 적중 효과를 한 번 더 (t.onhitRepeat = 쌓는 동안까지 평균 낸 값)
@@ -1194,17 +1205,23 @@
     //   selfHp     최대 체력·현재 체력 증가 (원형질 안전벨트 '생명선' 의 최대 체력 몫)
     //   selfAbsorb 주문 방어막·피해 흡수 (감시의 장막 '적의 다음 스킬을 막아 주는 주문 방어막')
     // 둘 다 '자신이 받는 회복·보호막 효과 증가'(정령의 형상 무한한 활력)의 대상이 아니라 곱하지 않는다.
-    // 버티는 힘에는 네 갈래 모두 들어가고, 죽음의 순환(회복 → 피해)은 selfHealAll 만 읽는다.
+    // 버티는 힘에는 네 갈래 모두 들어가고, 죽음의 순환(회복 → 피해)은 selfHealAll 과 체력 재생(regenHeal)을 읽는다.
     out.selfHpAll = cv.selfHp || 0;
     out.selfAbsorbAll = cv.selfAbsorb || 0;
+    // v0.1.95 Phase 5: 한타 한 번(AUTO_FIGHT_SEC 초) 동안의 체력 재생. 챔피언 기본 재생(5초당)에 아이템의
+    // '기본 체력 재생 %'(HP5P)를 더해 센다. 칼바람 회복 보정도 받는다.
+    // 버티는 힘·상대 회복량 추정에는 넣지 않는다 — 그 둘은 '한타에서 받는 회복·보호막' 기준이고 재생은 한타 밖에서 차는 몫이 대부분이라
+    // 범위를 넓히면 전 챔피언 값이 함께 움직인다. 지금은 원본이 '회복하거나 재생하면'이라고 적은 죽음의 순환에만 연결한다 (후속 목록)
+    out.regenHeal = ((stats.base && stats.base.HP5) || 0) * (1 + (t.HP5P || 0)) * (AUTO_FIGHT_SEC / 5) * (aram.healing || 1);
     // 죽음의 순환(healToDamage): 원본은 '체력을 회복하거나 재생하면 그 70% 만큼 가장 가까운 적에게 마법 피해'.
-    // 그래서 자기 회복만 센다 — 보호막은 회복이 아니고(E2 전에는 아군에게 준 회복을 읽었다), 체력 재생은 아직 모델에 없다.
+    // 자기 회복(selfHealAll)과 체력 재생(regenHeal)을 센다 — 보호막은 회복이 아니다 (E2 전에는 아군에게 준 회복을 읽었다).
     // 한 번만 돈다: 이 피해로 다시 흡혈하지 않는다 (피해 → 회복 → 피해 순환을 끊으려고 흡혈을 먼저 구한 뒤에 더한다)
-    if (cv.healToDamage && out.selfHealAll > 0) {
-      const hd = out.selfHealAll * cv.healToDamage * magMit * dealt;
+    const healForDmg = out.selfHealAll + out.regenHeal;
+    if (cv.healToDamage && healForDmg > 0) {
+      const hd = healForDmg * cv.healToDamage * magMit * dealt;
       out.augCombo += hd;
       out.combo += hd;
-      out.effects.push({ src: "회복 → 피해", kind: "magic", value: out.selfHealAll * cv.healToDamage, hit: hd, trigger: "once" });
+      out.effects.push({ src: "회복 → 피해", kind: "magic", value: healForDmg * cv.healToDamage, hit: hd, trigger: "once" });
     }
     const extraHp = out.selfHealAll + out.selfShieldAll + out.selfHpAll + out.selfAbsorbAll;
     // 무적·피해 감소(존야 시간 정지·천상의 구원 …): 그동안 '안 받는 피해'는 저항을 지난 뒤 단위(받는 피해 초당)예요.

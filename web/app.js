@@ -361,6 +361,11 @@ const selfHealOf = (m) => (m.selfHealAll != null ? m.selfHealAll : (m.selfHeal |
 const allyHealOf = (m) => (m.allyHealAll != null ? m.allyHealAll : (m.heal || 0));
 // 한타 한 번에 그 적이 '자기 + 아군'에게 주는 회복. TARGET.HEAL 과 조언이 함께 쓰는 단 하나의 추정값이다 (C4)
 const healEstOf = (champ, items, augs) => { const m = St.evaluate(champ, 18, items, augs, { aram: state.aram }).m; return selfHealOf(m) + allyHealOf(m); };
+// v0.1.95 Phase 5: 보호막도 같은 꼴로 — 자기 보호막(기술·아이템) + 아군에게 씌워 주는 보호막 (서포터 아이템 몫 포함).
+// 회복과 섞지 않는다: 고통스러운 상처는 보호막을 못 막고, 보호막 파괴자는 회복을 못 막는다 (C1 이 가른 네 칸을 그대로 쓴다)
+const selfShieldOf = (m) => (m.selfShieldAll != null ? m.selfShieldAll : 0) + (m.selfAbsorbAll || 0);
+const allyShieldOf = (m) => (m.shield || 0) + (m.allySupportShield || 0);
+const shieldEstOf = (champ, items, augs) => { const m = St.evaluate(champ, 18, items, augs, { aram: state.aram }).m; return selfShieldOf(m) + allyShieldOf(m); };
 // '회복이 많다'의 기준: 회복이 있는 전 챔피언(18레벨 맨몸)의 중앙값. 데이터에서 구하므로 패치마다 따라간다.
 // 기존 조언은 '회복 효과가 2개 이상인 적이 2명 이상'이라는 개수 규칙이었다 → 같은 추정값 위로 옮긴 것이 이 기준이다
 let healMid = null;
@@ -376,7 +381,8 @@ function enemyHealRows() {
   const b = state.enemyBuilds || [];
   const key = JSON.stringify(b.map((e) => [e.champ.id, e.items.map((i) => i.id), (e.augments || []).map((a) => a.id)])) + "|" + state.aram;
   if (healRowsCache && healRowsCache.key === key) return healRowsCache.rows;
-  const rows = b.map((e) => ({ id: e.champ.id, heal: healEstOf(e.champ, e.items, enemyAugStats(e)) }));
+  const rows = b.map((e) => ({ id: e.champ.id, heal: healEstOf(e.champ, e.items, enemyAugStats(e)),
+    shield: shieldEstOf(e.champ, e.items, enemyAugStats(e)) }));
   healRowsCache = { key, rows };
   return rows;
 }
@@ -395,10 +401,12 @@ function enemyTarget() {
   // v0.1.95 Phase 4 C4: 자기 회복 + 아군에게 주는 회복을 모두 더한 뒤 적 수로 나눈다 = '적 한 명이 평균적으로 받는 회복'.
   // 아군 회복을 팀 합으로 두면 자기 회복(1인분)과 단위가 섞인다. 소라카 예: (자기 135 + 아군 1045) ÷ 5 = 236 (예전엔 27)
   const heal = enemyHealRows().reduce((a, r) => a + r.heal, 0) / b.length;
+  // v0.1.95 Phase 5: 보호막도 같은 식으로 1인분 (독사의 송곳니 '보호막 파괴자'가 쓴다)
+  const shield = enemyHealRows().reduce((a, r) => a + (r.shield || 0), 0) / b.length;
   // 추가 체력(BONUS_HP)도 함께: 상대 추가 체력 비례 피해(도미닉 경의 인사)가 쓴다. 예전엔 안 돌려줘 늘 기본값 300 이었다
   // (v0.1.95 Phase 4 C2 · 실제 5판 상대 평균은 50~1500 이었다). 체력과 같은 50 단위로 맞춘다
   return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50,
-    bonusHP: Math.round(sum.bonusHP / 50) * 50, HEAL: Math.round(heal / 10) * 10 };
+    bonusHP: Math.round(sum.bonusHP / 50) * 50, HEAL: Math.round(heal / 10) * 10, SHIELD: Math.round(shield / 10) * 10 };
 }
 // 지금 상대 (실제 레벨 + 산 아이템만): '지금 수치'(능력치 패널)와 조언·기록에 쓴다.
 // 아이템·증강 순위는 '18레벨 완성' 기준이라 위의 예상 상대(enemyTarget)를 쓴다 (2026-10-15 검토: 둘을 섞지 않는다)
