@@ -1744,6 +1744,28 @@ test("F5-E 애쉬 Q·유나라 Q 는 평타 쪽으로 가고 콤보에는 안 �
   assert.equal(f5eSpell("Yunara", "Q").effects.find((x) => x.name === "calc_damage_spread"), undefined);
 });
 
+test("F5-E 가동률 식은 '활성 중에도 중첩이 쌓인다' 를 따른다 (애쉬·유나라 같은 식)", () => {
+  // needSec = max(0, 필요 - 지속 × 공속 × 평타당) ÷ (공속 × 평타당),  가동률 = 지속 ÷ (지속 + needSec)
+  const want = (dur, need, perHit, as) => {
+    const rate = as * perHit;
+    const needSec = Math.max(0, (need - dur * rate)) / rate;
+    return Math.round(dur / (dur + needSec) * 1000) / 1000;
+  };
+  for (const [id, dur, need, perHit] of [["Ashe", 6, 4, 1], ["Yunara", 5, 8, 2]]) {
+    for (const lv of [1, 3, 6, 11, 18]) {
+      const as = St.computeStats(champ(id), lv, [], [], { aram: true }).total.AS;
+      const got = St.evaluate(champ(id), lv, [], [], { aram: true }).m.empowerUptime.Q;
+      assert.ok(Math.abs(got - want(dur, need, perHit, as)) < 2e-3,
+        `${id} ${lv}레벨 가동률이 식과 달라요 (${got} vs ${want(dur, need, perHit, as)})`);
+    }
+  }
+  // 18레벨(추천 기준)에서는 둘 다 1 — 지속시간 안에 중첩이 다 모인다
+  assert.equal(St.evaluate(champ("Ashe"), 18, [], [], { aram: true }).m.empowerUptime.Q, 1);
+  assert.equal(St.evaluate(champ("Yunara"), 18, [], [], { aram: true }).m.empowerUptime.Q, 1);
+  // 1레벨(공속 낮음)에서는 1 아래
+  assert.ok(St.evaluate(champ("Yunara"), 1, [], [], { aram: true }).m.empowerUptime.Q < 1);
+});
+
 test("F5-E 가동률은 공격 속도에서 나온다 (느리면 내려간다)", () => {
   const c = champ("Ashe");
   const fast = St.evaluate(c, 18, [], [], { aram: true }).m.empowerUptime.Q;
