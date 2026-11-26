@@ -183,7 +183,8 @@ test("중첩형: 나서스 Q 는 평균 중첩만큼, 베이가는 주문력 중
 
 test("새로 숫자로 계산되는 증강: 흡수(스킬 피해 회복), 죽음의 순환(회복 → 피해)", () => {
   const lux = champ("Lux");
-  const heal = (augs) => St.evaluate(lux, 18, [], S.augStatsOf(augs, d.rules, lux)).m.heal;
+  // 흡수는 '내' 체력을 회복하는 효과라 자기 회복 칸에 들어간다 (v0.1.95 Phase 4 E1 전에는 아군 회복 칸이었다)
+  const heal = (augs) => St.evaluate(lux, 18, [], S.augStatsOf(augs, d.rules, lux)).m.selfHealAll;
   assert.ok(heal([aug("ARAM_SustainingStrike")]) > heal([]));
   const sor = champ("Soraka");
   const combo = (augs) => St.evaluate(sor, 18, [], S.augStatsOf(augs, d.rules, sor)).m.combo;
@@ -1287,4 +1288,808 @@ test("향로·흐르는 물: 아군 회복·보호막이 있는 챔피언만 발
   assert.equal(Math.round(gain("Nunu", censer)), 0, "아군 회복·보호막이 없으면 발동 안 함");
   assert.equal(Math.round(gain("Nunu", staff)), 0, "흐르는 물의 지팡이도 같음");
   assert.equal(Math.round(gain("Jinx", censer)), 0, "아군 지원 챔피언이 아니면 그대로 0");
+});
+
+// E1·E2 (v0.1.95 Phase 4, 2026-11-25): 자기 회복 / 아군 회복 / 자기 보호막 / 아군 보호막을 가른다.
+//   E1 증강 '흡수'(skillVamp)는 내 체력을 회복하는 효과인데 아군에게 준 회복(out.heal) 칸에 들어가
+//      ① 버티는 힘에서 빠지고 ② 지원 지표를 부풀리고 ③ 상대 회복량 추정에도 안 잡혔다.
+//   E2 '죽음의 순환'(healToDamage)은 원본이 '내 체력을 회복·재생하면'인데 아군에게 준 회복을 읽었다.
+const AUG_VAMP = "ARAM_SustainingStrike", AUG_CIRCLE = "ARAM_CircleofDeath";
+const near = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: ${a} vs ${b} (허용 ${tol})`);
+const mOf = (c, augs, items = []) => St.evaluate(c, 18, items, S.augStatsOf(augs.map(aug), d.rules, c), { aram: true }).m;
+
+test("E1 흡수: 스킬 피해로 내가 회복하는 양은 자기 회복이다 (아군 지원 아님)", () => {
+  const lux = champ("Lux");
+  const a = mOf(lux, []), b = mOf(lux, [AUG_VAMP]);
+  assert.ok(b.selfHealAll > a.selfHealAll, `자기 회복이 안 올랐다: ${a.selfHealAll} → ${b.selfHealAll}`);
+  assert.equal(b.heal, a.heal, `아군에게 준 회복 칸이 움직였다: ${a.heal} → ${b.heal}`);
+  assert.ok(b.ehp > a.ehp, `자기 회복인데 버티는 힘이 그대로다: ${a.ehp} → ${b.ehp}`);
+  assert.equal(b.support - a.support, 0, "지원 지표가 자기 회복으로 올랐다");
+});
+
+test("E2 죽음의 순환: 자기 회복만 있는 챔피언에서도 피해가 난다", () => {
+  const vlad = champ("Vladimir");  // 자기 회복 있음 · 아군 회복 0
+  const a = mOf(vlad, []), b = mOf(vlad, [AUG_CIRCLE]);
+  assert.equal(a.heal, 0, "시험 전제: 이 챔피언은 아군에게 주는 회복이 없어요");
+  assert.ok(a.selfHealAll > 0, "시험 전제: 자기 회복이 있어야 해요");
+  assert.ok(b.combo > a.combo, `자기 회복을 못 읽어 피해가 0 이다: ${a.combo} → ${b.combo}`);
+});
+
+test("E2 죽음의 순환: 아군에게 준 회복으로는 피해가 나지 않는다", () => {
+  const sor = champ("Soraka");  // 아군 회복 1045 · 자기 회복 135
+  const a = mOf(sor, []), b = mOf(sor, [AUG_CIRCLE]);
+  const fx = b.effects.find((e) => e.src === "회복 → 피해");
+  assert.ok(fx, "회복 → 피해 효과가 있어야 해요");
+  assert.ok(fx.value < a.heal * 0.7, `아군에게 준 회복까지 피해로 셌다: ${fx.value} (아군 회복 ${Math.round(a.heal)})`);
+  // v0.1.95 Phase 5: 원본이 "회복하거나 재생하면" 이라 체력 재생(regenHeal)도 함께 센다
+  near(fx.value, (a.selfHealAll + a.regenHeal) * 0.7, a.selfHealAll * 0.05, "자기 회복 + 체력 재생의 70% 여야 해요");
+});
+
+test("E1+E2 중복 없음: 흡수와 죽음의 순환을 같이 골라도 회복을 한 번만 센다", () => {
+  const lux = champ("Lux");
+  const v = mOf(lux, [AUG_VAMP]), both = mOf(lux, [AUG_VAMP, AUG_CIRCLE]);
+  const fx = both.effects.find((e) => e.src === "회복 → 피해");
+  assert.ok(fx, "회복 → 피해 효과가 있어야 해요");
+  near(fx.value, (v.selfHealAll + v.regenHeal) * 0.7, v.selfHealAll * 0.02, "자기 회복 합 + 체력 재생의 70% (두 번 세면 두 배가 된다)");
+});
+
+test("E2 순환 참조 없음: 죽음의 순환이 낸 피해로 다시 흡혈하지 않는다", () => {
+  const lux = champ("Lux"), omni = item("마도사의 주스 상자") || item("리안드리의 고통");
+  const a = mOf(lux, [], [omni]), b = mOf(lux, [AUG_CIRCLE], [omni]);
+  near(b.vampHeal, a.vampHeal, Math.max(1e-9, a.vampHeal * 1e-9), "회복 → 피해가 흡혈을 다시 늘렸다 (한 번만 돌아야 해요)");
+});
+
+test("회복·보호막 네 칸은 서로 겹치지 않는다 (자기 회복·아군 회복·자기 보호막·아군 보호막)", () => {
+  for (const id of ["Soraka", "Sona", "Lux", "Vladimir", "Garen"]) {
+    const m = mOf(champ(id), []);
+    near(m.selfHealAll, ((m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHeal || 0)) * (1 + 0), Math.max(1, m.selfHealAll * 0.001) + 1e-6,
+      `${id}: 자기 회복 합이 갈래 합과 다르다`);
+    near(m.selfShieldAll, (m.selfShield || 0) + (m.itemSelfShield || 0), 1e-6, `${id}: 자기 보호막 합이 갈래 합과 다르다`);
+    assert.equal(m.support, m.shield + m.heal + m.allyDmg + (m.allySupport || 0), `${id}: 지원 지표에 자기 몫이 섞였다`);
+  }
+});
+
+// ---- v0.1.95 Phase 4 C9-A1·A2: 저항 감소 공통 계산 순서
+test("C9-A1 적용 순서: 고정 감소 → 비율 감소 → 비율 관통 → 고정 관통", () => {
+  // 저항 100, 고정 감소 20, 비율 감소 50%, 비율 관통 40%, 고정 관통 10
+  //   맞는 순서: ((100 − 20) × 0.5) × 0.6 − 10 = 14 → 100/114
+  const got = St.mitigation(100, 0.4, 10, 0.5, 20);
+  near(got, 100 / 114, 1e-12, "순서가 틀렸다");
+  // 순서를 바꾸면 값이 달라진다 (관통을 먼저 걸면: (100 × 0.6 − 10 − 20) × 0.5 = 15 → 100/115)
+  assert.notEqual(Math.round(got * 1e6), Math.round((100 / 115) * 1e6), "관통을 먼저 건 값과 같으면 안 돼요");
+});
+
+test("C9-A1 기본값은 항등: 감소 인자를 안 주면 예전 식과 같다", () => {
+  for (const [r, pp, fp] of [[113, 0, 0], [113, 0.35, 18], [63, 0.4, 10], [0, 0.5, 5]]) {
+    near(St.mitigation(r, pp, fp), 100 / (100 + Math.max(0, r * (1 - pp) - fp)), 1e-12, `저항 ${r}`);
+    near(St.mitigation(r, pp, fp, 0, 0), St.mitigation(r, pp, fp), 1e-12, `저항 ${r} 0 인자`);
+  }
+});
+
+test("C9-A1 비율 관통은 저항이 0 이하면 아무 일도 하지 않는다", () => {
+  near(St.mitigation(30, 0.5, 0, 0, 40), 1, 1e-12, "고정 감소로 0 아래가 된 저항");
+  near(St.mitigation(30, 0, 0, 0, 30), 1, 1e-12, "저항이 정확히 0");
+});
+
+test("C9-A2 비율 저항 감소는 곱해서 합친다 (관통 %와 같은 규칙)", () => {
+  // 7.5% 감소 두 번 → 1 − 0.925 × 0.925 = 14.4375% (더하면 15%)
+  const two = St.computeStats(champ("Lux"), 18, [], [{ mrShred: 0.075 }, { mrShred: 0.075 }], { aram: true }).conv.mrShred;
+  near(two, 1 - 0.925 * 0.925, 1e-12, "두 출처를 더했다 (곱해야 해요)");
+  assert.ok(two < 0.15, "더한 값(0.15)보다 작아야 해요");
+  // 아이템 쪽 출처(C9-A3 공통 중첩 규칙)와 섞여도 곱한다 (핏빛 저주 11.25% + 가상 7.5%)
+  const mixed = St.evaluate(champ("Lux"), 18, [item("핏빛 저주")], [{ mrShred: 0.075 }], { aram: true }).m.shred.mrShred;
+  near(mixed, 1 - 0.8875 * 0.925, 1e-12, "아이템·증강 출처를 더했다");
+  assert.ok(mixed < 0.1125 + 0.075, "더한 값보다 작아야 해요");
+});
+
+test("C9-A2 고정 저항 감소는 더해서 합친다", () => {
+  const sum = St.computeStats(champ("Lux"), 18, [],
+    [{ mrFlatShred: 10 }, { armorFlatShred: 5 }, { mrFlatShred: 6 }], { aram: true }).conv;
+  near(sum.mrFlatShred, 16, 1e-12, "고정 마법 저항력 감소");
+  near(sum.armorFlatShred, 5, 1e-12, "고정 방어력 감소");
+});
+
+test("C9-A3 핏빛 저주는 공통 중첩 식을 타고도 값이 그대로다 (중첩 평균 1.5 고정)", () => {
+  const rule = (d.rules.items || {})["핏빛 저주"];
+  assert.ok(rule && rule.stats && rule.stats._shred, "핏빛 저주가 공통 중첩 규칙(_shred)으로 적혀 있어야 해요");
+  const spec = rule.stats._shred[0];
+  assert.equal(spec.stat, "mrShred");
+  near(spec.perStack * spec.pinnedAvg, 0.1125, 1e-12, "중첩 평균 1.5 × 7.5% 가정 (값 불변)");
+  // 공통 자리로 옮겨도 깎인 마법 저항력과 피해 배율이 예전 식과 같다
+  const blight = item("핏빛 저주");
+  assert.ok(blight, "핏빛 저주 아이템이 있어야 해요");
+  const sh = St.evaluate(champ("Lux"), 18, [blight], [], { aram: true }).m.shred;
+  near(sh.mrShred, 0.1125, 1e-12, "아이템 하나면 곱·합이 같다");
+  near(sh.armorShred, 0, 1e-12, "마법 쪽 효과가 물리 쪽으로 새면 안 돼요");
+  near(St.mitigation(St.TARGET.MR, 0, 0, sh.mrShred, 0),
+    100 / (100 + St.TARGET.MR * (1 - 0.1125)), 1e-12, "예전 식(MR × (1 − mrShred))과 같은 값");
+  // 중첩 평균이 고정값이라 공격 속도·스킬 빈도가 달라도 흔들리지 않는다
+  for (const id of ["Lux", "Garen", "Ashe"]) {
+    near(St.evaluate(champ(id), 18, [blight], [], { aram: true }).m.shred.mrShred, 0.1125, 1e-12, `${id}`);
+  }
+});
+
+test("C9-A3 공통 중첩 식 연결: 쌓는 방법(on)마다 빈도가 다르고 경계에서 0 이 된다", () => {
+  const sh = (specs, id = "Ashe", items = []) =>
+    St.evaluate(champ(id), 18, items, [{ _shred: specs }], { aram: true }).m.shred;
+  // 발동 빈도 0 · 지속시간 0 · 최대 중첩 0 → 값 0 (NaN 이 번지지 않는다)
+  for (const bad of [{ stat: "armorShred", perStack: 0.06, maxStacks: 5, dur: 0, on: "auto" },
+    { stat: "armorShred", perStack: 0.06, maxStacks: 0, dur: 6, on: "auto" },
+    { stat: "armorShred", perStack: 0.06, maxStacks: 5, dur: 6, on: "none" }]) {
+    const r = sh([bad]);
+    assert.equal(r.armorShred, 0, `${JSON.stringify(bad)} 는 0 이어야 해요`);
+    assert.ok(Number.isFinite(r.armorShred));
+  }
+  // 평타로 쌓는 효과와 스킬로 쌓는 효과는 빈도가 다르다 (공격 속도 vs 시전 빈도 × 공통 가정)
+  const base = { perStack: 0.06, maxStacks: 5, dur: 6 };
+  const auto = sh([{ stat: "armorShred", ...base, on: "auto" }]).armorShred;
+  const skill = sh([{ stat: "armorShred", ...base, on: "skill" }]).armorShred;
+  const both = sh([{ stat: "armorShred", ...base, on: "both" }]).armorShred;
+  assert.ok(auto > skill && skill > 0, `평타 쪽이 더 자주 쌓여야 해요 (${auto} vs ${skill})`);
+  assert.ok(both >= auto, "둘 다면 더 쌓여야 해요");
+  // 최대 중첩에 도달하는 조합과 못 하는 조합
+  const reach = sh([{ stat: "armorShred", perStack: 0.01, maxStacks: 2, dur: 6, on: "auto" }]);
+  const far = sh([{ stat: "armorShred", perStack: 0.01, maxStacks: 30, dur: 60, on: "auto" }]);
+  assert.ok(reach.armorShred > 0 && reach.armorShred <= 0.01 * 2 + 1e-12, "도달 조합도 최대 중첩(2)을 넘으면 안 돼요");
+  assert.ok(far.armorShred > 0 && far.armorShred < 0.01 * 30, "못 채우는 조합은 쌓는 중 평균");
+  // 물리·마법 경로가 섞이지 않는다
+  const split = sh([{ stat: "armorShred", ...base, on: "auto" }, { stat: "mrFlatShred", perStack: 5, maxStacks: 1, dur: 6, on: "auto" }]);
+  assert.ok(split.armorShred > 0 && split.mrShred === 0, "비율 방어력 감소가 마법 쪽으로 새면 안 돼요");
+  assert.ok(split.mrFlatShred > 0 && split.armorFlatShred === 0, "고정 감소도 경로가 갈려야 해요");
+  // 비율은 곱, 고정은 합
+  const one = sh([{ stat: "armorShred", ...base, on: "auto" }]).armorShred;
+  const two = sh([{ stat: "armorShred", ...base, on: "auto" }, { stat: "armorShred", ...base, on: "auto" }]).armorShred;
+  near(two, 1 - (1 - one) * (1 - one), 1e-12, "비율 감소 둘은 곱한다");
+  const f2 = sh([{ stat: "armorFlatShred", perStack: 5, maxStacks: 1, dur: 6, on: "auto" },
+    { stat: "armorFlatShred", perStack: 5, maxStacks: 1, dur: 6, on: "auto" }]).armorFlatShred;
+  const f1 = sh([{ stat: "armorFlatShred", perStack: 5, maxStacks: 1, dur: 6, on: "auto" }]).armorFlatShred;
+  near(f2, f1 * 2, 1e-12, "고정 감소 둘은 더한다");
+});
+
+// ---- v0.1.95 Phase 4 C9-A4: 칠흑의 양날 도끼(중첩형 비율 감소) · 악의(조건부 고정 감소)
+const CLEAVER = "칠흑의 양날 도끼", MALIGN = "악의";
+const shredOf = (id, items = [], augs = []) =>
+  St.evaluate(champ(id), 18, items.map(item).filter(Boolean), augs, { aram: true }).m;
+
+test("C9-A4 칠흑: 물리 피해 횟수로 중첩을 센다 (평타 + 물리 스킬, 한 스킬은 한 번)", () => {
+  for (const id of ["Garen", "Ashe", "Lux"]) {
+    const m = shredOf(id, [CLEAVER]);
+    const c = champ(id);
+    // 같은 규칙으로 손 계산: 평타(공격 속도) + 물리 피해가 있는 스킬의 시전 빈도 × 공통 가정 30%
+    const cs = St.computeStats(c, 18, [item(CLEAVER)], [], { aram: true });
+    const ranks = St.ranksAt(18, c.spells);
+    const haste = m.haste;
+    let physCast = 0, allCast = 0;
+    c.spells.forEach((sp, i) => {
+      const cd = sp.cooldown[Math.max(0, Math.min(ranks[i], sp.cooldown.length) - 1)] || 0;
+      if (ranks[i] === 0 || !(cd > 0)) return;
+      const r = 1 / Math.max(cd * 100 / (100 + (sp.slot === "R" ? haste.ult : haste.basic)), 2);
+      allCast += r;
+      const kinds = (sp.effects || []).map((e) => e.kind);
+      if (kinds.includes("physical") || (kinds.includes("adaptive") && !/^(Lux|Annie|Sona)$/.test(id))) physCast += r;
+    });
+    const rate = cs.total.AS + physCast * 0.3;
+    const want = St.shredExpect({ perStack: 0.06, maxStacks: 5, dur: 6, rate, fightSec: 6 });
+    near(m.shred.armorShred, want.value, 1e-9, `${id} 중첩 평균이 식과 달라요`);
+    assert.ok(m.shred.armorShred <= 0.3 + 1e-12, `${id}: 최대 중첩 5 × 6% = 30% 를 넘으면 안 돼요`);
+    assert.equal(m.shred.mrShred, 0, `${id}: 칠흑은 마법 저항력을 깎지 않아요`);
+    assert.ok(allCast >= physCast, "물리 스킬 빈도가 전체 시전 빈도보다 클 수 없어요");
+  }
+});
+
+test("C9-A4 칠흑: 마법·고정 피해는 중첩에 안 들어간다", () => {
+  // 'magic' 으로 쌓는 효과에는 기본 공격(물리)이 들어가지 않는다 → 마법 스킬이 없으면 0
+  const onlyMagic = [{ _shred: [{ stat: "armorShred", perStack: 0.06, maxStacks: 5, dur: 6, on: "magic" }] }];
+  const phys = [{ _shred: [{ stat: "armorShred", perStack: 0.06, maxStacks: 5, dur: 6, on: "physical" }] }];
+  for (const id of ["Garen", "Ashe"]) {
+    const a = shredOf(id, [], onlyMagic).shred.armorShred;
+    const b = shredOf(id, [], phys).shred.armorShred;
+    assert.ok(b > a, `${id}: 물리 쪽이 더 쌓여야 해요 (${b} vs ${a})`);
+  }
+  // 같은 스킬에 피해 효과가 여럿이어도 한 번만 센다: 규칙이 효과 수를 보지 않는다
+  const c = champ("Garen");
+  const many = c.spells.filter((sp) => (sp.effects || []).filter((e) => e.kind === "physical").length > 1).length;
+  const m = shredOf("Garen", [CLEAVER]);
+  assert.ok(m.shred.detail.length === 1, "칠흑은 감소 규칙 하나다 (효과마다 세면 여러 개가 돼요)");
+  assert.ok(many >= 0);
+});
+
+test("C9-A4 악의: 궁극기 피해로 걸리고 한타·장기 가동률이 다르다", () => {
+  const m = shredOf("Lux", [MALIGN]);
+  const d0 = m.shred.detail.find((x) => x.stat === "mrFlatShred");
+  assert.ok(d0, "고정 마법 저항력 감소가 있어야 해요");
+  near(d0.fightUptime, 0.5, 1e-12, "한타 한 번: 3초 ÷ 6초");
+  near(m.shred.mrFlatShred, 10 * 0.5, 1e-12, "한타 기준 감소량");
+  assert.ok(d0.longUptime > 0 && d0.longUptime < d0.fightUptime, "길게 싸울 때는 궁 대기시간만큼 낮아야 해요");
+  near(m.shredLong.mrFlatShred, 10 * d0.longUptime, 1e-12, "길게 싸울 때 감소량");
+  // 길게 싸울 때가 덜 깎이므로 초당 피해 쪽 보정은 1 보다 작고, 물리 쪽은 건드리지 않는다
+  assert.ok(m.shredAdj.magic < 1 && m.shredAdj.magic > 0.9, `마법 보정 ${m.shredAdj.magic}`);
+  assert.equal(m.shredAdj.physical, 1, "물리 쪽은 그대로여야 해요");
+  assert.equal(m.shred.mrShred, 0, "비율 감소가 아니라 고정 감소예요");
+  // 같은 가동률을 두 번 곱하지 않는다: 감소량 = 10 × 가동률 한 번
+  assert.ok(m.shred.mrFlatShred === 10 * d0.fightUptime);
+});
+
+test("C9-A4 악의: 궁극기가 막히면(증강) 감소가 0 이다", () => {
+  const noUlt = d.augments.find((a) => ((d.rules.augments[a.id] || {}).statsResolved || {}).noUlt);
+  assert.ok(noUlt, "궁을 막는 증강이 있어야 해요");
+  const as = S.augStatsOf([noUlt], d.rules, champ("Lux"));
+  const m = St.evaluate(champ("Lux"), 18, [item(MALIGN)], as, { aram: true }).m;
+  assert.equal(m.shred.mrFlatShred, 0, "궁을 못 쓰면 증오안개도 안 걸려요");
+  assert.equal(m.shredAdj.magic, 1, "차이가 없으면 보정도 1 이에요");
+});
+
+// ---- v0.1.95 Phase 4 C9-A5: 부식 — 관통 자리에서 저항 감소 자리로
+const EROSION = () => d.augments.find((a) => a.id === "ARAM_Erosion");
+const withEro = (id, items = []) => {
+  const c = champ(id), as = S.augStatsOf([EROSION()], d.rules, c);
+  const picked = items.map(item).filter(Boolean);
+  return { cs: St.computeStats(c, 18, picked, as, { aram: true }), m: St.evaluate(c, 18, picked, as, { aram: true }).m };
+};
+
+test("C9-A5 부식: 관통이 아니라 저항 감소로 들어간다 (두 자리에 겹치지 않는다)", () => {
+  const rule = d.rules.augments.ARAM_Erosion;
+  assert.ok(rule.statsResolved && rule.statsResolved._shred, "부식이 공통 중첩 규칙으로 적혀 있어야 해요");
+  assert.equal(rule.statsResolved.ARPEN, undefined, "관통 자리에 남아 있으면 두 번 세요");
+  assert.equal(rule.statsResolved.MPENP, undefined);
+  for (const id of ["Garen", "Lux", "Ashe"]) {
+    const { cs, m } = withEro(id);
+    assert.equal(cs.total.ARPEN, 0, `${id}: 방어구 관통력이 오르면 안 돼요`);
+    assert.equal(cs.total.MPENP, 0, `${id}: 마법 관통력이 오르면 안 돼요`);
+    assert.ok(m.shred.armorShred > 0 && m.shred.mrShred > 0, `${id}: 방어력·마법 저항력 둘 다 깎여야 해요`);
+    near(m.shred.armorShred, m.shred.mrShred, 1e-12, "원본이 같은 값이라 둘이 같아야 해요");
+    assert.ok(m.shred.armorShred <= 0.3 + 1e-12, "최대 20중첩 × 1.5% = 30% 를 넘으면 안 돼요");
+  }
+});
+
+test("C9-A5 부식: 공격 속도·스킬 빈도가 오르면 중첩이 는다", () => {
+  const slow = withEro("Ashe").m.shred.armorShred;
+  const fast = withEro("Ashe", ["광전사의 군화", "구인수의 격노검"]).m.shred.armorShred;
+  assert.ok(fast > slow, `공격 속도가 오르면 더 쌓여야 해요 (${fast} vs ${slow})`);
+  // 스킬 가속이 오르면 시전 빈도가 올라 중첩도 는다
+  const haste = withEro("Lux", ["악의"]).m.shred.armorShred;
+  assert.ok(haste > withEro("Lux").m.shred.armorShred, "스킬 가속이 오르면 더 쌓여야 해요");
+});
+
+test("C9-A5 부식 + 칠흑·핏빛 저주·악의: 비율은 곱, 고정은 합", () => {
+  const ero = withEro("Garen").m.shred.armorShred;
+  const cle = St.evaluate(champ("Garen"), 18, [item(CLEAVER)], [], { aram: true }).m.shred.armorShred;
+  const both = withEro("Garen", [CLEAVER]).m.shred;
+  assert.ok(both.armorShred < ero + cle, "더하면 과대평가예요 (곱해야 해요)");
+  assert.ok(both.armorShred > Math.max(ero, cle), "둘을 같이 쓰면 하나보다는 커야 해요");
+  // 핏빛 저주(마법 비율)와 악의(마법 고정)를 같이
+  const all = withEro("Lux", ["핏빛 저주", MALIGN]).m.shred;
+  // 같은 조합 안에서 두 몫을 꺼내 곱이 맞는지 본다 (중첩 속도는 아이템에 따라 달라지므로 따로 재면 안 된다)
+  const eroMr = all.detail.find((x) => x.stat === "mrShred" && x.on === "both").value;
+  const blightMr = all.detail.find((x) => x.stat === "mrShred" && x.on === "skill").value;
+  assert.ok(all.mrShred > blightMr && all.mrShred > eroMr, "비율끼리 쌓여야 해요");
+  near(all.mrShred, 1 - (1 - blightMr) * (1 - eroMr), 1e-12, "더하지 말고 곱해야 해요");
+  assert.ok(all.mrShred < blightMr + eroMr, "더하면 과대평가예요");
+  near(all.mrFlatShred, 5, 1e-12, "고정 감소는 악의 몫 그대로 (한타 기준)");
+});
+
+test("C9-A5 부식 + 관통: 감소 → 관통 순서가 그대로다", () => {
+  const { cs, m } = withEro("Lux", ["공허의 지팡이"]);
+  const want = St.mitigation(St.TARGET.MR, cs.total.MPENP, cs.total.MPEN, m.shred.mrShred, m.shred.mrFlatShred);
+  const byHand = 100 / (100 + Math.max(0,
+    (St.TARGET.MR - m.shred.mrFlatShred) * (1 - m.shred.mrShred) * (1 - cs.total.MPENP) - cs.total.MPEN));
+  near(want, byHand, 1e-12, "고정 감소 → 비율 감소 → 비율 관통 → 고정 관통");
+  assert.ok(cs.total.MPENP > 0, "관통은 아이템에서만 와야 해요");
+});
+
+test("C9-A3 저항 감소 → 관통 순서를 그대로 지킨다", () => {
+  // 고정 감소 → 비율 감소 → 비율 관통 → 고정 관통
+  const R = 100, pctRed = 0.2, flatRed = 10, pctPen = 0.3, flatPen = 5;
+  const want = 100 / (100 + Math.max(0, (R - flatRed) * (1 - pctRed) * (1 - pctPen) - flatPen));
+  near(St.mitigation(R, pctPen, flatPen, pctRed, flatRed), want, 1e-12, "순서가 바뀌면 값이 달라져요");
+  // 공통 중첩 식으로 들어온 감소도 같은 자리에 들어간다 (마법 쪽)
+  const sh = St.evaluate(champ("Lux"), 18, [item("핏빛 저주")], [], { aram: true }).m.shred;
+  near(sh.mrShred, 0.1125, 1e-12);
+  assert.ok(St.mitigation(St.TARGET.MR, 0.4, 0, sh.mrShred, 0) > St.mitigation(St.TARGET.MR, 0.4, 0, 0, 0),
+    "감소가 관통과 같이 걸리면 피해가 더 들어가야 해요");
+});
+
+test("C9-A2.5 중첩 평균 식: 포화 전·후 두 갈래가 손 계산과 같다", () => {
+  // 칠흑(6% ×5, 6초, 초당 1.5회): s* = min(5, 9) = 5 · t_r = 3.33초 ≤ 6초 → 5 × (1 − 3.33/12) = 3.611
+  const a = St.shredExpect({ perStack: 0.06, maxStacks: 5, rate: 1.5, dur: 6, fightSec: 6 });
+  near(a.saturated, 5, 1e-12, "포화 중첩");
+  near(a.stackAvg, 5 * (1 - (5 / 1.5) / 12), 1e-12, "포화 전 갈래");
+  near(a.value, a.stackAvg * 0.06, 1e-12, "깎는 양");
+  // 부식(1.5% ×20, 4초, 초당 2회): s* = min(20, 8) = 8 · t_r = 4초 ≤ 6초 → 8 × (1 − 4/12) = 5.333
+  const b = St.shredExpect({ perStack: 0.015, maxStacks: 20, rate: 2, dur: 4, fightSec: 6 });
+  near(b.stackAvg, 8 * (1 - 4 / 12), 1e-12, "부식");
+  // 포화가 한타보다 오래 걸리는 경우: 한타 내내 쌓기만 한다 → rate × T / 2
+  const c = St.shredExpect({ perStack: 0.01, maxStacks: 30, rate: 2, dur: 60, fightSec: 6 });
+  near(c.stackAvg, 2 * 6 / 2, 1e-12, "포화 후 갈래");
+  assert.ok(c.stackAvg <= c.saturated, "평균이 포화 중첩을 넘으면 안 돼요");
+});
+
+test("C9-A2.5 중첩 평균은 0 아래로도 포화 위로도 안 간다 (발동 0회 포함)", () => {
+  for (const o of [{ rate: 0, dur: 6, maxStacks: 5 }, { rate: 2, dur: 0, maxStacks: 5 }, { rate: 2, dur: 6, maxStacks: 0 },
+    { rate: -1, dur: 6, maxStacks: 5 }, { rate: 0, dur: 0, maxStacks: 0 }]) {
+    const r = St.shredExpect({ perStack: 0.06, ...o, fightSec: 6 });
+    assert.equal(r.stackAvg, 0, `발동이 없으면 0 이어야 해요: ${JSON.stringify(o)}`);
+    assert.ok(Number.isFinite(r.value), `값이 숫자여야 해요: ${JSON.stringify(o)}`);
+  }
+  // 어떤 조합에서도 0 ≤ 평균 ≤ 포화 중첩 (예전 식은 포화 시간이 한타보다 길면 음수가 됐다)
+  for (const rate of [0.1, 0.5, 1, 2, 5]) for (const dur of [0.5, 2, 4, 6, 20]) for (const maxStacks of [1, 4, 5, 20]) {
+    const r = St.shredExpect({ perStack: 0.01, rate, dur, maxStacks, fightSec: 6 });
+    assert.ok(r.stackAvg >= 0 && r.stackAvg <= r.saturated + 1e-12, `${rate}/${dur}/${maxStacks} → ${r.stackAvg} (포화 ${r.saturated})`);
+  }
+});
+
+test("C9-A2.5 중첩 평균을 1.5 로 고정하면 핏빛 저주의 지금 값이 그대로 나온다", () => {
+  const r = St.shredExpect({ perStack: 0.075, maxStacks: 4, rate: 1, dur: 6, pinnedAvg: 1.5 });
+  near(r.value, 0.1125, 1e-12, "지금 규칙 값 (중첩 평균 1.5 × 7.5%)");
+  const spec = (d.rules.items["핏빛 저주"].stats || {})._shred[0];
+  near(r.value, spec.perStack * spec.pinnedAvg, 1e-12, "데이터 규칙과 같은 값");
+});
+
+// ---- v0.1.95 Phase 4 E4·F12: 자기 회복 / 최대 체력 증가 / 일반 보호막 / 주문 방어막·피해 흡수를 가른다
+const BELT = "원형질 안전벨트", SPIRIT = "정령의 형상";
+const e4m = (id, itemNames = [], augIds = []) => {
+  const c = champ(id);
+  const as = augIds.length ? S.augStatsOf(augIds.map(aug).filter(Boolean), d.rules, c) : [];
+  return St.evaluate(c, 18, itemNames.map(item).filter(Boolean), as, { aram: true }).m;
+};
+const e4dmg = (m) => { const fx = (m.effects || []).find((e) => e.src === "회복 → 피해"); return fx ? fx.value : 0; };
+
+test("E4 원형질 안전벨트: 회복과 최대 체력 증가를 따로 센다 (18레벨·추가 저항 0 이면 400 + 300)", () => {
+  const rule = d.rules.items[BELT].stats;
+  assert.deepEqual(rule.selfHeal.lvl, [100, 400], "원본: 회복 100~400 (레벨 비례)");
+  assert.deepEqual(rule.selfHeal.ratios, { bonusARMOR: 1.75, bonusMR: 1.75 }, "원본: 추가 방어력·마법 저항력의 175%");
+  assert.deepEqual(rule.selfHp.lvl, [100, 300], "원본: 최대 체력 100~300 (레벨 비례)");
+  assert.deepEqual(item(BELT).passiveStats, rule, "data.json 에 구워진 값도 같아야 해요");
+  const bare = e4m("Rammus"), belt = e4m("Rammus", [BELT]);
+  assert.equal(Math.round(belt.selfHealAll - bare.selfHealAll), 400, "추가 저항이 없으면 18레벨 400");
+  assert.equal(Math.round(belt.selfHpAll), 300);
+  // 한 아이템을 두 칸에 중복으로 더하지 않는다 (합 700, 1400 이 아님)
+  assert.equal(Math.round(belt.selfHealAll + belt.selfHpAll + belt.selfShieldAll + belt.selfAbsorbAll), 700);
+});
+
+test("E4 원형질 안전벨트 원본 계수: 레벨 비례 보간과 추가 저항 175%", () => {
+  const c = champ("Rammus"), belt = item(BELT);
+  const at = (L, items = [belt]) => St.computeStats(c, L, items, [], { aram: true });
+  // 레벨 보간은 1~18레벨 직선 (구원·미카엘의 축복과 같은 방식)
+  near(at(1).conv.selfHeal, 100, 1e-9, "1레벨 회복");
+  near(at(18).conv.selfHeal, 400, 1e-9, "18레벨 회복");
+  near(at(1).conv.selfHp, 100, 1e-9, "1레벨 최대 체력");
+  near(at(18).conv.selfHp, 300, 1e-9, "18레벨 최대 체력");
+  near(at(10).conv.selfHeal, 100 + 300 * 9 / 17, 1e-9, "10레벨은 직선 보간");
+  // 아이템으로 얻는 추가 저항이 회복에 들어간다 (마법 저항력 40 → +70)
+  const mr = item("밴시의 장막");
+  const t = at(18, [belt, mr]).total;
+  near(at(18, [belt, mr]).conv.selfHeal, 400 + 1.75 * (t.bonusARMOR + t.bonusMR), 1e-9, "추가 저항의 175%");
+  // 최대 체력 증가는 저항을 안 탄다
+  near(at(18, [belt, mr]).conv.selfHp, 300, 1e-9, "최대 체력은 그대로");
+});
+
+test("F12 감시의 장막: 주문 방어막은 회복이 아니라 피해 흡수 칸으로", () => {
+  assert.equal((d.rules.augments.VeilOfWarding.statsResolved || {}).selfAbsorb, 396);
+  assert.equal((d.rules.augments.VeilOfWarding.statsResolved || {}).selfHeal, undefined);
+  const bare = e4m("Rammus"), veil = e4m("Rammus", [], ["VeilOfWarding"]);
+  assert.equal(Math.round(veil.selfAbsorbAll), 396);
+  assert.equal(Math.round(veil.selfHealAll - bare.selfHealAll), 0, "회복 칸은 그대로여야 해요");
+});
+
+test("E4·F12 죽음의 순환은 '실제 자기 회복' 만 피해로 바꾼다", () => {
+  const belt = e4m("Rammus", [BELT], ["ARAM_CircleofDeath"]);
+  const rate = d.rules.augments.ARAM_CircleofDeath.statsResolved.healToDamage;
+  near(e4dmg(belt), (belt.selfHealAll + belt.regenHeal) * rate, 1e-9, "자기 회복 + 체력 재생 몫만 (최대 체력 증가·주문 방어막은 빼고)");
+  assert.ok(Math.abs(e4dmg(belt) - (belt.selfHealAll + belt.selfHpAll) * rate) > 100, "최대 체력 증가까지 세면 안 돼요");
+  // 주문 방어막만 있으면 피해로 바뀌는 몫이 없다
+  const bare = e4m("Rammus", [], ["ARAM_CircleofDeath"]);
+  const veil = e4m("Rammus", [], ["VeilOfWarding", "ARAM_CircleofDeath"]);
+  near(e4dmg(veil), e4dmg(bare), 1e-9, "주문 방어막은 회복이 아니에요");
+});
+
+test("E4·F12 정령의 형상은 회복·보호막만 25% 올린다 (최대 체력·주문 방어막은 그대로)", () => {
+  const beltSpirit = e4m("Rammus", [BELT, SPIRIT]), belt = e4m("Rammus", [BELT]);
+  // 정령의 형상은 마법 저항력 50 도 같이 주므로 회복 바탕값 자체가 커진다 → 규칙값 × 1.25 와 견준다
+  const cv = St.computeStats(champ("Rammus"), 18, [item(BELT), item(SPIRIT)], [], { aram: true }).conv;
+  near(beltSpirit.selfHealAll, cv.selfHeal * 1.25, 1e-9, "회복은 규칙값의 1.25배");
+  near(beltSpirit.selfHpAll / belt.selfHpAll, 1, 1e-9, "최대 체력 증가는 그대로");
+  const veil = e4m("Rammus", [], ["VeilOfWarding"]), veilSpirit = e4m("Rammus", [SPIRIT], ["VeilOfWarding"]);
+  near(veilSpirit.selfAbsorbAll / veil.selfAbsorbAll, 1, 1e-9, "주문 방어막도 그대로");
+  // 일반 보호막(럭스 W)은 예전처럼 1.25배
+  const luxBare = e4m("Lux"), luxSpirit = e4m("Lux", [SPIRIT]);
+  near(luxSpirit.selfShieldAll / luxBare.selfShieldAll, 1.25, 1e-9, "일반 보호막은 올라가요");
+});
+
+test("E4 네 갈래 모두 버티는 힘에는 들어간다", () => {
+  const c = champ("Rammus");
+  const bare = St.evaluate(c, 18, [], [], { aram: true }).m;
+  for (const [label, items, augs] of [["회복+최대 체력", [BELT], []], ["주문 방어막", [], ["VeilOfWarding"]]]) {
+    const m = e4m("Rammus", items, augs);
+    assert.ok(m.ehp > bare.ehp, `${label} 이 버티는 힘에 들어가야 해요 (${m.ehp} vs ${bare.ehp})`);
+  }
+});
+
+// ---------------------------------------------------------------- F5-A 서로 대안인 피해를 둘 다 세지 않는다
+const f5spell = (id, slot) => champ(id).spells.find((s) => s.slot === slot);
+
+test("F5-A 카서스 Q 는 단일 대상 값만 센다 (설명: '하나의 적만 맞힐 경우')", () => {
+  const names = f5spell("Karthus", "Q").effects.map((e) => e.name);
+  assert.deepEqual(names, ["qsingletargetdamage"], "여러 명 값(qdamage)은 함께 들어가지 않아요");
+});
+
+test("F5-A 럼블 E 는 기본 값만 센다 (강화는 위험 상태일 때만)", () => {
+  const names = f5spell("Rumble", "E").effects.map((e) => e.name);
+  assert.deepEqual(names, ["totaldamage"], "강화 값(empdamage)은 함께 들어가지 않아요");
+});
+
+test("F5-A 칼리스타 E 는 둘 다 센다 (대안이 아니라 창 2개 몫)", () => {
+  const names = f5spell("Kalista", "E").effects.map((e) => e.name);
+  assert.deepEqual(names, ["normaldamage", "additionaldamage"],
+    "기본 + 두 번째 창은 함께 들어가는 피해예요 (창 3개부터는 규칙의 fight 효과가 센다)");
+  const rule = d.rules.champions.Kalista;
+  assert.ok(rule && JSON.stringify(rule.fight).includes("RendPerSpear"), "창 하나당 피해가 규칙에 있어야 해요");
+});
+
+test("F5-A 이름이 비슷하다고 자동으로 빼지 않는다 (규칙에 적은 것만)", () => {
+  const drops = Object.entries(d.rules.champions)
+    .filter(([, r]) => r && r.dropEffects).map(([id]) => id).sort();
+  assert.deepEqual(drops, ["Karthus", "Rumble", "Yunara"], "뺀 자리는 규칙에 적은 챔피언뿐이에요 (유나라는 F5-E 의 확산 피해)");
+  // 같은 모양('기본 + 강화')인데 규칙에 없는 스킬은 그대로 둔다 — 엔진의 대안 처리(spellPlan)가 맡는다
+  assert.ok(f5spell("Rengar", "Q").effects.length > 1, "렝가 Q 는 데이터에 둘 다 남아 있어요");
+});
+
+// ---------------------------------------------------------------- F5-B 충전형 스킬의 장기 발동 간격
+test("F5-B 충전 값은 규칙으로 켠 스킬에만 쓴다 (설치물·평타 강화형은 그대로 제외)", () => {
+  const on = [];
+  for (const c of d.champions) for (const s of c.spells) if (s.dpsRate === "ammo") on.push(`${c.id} ${s.slot}`);
+  assert.deepEqual(on.sort(), ["Karthus Q", "Nilah E", "Rengar E", "Rengar Q", "Rengar W", "Rumble E"]);
+  // 렝가 Q 는 충전 간격만 쓰고 피해는 평타 대체(차이만)로 간다 — 자세한 것은 F5-E 테스트에서 본다
+  // 게임 파일에 충전 값이 있어도 켜지 않은 스킬 (설치물 4개)
+  const off = ["Gangplank E", "Ivern W", "Caitlyn W", "Teemo R"];
+  for (const key of off) {
+    const [id, slot] = key.split(" ");
+    const sp = champ(id).spells.find((s) => s.slot === slot);
+    assert.ok(sp.ammo, `${key} 는 충전 값이 데이터에 있어야 해요`);
+    assert.equal(sp.dpsRate, undefined, `${key} 는 아직 초당 피해에 넣지 않아요`);
+  }
+});
+
+test("F5-B 카서스 Q 가 초당 스킬 피해에 들어간다 (충전 1초)", () => {
+  const m = St.evaluate(champ("Karthus"), 18, [], [], { aram: true }).m;
+  const q = m.spells.find((s) => s.slot === "Q");
+  assert.ok(q.cd <= 1 && q.cd > 0, `발동 간격은 1초 이하여야 해요 (${q.cd})`);
+  assert.ok(m.skillDps > q.dmg / 2, `Q 피해가 초당 피해에 들어가야 해요 (${m.skillDps} vs ${q.dmg})`);
+});
+
+test("F5-B 닐라 E 는 스킬 가속을 받지 않는다 (게임 파일 표시)", () => {
+  const sp = champ("Nilah").spells.find((s) => s.slot === "E");
+  assert.equal(sp.ammo.noHaste, true);
+  const bare = St.evaluate(champ("Nilah"), 18, [], [], { aram: true }).m.spells.find((s) => s.slot === "E");
+  const haste = St.evaluate(champ("Nilah"), 18, [item("명석함의 아이오니아 장화")].filter(Boolean), [], { aram: true })
+    .m.spells.find((s) => s.slot === "E");
+  assert.equal(Math.round(bare.cd * 100), Math.round(haste.cd * 100), "가속을 줘도 발동 간격이 같아야 해요");
+});
+
+test("F5-B 한타 한 번 피해는 그대로 한 번만 센다 (처음 들고 있는 충전량을 두 번 세지 않는다)", () => {
+  for (const id of ["Karthus", "Rengar", "Nilah", "Rumble"]) {
+    const m = St.evaluate(champ(id), 18, [], [], { aram: true }).m;
+    const sum = m.spells.reduce((a, s) => a + (s.dmg || 0), 0);
+    assert.ok(Math.abs(m.combo - sum) < m.combo * 0.5 + 1e-6,
+      `${id}: 콤보가 스킬 한 번씩의 합에서 크게 벗어나면 안 돼요 (${m.combo} vs ${sum})`);
+  }
+});
+
+// ---------------------------------------------------------------- F5-C 평타 쪽으로 가야 하는 피해
+test("F5-C 제리 Q 는 평타를 대체한다 (평타에 더하지 않는다)", () => {
+  const c = champ("Zeri");
+  const sp = c.spells.find((s) => s.slot === "Q");
+  assert.ok(sp.effects.some((e) => e.autoReplace), "규칙이 데이터에 붙어 있어야 해요");
+  const m = St.evaluate(c, 18, [], [], { aram: true }).m;
+  assert.ok(m.autoHit > 0, "평타 한 대의 피해가 Q 값이어야 해요");
+  const t = St.computeStats(c, 18, [], [], { aram: true }).total;
+  assert.ok(m.autoHit > t.AD, `Q 값(${m.autoHit})이 그냥 공격력(${t.AD})보다 커야 해요`);
+  const q = m.spells.find((s) => s.slot === "Q");
+  assert.equal(Math.round(q.dmg), 0, "같은 피해를 스킬 쪽으로 또 세면 안 돼요");
+});
+
+test("F5-C 트위스티드 페이트 E 는 4번째 평타마다 (한 대당 1/4)", () => {
+  const c = champ("TwistedFate");
+  const e = c.spells.find((s) => s.slot === "E").effects.find((x) => x.name === "bonusdamage");
+  assert.equal(e.every, 4);
+  assert.equal(e.onhit, true);
+  const m = St.evaluate(c, 18, [], [], { aram: true }).m;
+  assert.ok(m.spellOnhit > 0, "평타 적중 피해에 들어가야 해요");
+  const raw = m.spells.find((s) => s.slot === "E").values.find((v) => v.name === "bonusdamage").value;
+  assert.ok(m.spellOnhit < raw, `한 대당 평균은 원래 값보다 작아야 해요 (${m.spellOnhit} vs ${raw})`);
+});
+
+test("F5-C 평타를 대체·강화하지 않는 챔피언은 그대로다", () => {
+  const n = d.champions.filter((c) => c.spells.some((s) => s.effects.some((e) => e.autoReplace || e.every))).length;
+  assert.equal(n, 2, "규칙에 적은 두 명(제리·트위스티드 페이트)뿐이어야 해요");
+});
+
+// ---------------------------------------------------------------- F5-D 게임 원본에 재사용 대기시간이 없는 스킬
+test("F5-D 베이가 W·탐 켄치 R 은 규칙에 적은 값으로 센다 (출처는 basis 에)", () => {
+  const vw = champ("Veigar").spells.find((s) => s.slot === "W");
+  assert.equal(vw.cooldownFrom, "rules");
+  assert.equal(vw.cooldown[0], 6.48, "위키 공식 8 × 0.9^2 (극악 120중첩 가정과 같은 기준)");
+  const tr = champ("TahmKench").spells.find((s) => s.slot === "R");
+  assert.deepEqual(tr.cooldown, [120, 100, 80]);
+  for (const id of ["Veigar", "TahmKench"]) {
+    const m = St.evaluate(champ(id), 18, [], [], { aram: true }).m;
+    assert.ok(m.skillDps > 0, `${id} 의 초당 스킬 피해가 0 이면 안 돼요`);
+  }
+});
+
+test("F5-D 규칙으로 채운 쿨타임은 두 자리뿐이다 (쉬바나 R·야스오 E 는 후속)", () => {
+  const filled = [];
+  for (const c of d.champions) for (const s of c.spells) if (s.cooldownFrom === "rules") filled.push(`${c.id} ${s.slot}`);
+  assert.deepEqual(filled.sort(), ["TahmKench R", "Veigar W"]);
+  assert.equal(champ("Shyvana").spells.find((s) => s.slot === "R").cooldown[0], 0, "쉬바나 R 은 분노로 쓰는 스킬이라 그대로예요");
+});
+
+// ---------------------------------------------------------------- 16.23.1 새 증강
+const a1623 = (id) => d.augments.find((x) => x.id === id);
+const plain1623 = (id) => a1623(id).desc.replace(/<[^>]+>/g, "");
+const with1623 = (champId, ids, items = []) => {
+  const c = champ(champId);
+  const as = S.augStatsOf(ids.map(a1623).filter(Boolean), d.rules, c);
+  return St.computeStats(c, 18, items.map(item).filter(Boolean), as, { aram: true }).total;
+};
+
+test("16.23 요새화·신비한 방호·더욱 굳건한 태세: 설명 수치가 그대로인가 (패치 감시)", () => {
+  assert.match(plain1623("Fortified"), /20의 방어력[\s\S]*추가 방어력이 25% 증가/);
+  assert.match(plain1623("MysticGuard"), /20의 마법 저항력[\s\S]*추가 마법 저항력이 25% 증가/);
+  assert.match(plain1623("SteadfastPresence"), /추가 방어력 및 마법 저항력이 16% 증가/);
+});
+
+test("16.23 저항 증강은 추가 저항만 올린다 (기본 저항은 그대로)", () => {
+  const b = with1623("Garen", []), f = with1623("Garen", ["Fortified"]);
+  assert.equal(Math.round((b.ARMOR - b.bonusARMOR) * 100), Math.round((f.ARMOR - f.bonusARMOR) * 100),
+    "레벨로 얻는 기본 방어력은 올라가면 안 돼요");
+  assert.ok(Math.abs(f.bonusARMOR - (b.bonusARMOR + 20) * 1.25) < 1e-6,
+    `추가 방어력 = (원래 + 20) × 1.25 여야 해요 (${f.bonusARMOR})`);
+  assert.equal(Math.round(f.bonusMR * 100), Math.round(b.bonusMR * 100), "요새화는 마법 저항력을 올리지 않아요");
+  const g = with1623("Garen", ["MysticGuard"]);
+  assert.equal(Math.round(g.bonusARMOR * 100), Math.round(b.bonusARMOR * 100), "신비한 방호는 방어력을 올리지 않아요");
+});
+
+test("16.23 저항 증강 여러 개는 더해서 센다", () => {
+  const b = with1623("Garen", []), both = with1623("Garen", ["Fortified", "SteadfastPresence"]);
+  assert.ok(Math.abs(both.bonusARMOR - (b.bonusARMOR + 20) * (1 + 0.25 + 0.16)) < 1e-6,
+    `25% + 16% 가 더해져야 해요 (${both.bonusARMOR})`);
+});
+
+test("16.23 저항 증강은 원형질 안전벨트 회복(추가 저항 175%)을 키운다", () => {
+  const m = (ids) => St.evaluate(champ("Garen"), 18, [item("원형질 안전벨트")],
+    S.augStatsOf(ids.map(a1623).filter(Boolean), d.rules, champ("Garen")), { aram: true }).m;
+  const bare = m([]), fort = m(["Fortified"]);
+  const t0 = with1623("Garen", [], ["원형질 안전벨트"]), t1 = with1623("Garen", ["Fortified"], ["원형질 안전벨트"]);
+  const gain = (t1.bonusARMOR - t0.bonusARMOR) * 1.75;
+  assert.ok(Math.abs((fort.selfHealAll - bare.selfHealAll) - gain) < 1, `늘어난 추가 방어력의 175% 만큼이어야 해요`);
+  assert.equal(Math.round(fort.selfHpAll), Math.round(bare.selfHpAll), "최대 체력 증가 몫은 저항과 상관없어요");
+});
+
+test("16.23 점액 천지는 6초마다 상대 최대 체력 비례 피해", () => {
+  const fx = a1623("ARAM_SlimeTime").effects;
+  assert.equal(fx.length, 2, "기본 피해 + 최대 체력 비례 둘");
+  for (const e of fx) assert.equal(e.trigger.sec, 6);
+  assert.ok(JSON.stringify(fx).includes("TGT_MAXHP"), "상대 최대 체력 비례가 들어가야 해요");
+  const bare = St.evaluate(champ("Garen"), 18, [], [], { aram: true }).m;
+  const slime = St.evaluate(champ("Garen"), 18, [],
+    S.augStatsOf([a1623("ARAM_SlimeTime")], d.rules, champ("Garen")), { aram: true }).m;
+  assert.ok(slime.combo > bare.combo && slime.dps > bare.dps, "피해가 들어가야 해요");
+});
+
+test("16.23 사라진 증강 4개는 기록용으로 남는다", () => {
+  const gone = (d.removedAugs || []).map((x) => x.id).sort();
+  assert.deepEqual(gone, ["PatOnTheBack", "SharkTempest", "Snowbomb", "SurgeField"]);
+  for (const x of d.removedAugs) assert.equal(x.removedIn, "16.23.1");
+  for (const id of gone) assert.equal(d.augments.find((a) => a.id === id), undefined, "추천 목록에는 없어야 해요");
+});
+
+// ---------------------------------------------------------------- F5-E 가동률·발동 구조
+const f5e = (id) => St.evaluate(champ(id), 18, [], [], { aram: true }).m;
+const f5eSpell = (id, slot) => champ(id).spells.find((s) => s.slot === slot);
+const f5eVal = (id, slot, name) => f5e(id).spells.find((s) => s.slot === slot).values.find((v) => v.name === name).value;
+
+test("F5-E 토글 장판은 초당 값 그대로, 콤보에는 콤보 시간만큼 (신지드 Q·카서스 E)", () => {
+  for (const [id, slot, name] of [["Singed", "Q", "damagepersecond"], ["Karthus", "E", "totaldps"]]) {
+    const e = f5eSpell(id, slot).effects.find((x) => x.name === name);
+    assert.equal(e.perSec, true, `${id} ${slot} 가 초당 값으로 표시돼야 해요`);
+    const m = f5e(id);
+    const sp = m.spells.find((s) => s.slot === slot);
+    // 콤보 몫 = 초당 몫 × 4초(COMBO_WINDOW) — 두 자리가 같은 비율이어야 한다
+    assert.ok(sp.dmg > 0 && m.skillDps > 0);
+    assert.ok(Math.abs(sp.dmg / 4 - (sp.dmg / 4)) < 1e-9);
+  }
+});
+
+test("F5-E 티모 E 는 총량(4초)과 즉시 적중을 가른다", () => {
+  const e = f5eSpell("Teemo", "E").effects.find((x) => x.name === "totaldotdamage");
+  assert.equal(e.dotSec, 4);
+  assert.equal(e.dotNeedsAuto, true);
+  const impact = f5eSpell("Teemo", "E").effects.find((x) => x.name === "impactcalculateddamage");
+  assert.equal(impact.onhit, true, "즉시 피해는 평타 적중 쪽 그대로예요");
+  const m = f5e("Teemo");
+  assert.ok(m.spellOnhit > 0 && m.skillDps > 0);
+});
+
+test("F5-E 렝가 Q 는 평타 한 대와의 차이만 센다", () => {
+  const m = f5e("Rengar");
+  const t = St.computeStats(champ("Rengar"), 18, [], [], { aram: true }).total;
+  const q = m.spells.find((s) => s.slot === "Q");
+  const val = f5eVal("Rengar", "Q", "qtotaldamage");
+  assert.ok(q.dmg < val, `평타 피해를 뺀 값이어야 해요 (${q.dmg} vs ${val})`);
+  assert.ok(q.dmg > 0 && val - t.AD > 0);
+  assert.ok(q.cd > 3 && q.cd < 7, `발동 간격은 충전 시간이어야 해요 (${q.cd})`);
+});
+
+test("F5-E 애쉬 Q·유나라 Q 는 평타 쪽으로 가고 콤보에는 안 남는다", () => {
+  for (const id of ["Ashe", "Yunara"]) {
+    const m = f5e(id);
+    const q = m.spells.find((s) => s.slot === "Q");
+    assert.equal(Math.round(q.dmg), 0, `${id} Q 가 콤보에 남으면 평타와 두 번 세요`);
+    assert.ok(m.spellOnhit > 0, `${id} 의 평타 적중 피해에 들어가야 해요`);
+    assert.ok(m.empowerUptime && m.empowerUptime.Q > 0 && m.empowerUptime.Q <= 1, `${id} 가동률이 0~1 이어야 해요`);
+  }
+  // 유나라 확산 피해(주변 적)는 상대 한 명 기준 계산에서 뺀다
+  assert.equal(f5eSpell("Yunara", "Q").effects.find((x) => x.name === "calc_damage_spread"), undefined);
+});
+
+test("F5-E 가동률 식은 '활성 중에도 중첩이 쌓인다' 를 따른다 (애쉬·유나라 같은 식)", () => {
+  // needSec = max(0, 필요 - 지속 × 공속 × 평타당) ÷ (공속 × 평타당),  가동률 = 지속 ÷ (지속 + needSec)
+  const want = (dur, need, perHit, as) => {
+    const rate = as * perHit;
+    const needSec = Math.max(0, (need - dur * rate)) / rate;
+    return Math.round(dur / (dur + needSec) * 1000) / 1000;
+  };
+  for (const [id, dur, need, perHit] of [["Ashe", 6, 4, 1], ["Yunara", 5, 8, 2]]) {
+    for (const lv of [1, 3, 6, 11, 18]) {
+      const as = St.computeStats(champ(id), lv, [], [], { aram: true }).total.AS;
+      const got = St.evaluate(champ(id), lv, [], [], { aram: true }).m.empowerUptime.Q;
+      assert.ok(Math.abs(got - want(dur, need, perHit, as)) < 2e-3,
+        `${id} ${lv}레벨 가동률이 식과 달라요 (${got} vs ${want(dur, need, perHit, as)})`);
+    }
+  }
+  // 18레벨(추천 기준)에서는 둘 다 1 — 지속시간 안에 중첩이 다 모인다
+  assert.equal(St.evaluate(champ("Ashe"), 18, [], [], { aram: true }).m.empowerUptime.Q, 1);
+  assert.equal(St.evaluate(champ("Yunara"), 18, [], [], { aram: true }).m.empowerUptime.Q, 1);
+  // 1레벨(공속 낮음)에서는 1 아래
+  assert.ok(St.evaluate(champ("Yunara"), 1, [], [], { aram: true }).m.empowerUptime.Q < 1);
+});
+
+test("F5-E 가동률은 공격 속도에서 나온다 (느리면 내려간다)", () => {
+  const c = champ("Ashe");
+  const fast = St.evaluate(c, 18, [], [], { aram: true }).m.empowerUptime.Q;
+  const slow = St.evaluate(c, 3, [], [], { aram: true }).m.empowerUptime.Q;
+  assert.ok(fast >= slow, `공격 속도가 낮으면 가동률이 같거나 낮아야 해요 (${fast} vs ${slow})`);
+  assert.ok(fast <= 1);
+});
+
+// ---- v0.1.95 Phase 4 C9-B: 저항 감소로 '아군이' 더 넣는 피해
+// 아군 모델은 setAllies 로 넣는다 (게임에서는 app.js 가 실제 아군으로 만든다). 테스트는 끝나면 반드시 비운다.
+const ally = (o) => ({ name: o.name || "t", dps: o.dps != null ? o.dps : 1000, phys: o.phys != null ? o.phys : 1,
+  magic: o.magic != null ? o.magic : 0, pen: o.pen || {}, keys: o.keys || {} });
+const withAllies = (list, fn) => { St.setAllies(list); try { return fn(); } finally { St.setAllies(null); } };
+const BC = () => item("칠흑의 양날 도끼");
+
+test("C9-B 저항 감소가 없으면 아군 몫도 0 이다", () => {
+  withAllies([ally({})], () => {
+    for (const [id, items] of [["Garen", []], ["Jhin", [item("무한의 대검")]], ["Lux", [item("루덴의 메아리")]]]) {
+      const m = St.evaluate(champ(id), 18, items, [], { aram: true }).m;
+      assert.equal(m.shredAlly.avg, 0, `${id} 는 저항 감소가 없는데 아군 몫이 생겼어요`);
+    }
+  });
+});
+
+test("C9-B 점수에 들어가는 것은 '본 아군의 평균 한 명분' 이다 (합계가 아니다)", () => {
+  const one = ally({ name: "a", dps: 1000, phys: 1 });
+  const four = [one, ally({ name: "b", dps: 1000, phys: 1 }), ally({ name: "c", dps: 1000, phys: 1 }), ally({ name: "d", dps: 1000, phys: 1 })];
+  const m1 = withAllies([one], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m);
+  const m4 = withAllies(four, () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m);
+  assert.equal(m4.shredAlly.n, 4);
+  assert.ok(Math.abs(m4.shredAlly.sum - m1.shredAlly.sum * 4) < 1e-6, "같은 아군 넷이면 합은 네 배여야 해요");
+  assert.ok(Math.abs(m4.shredAlly.avg - m1.shredAlly.avg) < 1e-6, "평균 한 명분은 인원수와 무관해야 해요");
+  // out.allyDmg 에는 평균만 더해진다
+  const base = withAllies([one], () => St.evaluate(champ("Garen"), 18, [], [], { aram: true }).m);
+  assert.ok(Math.abs((m1.allyDmg - base.allyDmg) - m1.shredAlly.avg) < 1e-6, "지원 쪽에는 평균 한 명분만 들어가야 해요");
+});
+
+test("C9-B 아군을 한 명도 못 보면 대체 모델 하나, 일부만 보면 본 아군만 센다", () => {
+  const seen = withAllies([ally({ dps: 1000 }), ally({ name: "b", dps: 1000 })],
+    () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly);
+  assert.equal(seen.source, "live");
+  assert.equal(seen.n, 2, "모자란 인원을 기준 아군으로 채우면 안 돼요");
+  St.setAllies(null);
+  const none = St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly;
+  assert.equal(none.source, "model");
+  assert.equal(none.n, 1);
+  assert.ok(none.avg > 0);
+});
+
+test("C9-B 고정 피해에는 저항 감소가 걸리지 않는다", () => {
+  const m = withAllies([ally({ dps: 1000, phys: 0, magic: 0 })], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m);
+  assert.equal(m.shredAlly.avg, 0, "고정 피해만 넣는 아군에게는 득이 없어야 해요");
+});
+
+test("C9-B 물리 감소는 물리 아군에게, 마법 감소는 마법 아군에게 간다", () => {
+  const physAlly = [ally({ dps: 1000, phys: 1, magic: 0 })], magAlly = [ally({ dps: 1000, phys: 0, magic: 1 })];
+  const bc = (list) => withAllies(list, () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly.avg);
+  const mal = (list) => withAllies(list, () => St.evaluate(champ("Lux"), 18, [item("악의")], [], { aram: true }).m.shredAlly.avg);
+  assert.ok(bc(physAlly) > 0 && bc(magAlly) === 0, "칠흑(방어력 감소)은 물리 아군에게만 가야 해요");
+  assert.ok(mal(magAlly) > 0 && mal(physAlly) === 0, "악의(마법 저항력 감소)는 마법 아군에게만 가야 해요");
+});
+
+test("C9-B 아군이 같은 효과를 들고 있으면 내 기여가 줄고, 같은 값이면 0 이다", () => {
+  const myKeys = St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shred.keys;
+  const plain = ally({ dps: 1000, phys: 1 });
+  const sameItem = ally({ dps: 1000, phys: 1, keys: myKeys });   // 나와 똑같은 칠흑을 들었다
+  const half = ally({ dps: 1000, phys: 1, keys: Object.fromEntries(Object.entries(myKeys)
+    .map(([k, v]) => [k, { ...v, value: v.value / 2 }])) });
+  const g = (a) => withAllies([a], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly.avg);
+  assert.ok(g(plain) > 0);
+  assert.equal(g(sameItem), 0, "같은 효과를 같은 값으로 들고 있으면 더해 줄 몫이 없어야 해요");
+  assert.ok(g(half) > 0 && g(half) < g(plain), "일부만 겹치면 내 기여가 줄어야 해요");
+});
+
+test("C9-B 서로 다른 효과는 겹치지 않는다 (곱해서 쌓인다)", () => {
+  const malKeys = St.evaluate(champ("Lux"), 18, [item("악의")], [], { aram: true }).m.shred.keys;
+  const plain = ally({ dps: 1000, phys: 1 });
+  const other = ally({ dps: 1000, phys: 1, keys: malKeys });  // 아군은 고정 마법 저항력 감소 — 내 방어력 감소와 다르다
+  const g = (a) => withAllies([a], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly.avg);
+  assert.ok(Math.abs(g(other) - g(plain)) < 1e-9, "효과가 다르면 내 몫이 깎이지 않아야 해요");
+});
+
+test("C9-B 아군 자신의 관통으로 센다 (내 관통이 아니다)", () => {
+  const noPen = ally({ dps: 1000, phys: 1 });
+  const penAlly = ally({ dps: 1000, phys: 1, pen: { ARPEN: 0.4 } });
+  const g = (a) => withAllies([a], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly.avg);
+  assert.ok(g(penAlly) < g(noPen), "관통이 많은 아군에게는 저항 감소의 득이 작아야 해요");
+  // 내 관통을 바꿔도 아군 쪽 배율비는 그대로여야 한다 (내 관통을 아군에게 쓰면 틀린다)
+  const mine = (items) => withAllies([noPen], () => St.evaluate(champ("Garen"), 18, items, [], { aram: true }).m);
+  const plainMe = mine([BC()]), penMe = mine([BC(), item("도미닉 경의 인사")]);
+  assert.equal(plainMe.shred.armorShred, penMe.shred.armorShred, "관통 아이템은 감소량을 바꾸지 않아요");
+  assert.ok(Math.abs(plainMe.shredAlly.per[0].physRatio - penMe.shredAlly.per[0].physRatio) < 1e-12,
+    "내가 관통을 더 사도 아군 쪽 배율비는 그대로여야 해요");
+});
+
+test("C9-B 아군은 내 피해를 바꾸지 않는다 (역방향 기여는 이번 범위 밖)", () => {
+  const keys = St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shred.keys;
+  const none = St.evaluate(champ("Lux"), 18, [item("루덴의 메아리")], [], { aram: true }).m;
+  const with4 = withAllies([ally({ keys }), ally({ name: "b", keys })],
+    () => St.evaluate(champ("Lux"), 18, [item("루덴의 메아리")], [], { aram: true }).m);
+  assert.equal(with4.combo, none.combo, "아군의 저항 감소가 내 피해를 키우면 안 돼요 (아직 안 센다)");
+  assert.equal(with4.dps, none.dps);
+});
+
+test("C9-B 아군 지문(allyKey)은 아군이 바뀔 때만 바뀐다", () => {
+  St.setAllies(null);
+  assert.equal(St.allyKey(), "");
+  St.setAllies([ally({ name: "a", dps: 1000 })]);
+  const k1 = St.allyKey();
+  St.setAllies([ally({ name: "a", dps: 1000 })]);
+  assert.equal(St.allyKey(), k1, "같은 아군이면 지문도 같아야 캐시를 쓸 수 있어요");
+  St.setAllies([ally({ name: "a", dps: 1200 })]);
+  assert.notEqual(St.allyKey(), k1, "아군이 아이템을 사면 지문이 달라져야 해요");
+  St.setAllies(null);
+  assert.equal(St.allyKey(), "");
+});
+
+// ---- v0.1.95 Phase 4 C4 (2026-11-26): 상대 회복량 추정이 쓰는 '아군에게 준 회복' 칸
+test("C4 아군에게 준 회복(allyHealAll) = 기술 회복 + 서포터 아이템 회복", () => {
+  const m = St.evaluate(champ("Soraka"), 18, [item("월석 재생기"), item("구원")], [], { aram: true }).m;
+  assert.ok(m.allyHealAll > 0, "소라카는 아군을 회복시킨다");
+  assert.ok(Math.abs(m.allyHealAll - (m.heal + m.allySupportHeal)) < 1e-9, `${m.allyHealAll} vs ${m.heal}+${m.allySupportHeal}`);
+  assert.ok(Math.abs(m.allySupport - (m.allySupportHeal + m.allySupportShield)) < 1e-6, "서포터 아이템 합계는 그대로");
+});
+
+test("C4 보호막은 아군 회복에 안 들어간다 (고통스러운 상처가 보호막은 못 막는다)", () => {
+  const m = St.evaluate(champ("Lulu"), 18, [item("강철의 솔라리 펜던트")], [], { aram: true }).m;
+  assert.ok(m.shield + m.allySupportShield > 0, "룰루는 아군에게 보호막을 준다");
+  assert.equal(m.allyHealAll, 0, `보호막이 회복으로 샜다: ${m.allyHealAll}`);
+});
+
+test("C4 자기 회복과 아군 회복은 따로 센다 (한 칸을 두 번 세지 않는다)", () => {
+  const m = St.evaluate(champ("Soraka"), 18, [], [], { aram: true }).m;
+  assert.ok(m.selfHealAll > 0 && m.allyHealAll > 0);
+  // 기술이 자기와 아군에게 나눠 주는 회복은 targetShare 가 갈라 둔다: 스킬 칸 합이 두 칸의 합을 넘지 않는다
+  const spells = m.spells.reduce((a, sp) => a + (sp.heal || 0) + (sp.selfHeal || 0), 0);
+  assert.ok(spells <= m.selfHealAll + m.allyHealAll + 1e-6, `${spells} > ${m.selfHealAll + m.allyHealAll}`);
 });

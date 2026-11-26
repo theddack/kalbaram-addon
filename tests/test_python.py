@@ -993,10 +993,10 @@ class AugOcr(unittest.TestCase):
     def test_merged_line_split_into_cards(self):
         W, H = 1920, 1080
         y = int(H * 0.46)
-        words = [("눈", 560, y, 30, 30), ("폭발", 595, y, 60, 30), ("강타자", 900, y, 90, 30),
+        words = [("점액", 560, y, 60, 30), ("천지", 625, y, 60, 30), ("강타자", 900, y, 90, 30),
                  ("정신", 1250, y, 60, 30), ("변환", 1315, y, 60, 30), ("저항", 1290, y + 40, 40, 20)]
         offers = self.o.find_offers(words, W, H, self.m)
-        self.assertEqual(self.o.slots(offers, W), ["눈 폭발", "강타자", "정신 변환"])
+        self.assertEqual(self.o.slots(offers, W), ["점액 천지", "강타자", "정신 변환"])
         # 두 장만 읽혔으면 화면 위치로 칸을 정한다
         two = self.o.find_offers(words[2:], W, H, self.m)
         self.assertEqual(self.o.slots(two, W), [None, "강타자", "정신 변환"])
@@ -1596,6 +1596,23 @@ class LiveEnemies(unittest.TestCase):
         st = desktop.parse_live(raw)
         self.assertEqual(st["champion"], "MissFortune")
         self.assertEqual(sorted(st["enemies"]), ["Chogath", "Jax", "Lissandra", "Nidalee", "Velkoz"])  # 내 팀(CHAOS)이 아닌 ORDER
+
+    def test_ally_builds_exclude_me(self):
+        """F11: 아군이 산 아이템·레벨·보이는 증강도 넘긴다. 나는 빠진다 (내 피해를 아군 몫으로 두 번 세지 않게)"""
+        raw = json.loads((ROOT / "tests" / "data" / "live_missfortune_4s.json").read_text(encoding="utf-8"))
+        st = desktop.parse_live(raw)
+        ids = [b["champion"] for b in st["allyBuilds"]]
+        self.assertNotIn("MissFortune", ids, "내가 아군 목록에 들어가면 안 된다")
+        self.assertEqual(sorted(ids), sorted(c for c in st["allies"] if c != "MissFortune"))
+        for b in st["allyBuilds"]:
+            self.assertIn("level", b)
+            self.assertIsInstance(b["items"], list)
+            self.assertIsInstance(b["augments"], list)
+
+    def test_ally_builds_empty_without_team(self):
+        """아군 정보가 없는 데이터(관전·혼자)에서도 빈 목록이면 된다 (지어내지 않는다)"""
+        st = desktop.parse_live(self.SPECTATE)
+        self.assertEqual(st["allyBuilds"], [])
 
     SPECTATE = {"activePlayer": {"error": "Spectator mode doesn't currently support this feature"},
                 "allPlayers": [{"rawChampionName": "game_character_displayname_Ahri", "team": "ORDER"},
@@ -3468,3 +3485,67 @@ class ItemRuleScope(unittest.TestCase):
         lux = next(c for c in data["champions"] if c["id"] == "Lux")
         self.assertEqual(next(s for s in lux["spells"] if s["slot"] == "Q")["range"], 1175)
         self.assertTrue(all("range" in s for c in data["champions"] for s in c["spells"]), "모든 스킬에 사거리")
+
+
+class RulesBakedIntoData(unittest.TestCase):
+    """rules.json 의 수치가 web/data.json 세 자리에 같게 구워졌나
+
+    build_data.py 전체 실행과 tools/rules_patch.py(규칙값만 다시 굽기)가 같은 결과를 내야 한다.
+    2026-11-26 두 경로를 대조해 보니 수치 세 자리는 같았지만 화면 '근거' 줄이 달랐다
+    (rules_patch 가 calc 줄만 바꿔 '설명에 나온 수치' 줄이 빠졌다) → rules_patch 가 rule_basis 를 쓰게 고치고 이 테스트를 둔다.
+    네트워크 없이 돈다 (이미 만들어진 data.json 과 rules.json 만 본다).
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.rules = json.loads((ROOT / "rules.json").read_text(encoding="utf-8"))
+        cls.items = {i["name"]: i for i in DATA["items"]}
+        cls.augs = {a["id"]: a for a in DATA["augments"]}
+
+    @staticmethod
+    def _plain(v):
+        if isinstance(v, (int, float)):
+            return True
+        if isinstance(v, list):
+            return all(RulesBakedIntoData._plain(x) for x in v)
+        if isinstance(v, dict):
+            if {"dv", "calc", "calc18", "calcRatio"} & set(v):
+                return False
+            return all(RulesBakedIntoData._plain(x) for x in v.values())
+        return False
+
+    def test_item_rules_match(self):
+        import re as _re
+        checked = 0
+        for name, src in (self.rules.get("items") or {}).items():
+            it = self.items.get(name)
+            if it is None or not src.get("stats"):
+                continue
+            plain_desc = _re.sub(r"<[^>]+>", "", (it.get("passiveHtml") or "") + it["desc"])
+            if src.get("check") and src["check"] not in plain_desc:
+                continue  # build_data.py 가 미적용으로 두는 자리 (패치로 수치가 바뀐 경우)
+            self.assertEqual(DATA["rules"]["items"].get(name), src, f"{name}: rules.items 가 rules.json 과 다름")
+            self.assertEqual(it.get("passiveStats"), src["stats"], f"{name}: passiveStats 가 rules.json 과 다름")
+            warn = []
+            self.assertEqual(it.get("basisView"),
+                             B.rule_basis(src, src["stats"], (it.get("passiveHtml") or "") + it["desc"], warn, name),
+                             f"{name}: 화면 '근거' 줄이 전체 빌드 결과와 다름")
+            checked += 1
+        self.assertGreater(checked, 10, "확인한 아이템이 너무 적다")
+
+    def test_augment_rules_match(self):
+        checked = 0
+        for aid, src in (self.rules.get("augments") or {}).items():
+            aug = self.augs.get(aid)
+            cur = (DATA["rules"]["augments"] or {}).get(aid) or {}
+            st = src.get("stats") or {}
+            if aug is None or not st or not self._plain(st):
+                continue  # 게임 데이터 이름·계산식은 전체 빌드만 풀 수 있다
+            self.assertEqual(cur.get("statsResolved"), st, f"{aid}: statsResolved 가 rules.json 과 다름")
+            warn = []
+            merged = dict(src)
+            merged["statsResolved"] = st
+            self.assertEqual(cur.get("basisView"), B.rule_basis(merged, st, aug["desc"], warn, aug["name"]),
+                             f"{aid}: 화면 '근거' 줄이 전체 빌드 결과와 다름")
+            checked += 1
+        self.assertGreater(checked, 10, "확인한 증강이 너무 적다")

@@ -84,7 +84,9 @@ function modeled(it) {
   const ps = it.passiveStats || {};
   const rule = it.basisView || [];
   const approx = rule.some((b) => b.t === "assume");
-  for (const k of Object.keys(ps)) {
+  // C9-A3 중첩형 저항 감소(_shred)는 깎는 능력치 이름이 안쪽에 있다 → 그 키로 센다
+  const psKeys = Object.entries(ps).flatMap(([k, v]) => (k === "_shred" ? (v || []).map((x) => x.stat) : [k]));
+  for (const k of psKeys) {
     if (k.startsWith("_")) continue;  // 조건을 적은 칸 (_belowAt·_farMark): 그 자체는 계산 항목이 아니다
     const kind = RULE_KIND[k] || "stat";
     if (!kinds.has(kind) || !kinds.get(kind).approx) kinds.set(kind, { src: `규칙 ${k}`, approx });

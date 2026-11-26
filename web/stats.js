@@ -35,6 +35,7 @@
       AS: s.attackspeed,
       asLevelBonus: growth(s.attackspeedperlevel, L) / 100,
       RANGE: s.attackrange,
+      HP5: s.hpregen + growth(s.hpregenperlevel, L),  // 5초당 체력 재생 (죽음의 순환이 '회복하거나 재생하면'을 본다)
     };
   }
 
@@ -106,6 +107,9 @@
     // 주문력만 예외로 % 증가·주문력 전환(치명타·가속)을 아래에서 같이 적용한다 (리치 두뇌)
     const late = [];
     for (const s of mods) {
+      // v0.1.95 Phase 5: 그 챔피언의 스킬 특징이 있어야 켜지는 아이템 효과 (밴들파이프 '팡파르' 는 둔화·이동 불가를 걸어야 켜진다).
+      // 증강 쪽 rule.requires 와 같은 뜻이고(scoring.js), 아이템은 계산 엔진에서 걸러야 해서 여기에 둔다
+      if (s && s._needFeature && !(champ.features || []).includes(s._needFeature)) continue;
       if (s && s.refundPct) conv.refunds.push({ pct: s.refundPct, ranged: s.refundChanceRanged ?? 1, melee: s.refundChanceMelee ?? 1, all: !!s.refundAll });
       // 원거리 챔피언은 값이 다른 능력치 (rules rangedStats → statsResolved.rangedScale: 유리 대포 고정 피해 ×0.6)
       const rScale = (!champ.melee && s && s.rangedScale) || {};
@@ -114,10 +118,15 @@
       // '멀리서 맞히면' 조건 고유 효과 (rules _farMark: 지평선의 초점 600 밖에서 스킬 적중): 값 × 멀리서 맞힐 수 있는 몫 (farMarkShare)
       const far = s && s._farMark != null ? farMarkShare(champ, s._farMark) : 1;
       for (const [k, raw0] of entriesOf(s)) {
-        if (k === "rangedScale" || k === "_belowAt" || k === "_farMark") continue;
+        if (k === "rangedScale" || k === "_belowAt" || k === "_farMark" || k === "_needFeature") continue;
         const raw = typeof raw0 === "number" ? (rScale[k] != null ? raw0 * rScale[k] : raw0) * below * far : raw0;
         // needsItem: 그 아이템을 가졌을 때만 터지는 증강 효과 (폭풍 쇄도 업그레이드: 폭풍 쇄도의 질풍이 폭발)
         if (k === "_effects") { effects.push(...raw.filter((e) => !e.needsItem || items.some((it) => it.name === e.needsItem))); continue; }
+        // C9-A3: 중첩형 저항 감소는 숫자가 아니라 '쌓이는 방식' 으로 적는다 ({stat, perStack, maxStacks, dur, on}).
+        // 쌓는 속도는 챔피언의 공격 속도·스킬 빈도라 여기서는 풀지 않고 모아만 둔다 (metrics 에서 shredExpect 로 푼다).
+        if (k === "_shred") { (conv._shreds || (conv._shreds = [])).push(...(Array.isArray(raw) ? raw : [raw])); continue; }
+        // v0.1.95 Phase 5A: '그 효과가 입힌 피해의 N% 를 자기 회복' (끝없는 절망 '고뇌') — 숫자가 아니라 {src, pct} 라 그대로 둔다
+        if (k === "selfHealOfDmg") { conv.selfHealOfDmg = raw; continue; }
         if (REFUND_KEYS.includes(k)) continue;
         if (raw && typeof raw === "object" && raw.ratios && Object.keys(raw.ratios).length) { late.push([k, raw]); continue; }
         const v = levelValue(raw, L);
@@ -131,7 +140,7 @@
         // 그 아이템을 가졌을 때만 붙는 능력치 (굶주린 히드라 업그레이드: 굶주린 히드라 생명력 흡수 +8%)
         else if (k === "itemStats") { for (const [nm, st] of Object.entries(v)) if (items.some((it) => it.name === nm)) for (const [sk, sv] of Object.entries(st)) if (sk in add) addTo(sk, sv); }
         else if (k in flags) flags[k] += v;
-        else conv[k] = (conv[k] || 0) + v;
+        else convAdd(conv, k, v);
       }
     }
     const aram = (opts.aram !== false && champ.aram) || {};
@@ -172,21 +181,32 @@
     t.bonusAD = t.AD - base.AD;
     t.baseAD = base.AD;
     t.AP = AP * (1 + mult.APmult);
+    // 추가 저항 증가: 둘 다 올리는 것(해신 작쇼 bonusResistMult)과 한쪽만 올리는 것(16.23 요새화·신비한 방호)을 더해서 센다.
+    // '추가' 저항에만 걸린다 — 챔피언이 레벨로 얻는 기본 저항은 올라가지 않는다 (설명: '추가 방어력이 25% 증가')
     const resMult = 1 + (conv.bonusResistMult || 0);
-    t.bonusARMOR = add.ARMOR * resMult;
+    t.bonusARMOR = add.ARMOR * (resMult + (conv.bonusARMORmult || 0));
     t.ARMOR = base.ARMOR + t.bonusARMOR;
-    t.bonusMR = add.MR * resMult;
+    t.bonusMR = add.MR * (resMult + (conv.bonusMRmult || 0));
     t.MR = base.MR + t.bonusMR;
     // 람머스 패시브: 방어력·마법 저항력의 일부만큼 공격력 (설명 '15% 방어력 + 15% 마법 저항력')
     if (conv.resistToAD) { const ad = (t.ARMOR + t.MR) * conv.resistToAD; t.AD += ad; t.bonusAD += ad; }
     t.MANA = champ.partype === "마나" ? base.MANA + add.MANA - itemManaGone : 0;
     t.bonusMANA = champ.partype === "마나" ? add.MANA - itemManaGone : 0;
-    if (conv.bonusMANAtoAP) t.AP += t.bonusMANA * conv.bonusMANAtoAP * (1 + mult.APmult);
+    if (conv.bonusMANAtoAP) t.AP += t.bonusMANA * conv.bonusMANAtoAP * (1 + mult.APmult);  // 대천사의 지팡이: '추가' 마나의 1% 주문력
+    // v0.1.95 Phase 5A: 마나무네 '경탄' 은 '최대 마나의 2%' 라 대천사(추가 마나)와 기준이 달라 키를 따로 둔다.
+    // 마나가 없는 챔피언은 t.MANA 가 0 이라 저절로 0 이다 (설명에도 마나 기준이라 적혀 있다)
+    if (conv.maxMANAtoAD && t.MANA) { const ad = t.MANA * conv.maxMANAtoAD * (1 + mult.ADmult); t.AD += ad; t.bonusAD += ad; }
     if (conv.manaToHP && t.MANA) { t.HP += t.MANA * conv.manaToHP; t.bonusHP = t.HP - base.HP; }  // 정신 변환: 최대 마나의 50% 체력
+    // v0.1.95 Phase 5A: 혹한의 손길 '경탄' — '추가 최대 마나'의 15% 만큼 체력. 진짜 추가 체력이라
+    // 아래 추가 체력 변환(균열 생성기·지배자의 피갑옷·아트마의 심판)도 이 몫을 함께 본다
+    if (conv.bonusMANAtoHP && t.MANA) { t.HP += t.bonusMANA * conv.bonusMANAtoHP; t.bonusHP = t.HP - base.HP; }
     const apBeforeHP = t.AP;
     if (conv.bonusHPtoAP) t.AP += t.bonusHP * conv.bonusHPtoAP * (1 + mult.APmult);  // 균열 생성기: 추가 체력의 2% 주문력
     // 지배자의 피갑옷 '폭정': 추가 체력의 2.5% 공격력 (추가 공격력으로, 공격력 % 증가를 받는다)
     if (conv.bonusHPtoAD) { const ad = t.bonusHP * conv.bonusHPtoAD * (1 + mult.ADmult); t.AD += ad; t.bonusAD += ad; }
+    // v0.1.95 Phase 5A: 스테락의 도전 '잡아채는 발톱' — '기본 공격력'의 50% 만큼 추가 공격력.
+    // 기준이 챔피언 기본 공격력(레벨 비례)이라 아이템·증강이 올린 추가 공격력(bonusAD)과 섞이지 않는다 → 서로 다시 키우지 않는다
+    if (conv.baseADtoAD) { const ad = base.AD * conv.baseADtoAD * (1 + mult.ADmult); t.AD += ad; t.bonusAD += ad; }
     // 블라디미르 패시브: 주문력 1당 체력 1.6 (추가 체력 → 주문력과 서로 다시 키우지 않는다: 게임 규칙)
     if (conv.APtoBonusHP) { t.HP += apBeforeHP * conv.APtoBonusHP; t.bonusHP = t.HP - base.HP; }
     // 라이즈 패시브: 주문력 100당 최대 마나 10% (게임 데이터 PercentManaIncrease 10 · APAmount 100)
@@ -197,6 +217,9 @@
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
     if (helps && conv.allyBuffHaste) t.HASTE += conv.allyBuffHaste;
     let bonusAS = base.asLevelBonus + add.AS + itemASfromAD + (helps ? conv.allyBuffAS || 0 : 0);
+    // v0.1.95 Phase 5: 꽃피는 새벽의 검 '활기' — 체력 회복 및 보호막 효과 1%당 공격 속도 1.2%.
+    // 아이템이 준 회복·보호막 효과(add.HSP)만 본다. 새벽심장이 기본 마나 재생에서 바꿔 주는 몫은 아직 안 나와 있어 빠진다 (낮게 잡은 쪽)
+    if (conv.HSPtoAS) bonusAS += add.HSP * conv.HSPtoAS;
     // 순수주의자 - 마법사: 레벨 말고 얻은 추가 공격 속도(아이템 + 간지럼 괴물이 공격력에서 바꾼 것)를 스킬 가속으로.
     // 묵직한 한 방보다 먼저 (예전엔 묵직한 한 방이 옮긴 몫을 다시 덮어써 같은 공속이 두 번 쓰였고, 간지럼 괴물 몫은 사라졌다, 2026-10-23 점검)
     if (conv.AStoHASTE) { t.HASTE += (add.AS + itemASfromAD) * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }
@@ -204,7 +227,11 @@
     let critDmgFromAS = 0;
     if (conv.AStoCRITDMG) { const moved = bonusAS * conv.AStoCRITDMG; bonusAS -= moved; critDmgFromAS = moved * (conv.AStoCRITDMGper || 0); }
     // 보석 건틀릿: 주문력 1당 치명타 확률 (conv.APtoCRIT, 원본 CritConverRatio 0.00045 = 주문력 100당 4.5%)
-    t.CRIT = Math.min(1, critRaw + (conv.APtoCRIT ? t.AP * conv.APtoCRIT : 0));
+    // v0.1.95 Phase 5A: 아트마의 심판 '큰손' — 추가 체력 100당 치명타 확률 1%, 최대 30% (설명).
+    // 자기 상한(30%)을 먼저 걸고 더한 뒤, 전체 치명타 확률은 지금처럼 100% 에서 자른다.
+    // 치명타 확률 증가 증강(critChanceMult)은 아이템이 준 치명타(add.CRIT)에만 곱하고 이 몫에는 곱하지 않는다 (원본 근거 없음).
+    const hpCrit = conv.bonusHPtoCRIT ? Math.min(conv.bonusHPtoCRITcap != null ? conv.bonusHPtoCRITcap : 1, t.bonusHP * conv.bonusHPtoCRIT) : 0;
+    t.CRIT = Math.min(1, critRaw + hpCrit + (conv.APtoCRIT ? t.AP * conv.APtoCRIT : 0));
     // 그레이브즈처럼 공격 속도 표시값이 다른 챔피언은 레벨별 상한 (champ.asCapLv = [1레벨, 18레벨], rules.json champions.asCap)
     const cap = champ.asCapLv ? champ.asCapLv[0] + (champ.asCapLv[1] - champ.asCapLv[0]) * (L - 1) / 17 : ms.asCap || AS_CAP;
     const asOf = (b) => Math.min(cap, (base.AS + b * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
@@ -276,7 +303,7 @@
         if (conv.APtoCRIT) t.CRIT = Math.min(1, t.CRIT + ap * conv.APtoCRIT);
       } else if (k in t && typeof t[k] === "number") { t[k] += v; if (k === "AD") t.bonusAD += v; }
       else if (k in flags) flags[k] += v;
-      else conv[k] = (conv[k] || 0) + v;
+      else convAdd(conv, k, v);
     }
     // 원 히트 원더(conv.HASTEtoDmg)·핏빛 코발트(conv.markCdRefund)는 스킬 하나에만 걸리는 스킬 증강이라 metrics 의 스킬 계산에서 처리한다
     return { total: t, base, flags, aram, effects, conv };
@@ -404,7 +431,7 @@
 
   function spellTotals(effects, rank, L, t) {
     const { uniq, groups: planGroups, kinds, crit } = spellPlan(effects);
-    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.ally ? { ally: e.ally } : {}), ...(e.target ? { target: e.target } : {}) }));
+    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.every ? { every: e.every } : {}), ...(e.autoReplace ? { autoReplace: true } : {}), ...(e.perSec ? { perSec: true } : {}), ...(e.dotSec ? { dotSec: e.dotSec, dotNeedsAuto: !!e.dotNeedsAuto } : {}), ...(e.empower ? { empower: e.empower } : {}), ...(e.ally ? { ally: e.ally } : {}), ...(e.target ? { target: e.target } : {}) }));
     const groups = new Map();
     for (const [k, idx] of planGroups) groups.set(k, idx.map((i) => vals[i]));
     const isCritV = new Map(vals.map((v, i) => [v, crit[i]]));
@@ -439,19 +466,202 @@
   }
   const STAT_BUFF = /^(bonus|flat|percent)?(ad|ap|attackdamage|abilitypower|armor|mr|magicresist|ms|movespeed|movementspeed|as|attackspeed)$/i;
 
-  function mitigation(resist, pctPen, flatPen) {
-    const eff = Math.max(0, resist * (1 - pctPen) - flatPen);
+  // 저항(방어력·마법 저항력)이 피해를 얼마나 줄이는가. 적용 순서는 게임과 같다 (v0.1.95 Phase 4 C9-A1):
+  //   ① 고정 감소(flatRed) → ② 비율 감소(pctRed) → ③ 비율 관통(pctPen) → ④ 고정 관통(flatPen)
+  // 감소는 '그 대상을 때리는 모두'에게, 관통은 '나만' 적용된다 — 순서가 달라지면 값이 달라진다.
+  // 음수 저항은 1차 구현에서 지금처럼 0 에서 자른다 (실제로 음수가 생기는 조합이 있는지는 C9 에서 따로 잰다)
+  function mitigation(resist, pctPen, flatPen, pctRed = 0, flatRed = 0) {
+    const reduced = (resist - flatRed) * (1 - pctRed);
+    const eff = Math.max(0, reduced * (1 - pctPen) - flatPen);
     return 100 / (100 + eff);
+  }
+  // 저항 감소 합치기 규칙 (C9-A2): 비율 감소는 관통 %처럼 곱하고, 고정 감소는 더한다.
+  // 지금 데이터에 비율 마법 저항력 감소(mrShred)는 핏빛 저주 하나뿐이라 결과는 바뀌지 않는다 (출처가 둘 이상 되면 달라진다)
+  const PCT_SHRED = new Set(["mrShred", "armorShred"]);
+  const SHRED_CAP = 0.9;  // 비율 감소 상한 (예전 mrShred 상한을 그대로 둔다)
+  function convAdd(conv, k, v) {
+    conv[k] = PCT_SHRED.has(k) ? 1 - (1 - (conv[k] || 0)) * (1 - v) : (conv[k] || 0) + v;
+  }
+  // 중첩으로 쌓이는 저항 감소의 한타 평균 (C9-A2.5, docs/v0.1.95_Phase4_C9_저항감소_조사.md 7.1).
+  //   rate  1초에 쌓는 횟수 (조건 on 에 따라 평타 공격 속도 · 스킬 빈도 · 둘의 합)
+  //   dur   한 중첩이 남아 있는 시간(초) · maxStacks 최대 중첩 · perStack 중첩 하나가 깎는 양
+  // 쌓는 동안에도 중첩은 선형으로 올라가므로 그 구간의 평균은 절반이다 (앞 식은 그 구간을 0 으로 쳐서 음수가 나왔다).
+  //   포화까지 걸린 시간 t_r ≤ 한타 T :  s̄ = s* × (1 − t_r / (2T))
+  //   t_r > T                        :  s̄ = min(s*, rate × T / 2)   … 한타 내내 쌓기만 한다
+  // 항상 0 ≤ s̄ ≤ s* 다. 발동이 아예 없으면(rate·dur·maxStacks 중 하나가 0 이하) 0 을 준다 (t_r 이 0/0 이 되지 않게).
+  // pinnedAvg 를 주면 그 중첩 평균을 그대로 쓴다 (핏빛 저주의 기존 가정 1.5 를 유지해 결과를 고정할 때).
+  function shredExpect({ perStack = 0, maxStacks = 1, rate = 0, dur = 0, fightSec = null, pinnedAvg = null } = {}) {
+    const T = Math.max(1e-9, fightSec != null ? fightSec : EXP.fightSec);
+    if (pinnedAvg != null) return { stackAvg: pinnedAvg, saturated: pinnedAvg, value: pinnedAvg * perStack };
+    if (!(rate > 0) || !(dur > 0) || !(maxStacks > 0)) return { stackAvg: 0, saturated: 0, value: 0 };
+    const sat = Math.min(maxStacks, rate * dur);
+    const tr = sat / rate;
+    const avg = tr <= T ? sat * (1 - tr / (2 * T)) : Math.min(sat, rate * T / 2);
+    return { stackAvg: avg, saturated: sat, value: avg * perStack };
+  }
+
+  // C9-A3: 모아 둔 중첩형 저항 감소 규칙을 실제 값으로 푼다.
+  //   stat      armorShred·mrShred(비율) · armorFlatShred·mrFlatShred(고정) — 물리와 마법 경로를 섞지 않는다
+  //   on        어떻게 쌓나: "auto" 기본 공격 · "skill" 스킬 · "both" 둘 다
+  //   pinnedAvg 중첩 평균을 못 세는 효과의 기존 가정값 (핏빛 저주 1.5) — 주면 rate 를 보지 않는다
+  // 쌓는 속도(rate)는 여기서 한 번만 정한다. shredExpect 가 돌려주는 평균 중첩에는 이미 '쌓는 시간·지속시간' 이
+  // 들어 있으므로 바깥에서 가동률을 다시 곱하지 않는다 (docs C9 조사 7.1).
+  const SHRED_STATS = { armorShred: "pct", mrShred: "pct", armorFlatShred: "flat", mrFlatShred: "flat" };
+  // 쌓는 횟수/초. 기본 공격은 물리 피해라 'physical' 에 들어가고 'magic' 에는 안 들어간다 (C9-A4 칠흑).
+  // 스킬로 쌓는 효과는 '실제로 쓰여 맞는 스킬 빈도'(시전 빈도 × 공통 가정) — 다른 스킬 효과와 같은 기준이다.
+  // 한 스킬은 몇 번 맞히든 한 번만 센다 (평타와 스킬이 같은 타격을 두 번 세지 않게).
+  function shredRate(on, ctx) {
+    const auto = Math.max(0, (ctx.AS || 0) * EXP.autoUptime);
+    const skill = Math.max(0, (ctx.castRate || 0) * EXP.skillShare);
+    const physSkill = Math.max(0, (ctx.physCastRate || 0) * EXP.skillShare);
+    const magSkill = Math.max(0, (ctx.magicCastRate || 0) * EXP.skillShare);
+    if (on === "auto") return auto;
+    if (on === "skill") return skill;
+    if (on === "both") return auto + skill;        // 아무 피해나 (부식)
+    if (on === "physical") return auto + physSkill;  // 물리 피해만 (칠흑의 양날 도끼)
+    if (on === "magic") return magSkill;             // 마법 피해만 (기본 공격은 물리라 빠진다)
+    return 0;
+  }
+  // 중첩이 아니라 '걸려 있는 시간' 인 효과(악의: 궁극기로 피해를 입히면 3초)는 한타 한 번과 길게 싸울 때가 다르다.
+  //   한타 한 번(콤보) : min(1, 지속 ÷ 한타 시간)   길게(초당 피해) : min(1, 지속 ÷ 궁극기 재사용 대기시간)
+  // 그래서 shredFrom 은 두 벌을 돌려준다 (fight · long). 중첩형은 두 벌이 같다 (평균 중첩에 이미 시간이 들어 있다).
+  // 같은 효과인지 가르는 서명 (C9-B): 같은 아이템·증강은 수치가 같아 서명이 같다.
+  // 아군이 '같은 효과' 를 들고 있으면 겹쳐도 더 쌓이지 않는다고 본다 (아래 shredCombine) — 실게임 미검증이라 보수적으로 잡은 쪽이다
+  const shredSig = (sp) => `${sp.stat}|${sp.on}|${sp.perStack}|${sp.maxStacks}|${sp.dur}|${sp.pinnedAvg != null ? sp.pinnedAvg : ""}`;
+  function shredFrom(specs, ctx) {
+    const mk = () => ({ armorShred: 0, mrShred: 0, armorFlatShred: 0, mrFlatShred: 0 });
+    const fight = mk(), long = mk(), detail = [];
+    const put = (o, stat, kind, v) => { if (kind === "pct") o[stat] = 1 - (1 - o[stat]) * (1 - v); else o[stat] += v; };
+    for (const sp of specs || []) {
+      const kind = SHRED_STATS[sp && sp.stat];
+      if (!kind) continue;
+      let vf = 0, vl = 0, info = null;
+      if (sp.on === "ult") {
+        // 궁극기로 챔피언에게 피해를 입혀야 걸린다: 궁이 막혔거나(증강) 궁에 피해가 없으면 0
+        const can = ctx.ultDamage ? 1 : 0;
+        const uf = Math.min(1, (sp.dur || 0) / Math.max(ctx.fightSec, 1e-9)) * can;
+        const ul = (ctx.ultUptime ? ctx.ultUptime(sp.dur || 0) : 0) * can;
+        vf = (sp.perStack || 0) * uf;
+        vl = (sp.perStack || 0) * ul;
+        info = { stat: sp.stat, on: "ult", sig: shredSig(sp), fightUptime: uf, longUptime: ul, value: vf, valueLong: vl };
+      } else {
+        const r = shredExpect({ perStack: sp.perStack || 0, maxStacks: sp.maxStacks || 0, dur: sp.dur || 0,
+          rate: sp.pinnedAvg != null ? 1 : shredRate(sp.on, ctx), fightSec: ctx.fightSec, pinnedAvg: sp.pinnedAvg });
+        vf = vl = r.value;
+        info = { stat: sp.stat, on: sp.on, sig: shredSig(sp), stackAvg: r.stackAvg, saturated: r.saturated, value: r.value, valueLong: r.value };
+      }
+      if (!(vf > 0) && !(vl > 0)) continue;
+      // 비율은 관통 % 처럼 곱해서, 고정은 더해서 합친다 (C9-A2 와 같은 규칙)
+      if (vf > 0) put(fight, sp.stat, kind, vf);
+      if (vl > 0) put(long, sp.stat, kind, vl);
+      detail.push(info);
+    }
+    return { fight, long, detail };
+  }
+
+  // ---- C9-B: 저항 감소로 '아군이' 더 넣게 되는 피해 (2026-11-26)
+  // 저항 감소는 그 대상을 때리는 모두에게 득이 된다. 내 피해 쪽은 위에서 이미 셌고, 여기서는 아군 몫만 센다.
+  // 단위·시간은 기존 아군 강화(allyGain)와 같다: '아군이 더 넣는 피해 1 = 지원 1(체력 단위)', 한타 AUTO_FIGHT_SEC 초.
+  // 넣지 않는 것: 아군의 저항 감소가 '내' 피해를 키워 주는 역방향 몫 (이번 범위 밖 — docs C9 조사 12.1).
+  //
+  // 아군 한 명 = { dps, phys, magic, pen:{ARPEN,LETHALITY,MPENP,MPEN}, keys:{서명: {stat, kind, value}} }
+  //   dps   그 아군의 초당 피해 (평타 + 스킬) — '그 아군 자신의 관통·저항 감소가 이미 들어간' 값이다
+  //   phys·magic  방어 적용 뒤 실제로 들어가는 피해의 물리·마법 비중. 고정 피해는 저항 감소가 안 걸려서 뺀다
+  //   keys  그 아군이 이미 들고 있는 저항 감소 (겹침 계산용)
+  // 실제 아군(F11)이 있으면 그걸 쓰고, 한 명도 못 봤을 때만 대체 모델 한 명을 쓴다.
+  // 일부만 봤으면 '본 아군' 으로만 센다 — 모자란 인원을 대체 모델로 채우지 않는다.
+  let ALLIES = null;    // [{dps, phys, magic, pen, keys}] · null 이면 대체 모델
+  let ALLY_KEY = "";    // 캐시 열쇠용 지문 (아군이 바뀌면 추천을 다시 계산해야 한다)
+  function setAllies(list) {
+    ALLIES = Array.isArray(list) && list.length ? list.map((a) => ({
+      dps: Number(a.dps) || 0, phys: Number(a.phys) || 0, magic: Number(a.magic) || 0,
+      pen: { ARPEN: (a.pen || {}).ARPEN || 0, LETHALITY: (a.pen || {}).LETHALITY || 0,
+        MPENP: (a.pen || {}).MPENP || 0, MPEN: (a.pen || {}).MPEN || 0 },
+      keys: a.keys || {}, name: a.name || null,
+    })) : null;
+    ALLY_KEY = ALLIES ? JSON.stringify(ALLIES.map((a) => [a.name, Math.round(a.dps), a.phys, a.magic,
+      a.pen.ARPEN, a.pen.LETHALITY, a.pen.MPENP, a.pen.MPEN, Object.keys(a.keys).sort().join(";")])) : "";
+  }
+  const allyKey = () => ALLY_KEY;
+  // 아군을 한 명도 못 봤을 때의 대체 모델 (회복·보호막과 같은 기준: 아군 한 명).
+  //   초당 피해 = 기준 아군(ALLY) 의 평타 + 스킬 · 피해 유형은 원거리 딜러 29명 중앙값 (물리 98.7% · 마법 1.3%)
+  //   관통·저항 감소는 0 으로 본다 (모르는 것을 지어내지 않는다 → 내 몫을 조금 크게 잡는 쪽)
+  const ALLY_MODEL_MIX = { phys: 0.987, magic: 0.013 };
+  const allyModel = () => ({ dps: ALLY.autoDps + ALLY.skillDps, phys: ALLY_MODEL_MIX.phys, magic: ALLY_MODEL_MIX.magic,
+    pen: { ARPEN: 0, LETHALITY: 0, MPENP: 0, MPEN: 0 }, keys: {}, name: null });
+
+  // 저항 감소 목록(서명 → 값)을 능력치별 합계로 접는다. 비율은 곱, 고정은 합 (C9-A2 와 같은 규칙)
+  function shredFold(keys) {
+    const o = { armorShred: 0, mrShred: 0, armorFlatShred: 0, mrFlatShred: 0 };
+    for (const k of Object.keys(keys || {})) {
+      const e = keys[k];
+      if (!e || !(e.value > 0)) continue;
+      if (e.kind === "pct") o[e.stat] = Math.min(SHRED_CAP, 1 - (1 - o[e.stat]) * (1 - e.value));
+      else o[e.stat] += e.value;
+    }
+    return o;
+  }
+  // 나와 아군의 저항 감소를 합친다. 같은 서명(= 같은 아이템·증강)은 '하나의 효과' 로 보고 큰 쪽만 센다.
+  // 서로 다른 효과만 곱해서 쌓는다. 같은 효과를 여럿이 들었을 때 게임이 어떻게 쌓는지는 확인하지 못했다 (후속 F21).
+  function shredCombine(mine, ally) {
+    const out = {};
+    for (const k of Object.keys(ally || {})) out[k] = ally[k];
+    for (const k of Object.keys(mine || {})) {
+      const m = mine[k], a = out[k];
+      out[k] = a && a.value >= m.value ? a : m;
+    }
+    return shredFold(out);
+  }
+  // 아군 몫 = Σ 그 아군의 (초당 피해 × [물리 비중 × (물리 배율비 − 1) + 마법 비중 × (마법 배율비 − 1)]) × 한타 시간
+  //   배율비 = (내 감소를 더했을 때의 피해 배율) ÷ (그 아군이 원래 받던 피해 배율)
+  //   그 아군 자신의 관통·저항 감소는 분자·분모에 똑같이 들어간다 → 아군 자신의 효과를 두 번 세지 않는다
+  // 점수에는 '확인된 아군의 평균 한 명분' 만 넣는다 (ALLY_TARGETS = 1, 회복·보호막과 같은 기준). 합계는 따로 적어 둔다.
+  function shredAllyGain(myKeys, fightSec) {
+    const live = !!(ALLIES && ALLIES.length);
+    const list = live ? ALLIES : [allyModel()];
+    const per = [];
+    let sum = 0;
+    const has = Object.keys(myKeys || {}).some((k) => myKeys[k] && myKeys[k].value > 0);
+    for (const a of list) {
+      if (!has || !(a.dps > 0)) { per.push({ name: a.name, gain: 0 }); continue; }
+      const base = shredFold(a.keys), both = shredCombine(myKeys, a.keys);
+      const mp0 = mitigation(TARGET.ARMOR, a.pen.ARPEN, a.pen.LETHALITY, base.armorShred, base.armorFlatShred);
+      const mp1 = mitigation(TARGET.ARMOR, a.pen.ARPEN, a.pen.LETHALITY, both.armorShred, both.armorFlatShred);
+      const mm0 = mitigation(TARGET.MR, a.pen.MPENP, a.pen.MPEN, base.mrShred, base.mrFlatShred);
+      const mm1 = mitigation(TARGET.MR, a.pen.MPENP, a.pen.MPEN, both.mrShred, both.mrFlatShred);
+      const g = a.dps * (a.phys * (mp1 / Math.max(1e-12, mp0) - 1) + a.magic * (mm1 / Math.max(1e-12, mm0) - 1)) * fightSec;
+      const gain = g > 0 ? g : 0;
+      per.push({ name: a.name, gain, physRatio: mp1 / Math.max(1e-12, mp0), magicRatio: mm1 / Math.max(1e-12, mm0) });
+      sum += gain;
+    }
+    return { source: live ? "live" : "model", n: list.length, sum, avg: list.length ? (sum / list.length) * ALLY_TARGETS : 0, per };
+  }
+  // 한타 기준(out.shred) / 길게 싸울 때 기준(out.shredLong) 각각의 '서명 → 값' 목록.
+  // 규칙에 숫자로 바로 적힌 감소값(출처를 모르는 것)은 따로 서명을 준다
+  function shredKeysOf(cv, detail, long) {
+    const m = {};
+    for (const st of Object.keys(SHRED_STATS)) if (cv[st] > 0) m["static|" + st] = { stat: st, kind: SHRED_STATS[st], value: cv[st] };
+    for (const d of detail || []) {
+      const v = long ? d.valueLong : d.value;
+      if (!(v > 0)) continue;
+      const cur = m[d.sig];
+      m[d.sig] = { stat: d.stat, kind: SHRED_STATS[d.stat], value: cur && cur.value > v ? cur.value : v };
+    }
+    return m;
   }
 
   // 기준 상대: 전 챔피언 173명의 18레벨 균형 빌드 능력치 중앙값 (패치 16.20, tools/target_median.js 로 계산)
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
   // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
   // 추가 체력(BONUS_HP): 같은 173명 균형 빌드의 18레벨 추가 체력 중앙값 (tools/target_median.js). 상대 추가 체력 비례 효과(도미닉 경의 인사)에 쓴다
+  // (v0.1.95 Phase 4 C2) 실제 판에서는 app.js enemyTarget() 이 그 판 적들의 추가 체력 평균을 넣어 준다. 예전엔 안 넣어 줘 늘 이 기본값이었다
   // HEAL = 기준 상대가 한타 한 번에 자기 자신을 회복하는 양. 전 챔피언 18레벨 균형 빌드의 중앙값은 0 이다
   // (173명 중 101명이 0 · 중앙값 0 · 평균 271). 그래서 상대를 모를 때 치유 감소(고통스러운 상처)의 값은 0 이고,
   // 실제 판에서는 app.js 가 그 판 적들의 회복량 평균을 넣어 준다 (v0.1.93 P4-B 5단계)
-  const TARGET = { ARMOR: 113, MR: 63, HP: 3148, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600, HEAL: 0 };
+  // 16.23.1 에서 다시 잼 (tools/target_median.js, 2026-11-26): 방어력 113→111 · 마법 저항력 63→67 · 체력 3148→3190
+  // SHIELD = 기준 상대가 한타 한 번에 받는 보호막 (자기 보호막 + 아군이 씌워 주는 보호막, 적 수로 나눈 1인분).
+  // HEAL 과 같은 꼴이고 상대를 모르면 0 이다 (v0.1.95 Phase 5 — 독사의 송곳니 '보호막 파괴자'가 쓴다)
+  const TARGET = { ARMOR: 111, MR: 67, HP: 3190, BONUS_HP: 300, CUR: 0.7, DPS_TAKEN: 600, HEAL: 0, SHIELD: 0 };
   // 기준 아군 (v0.1.93 P1 아군 지원): 아군 공격 속도·공격력·적중 시 피해·피해량 강화를 '아군이 더 넣는 피해'로 바꿀 때 쓴다.
   // 원거리 딜러(첫 역할 Marksman, 원거리) 29명의 18레벨 균형 빌드(증강 없음) 지표 중앙값 (tools/ally_model.js, 기준 상대 TARGET 과 같은 방식).
   // 원딜은 주문력 계수가 거의 없어 아군 주문력 버프(흐르는 물의 지팡이)는 기준 아군에선 0 이다 (메이지 아군이면 커짐, 미반영)
@@ -464,7 +674,7 @@
   const DEFAULT_TARGET = { ...TARGET };
   // 기준 상대 바꾸기: {ARMOR, MR, HP} (실제 상대 챔피언의 18레벨 빌드 능력치 등). 인자 없으면 기본값
   function setTarget(t) {
-    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP, ...(t.bonusHP != null ? { BONUS_HP: t.bonusHP } : {}), ...(t.HEAL != null ? { HEAL: t.HEAL } : {}) } : {});
+    Object.assign(TARGET, DEFAULT_TARGET, t ? { ARMOR: t.ARMOR, MR: t.MR, HP: t.HP, ...(t.bonusHP != null ? { BONUS_HP: t.bonusHP } : {}), ...(t.HEAL != null ? { HEAL: t.HEAL } : {}), ...(t.SHIELD != null ? { SHIELD: t.SHIELD } : {}) } : {});
   }
   // 초당 피해에 스킬을 써야 나오는 피해를 넣는 비율 (스킬을 재사용 대기시간마다 계속 맞히는 일은 드물다, ASSUMPTIONS).
   // 스킬에 딸린 효과(스킬 사용 시·지정 스킬 표식)는 '실제로 쓰여 맞는 스킬 빈도' = 시전 빈도 × 이 비율로 보고, 그다음 효과 자체의
@@ -492,7 +702,7 @@
   // 계산 전체에 쓰는 가정값과 이유 (화면 '데이터 출처 → 계산 가정값'에 그대로 나온다)
   // src: data = 게임 데이터·위키에서 계산한 값, assume = 정한 값(실측 아님)
   const ASSUMPTIONS = [
-    { what: "기준 상대: 체력 3148(추가 체력 300) · 방어력 113 · 마법 저항력 63", src: "data",
+    { what: "기준 상대: 체력 3190(추가 체력 300) · 방어력 111 · 마법 저항력 67", src: "data",
       why: "전 챔피언 173명이 18레벨에 우리 추천 빌드(균형)를 갖췄을 때의 중앙값이에요 (패치 16.20). 평균은 탱커에 끌려 올라가서 중앙값을 써요. 능력치 패널 '상대'에서 실제 챔피언으로 바꿀 수 있어요." },
     { what: "증강 모드 공통 능력치: 기본 체력 20→400(원거리)·600(근접), 공격 속도 상한 5.0, 치명타 100% 넘는 1%마다 적응형 0.75", src: "data",
       why: "위키 'ARAM: Mayhem' 모드 변경 사항이에요. 실제 경기 기록(베인·미스 포츈) 체력·공격력과 맞춰 봤어요." },
@@ -603,11 +813,9 @@
     // 마법 저항력 감소(핏빛 저주 '썩은 부식')는 상대 마법 저항력 자체를 줄인다
     // 체력 조건 피해 증가 (그림자불꽃: 체력 40% 아래 대상에게 마법·고정 피해 +20%): 조건 아래에서 들어가는 피해 비율만큼 (targetBelowShare)
     const lowAmp = cv.lowHpAt ? (cv.lowHpMagicTrueAmp || 0) * targetBelowShare(cv.lowHpAt) : 0;
-    const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY) * (1 + (cv.physDmgMult || 0));
-    const magMit = mitigation(TARGET.MR * (1 - Math.min(0.9, cv.mrShred || 0)), t.MPENP, t.MPEN) * (1 + (cv.magicDmgMult || 0) + lowAmp);
     const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
     const ranks = ranksAt(L, champ.spells);
-    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0 };
+    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, autoHit: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0, allySupportHeal: 0, allySupportShield: 0 };
     const helps = (champ.features || []).includes("allysupport");
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
@@ -633,6 +841,64 @@
       + ((champ.features || []).includes("dash") ? (cv.dashHaste || 0) / 3 : 0)
       + (cv.ultTriggerHaste || 0) * ultUptime(cv.ultTriggerDur) + refund();
     out.haste = { basic: basicHaste, ult: ultHaste };
+    // ---- C9-A3: 중첩형 저항 감소를 공통 식(shredExpect)으로 풀어 피해 경감에 넣는다
+    // 스킬로 쌓는 효과의 시전 빈도: 아래 스킬 루프의 castRate 와 같은 규칙(한 스킬은 최대 CAST_MIN_CD 초에 1번).
+    // 다만 원 히트 원더·핏빛 코발트의 대기시간 보정은 빼고 센다 (저항 감소는 스킬 하나만 겨냥하지 않는다).
+    const shredCastRate = champ.spells.reduce((a, sp, i) => {
+      if (ranks[i] === 0 || (flags.noUlt && sp.slot === "R")) return a;
+      const cdBase = sp.cooldown[Math.max(0, Math.min(ranks[i], sp.cooldown.length) - 1)] || 0;
+      if (!(cdBase > 0)) return a;
+      const h = (sp.slot === "R" ? ultHaste : basicHaste) + (flags.slotHaste[sp.slot] || 0);
+      return a + 1 / Math.max(cdBase * 100 / (100 + h), CAST_MIN_CD);
+    }, 0);
+    // 피해 종류별 시전 빈도 (칠흑: 물리 피해를 입히면 · 핏빛 저주: 마법 피해를 입히면)
+    const kindCastRate = (want) => champ.spells.reduce((a, sp, i) => {
+      if (ranks[i] === 0 || (flags.noUlt && sp.slot === "R")) return a;
+      const cdBase = sp.cooldown[Math.max(0, Math.min(ranks[i], sp.cooldown.length) - 1)] || 0;
+      // 적응형 피해는 그 챔피언의 주 능력치 쪽으로 센다 (아래 증강 효과 계산과 같은 규칙)
+      const kindOf = (e) => (e.kind === "adaptive" ? (apMain(champ) ? "magic" : "physical") : e.kind);
+      if (!(cdBase > 0) || !(sp.effects || []).some((e) => kindOf(e) === want)) return a;
+      const h = (sp.slot === "R" ? ultHaste : basicHaste) + (flags.slotHaste[sp.slot] || 0);
+      return a + 1 / Math.max(cdBase * 100 / (100 + h), CAST_MIN_CD);
+    }, 0);
+    const ultDmg = !flags.noUlt && !!rSp && (rSp.effects || []).some((e) => DMG_KINDS.includes(e.kind) || e.kind === "adaptive");
+    const shred = shredFrom(cv._shreds, { AS: t.AS, castRate: shredCastRate, fightSec: EXP.fightSec,
+      physCastRate: kindCastRate("physical"), magicCastRate: kindCastRate("magic"),
+      ultUptime, ultDamage: ultDmg });
+    // 규칙에 숫자로 바로 적힌 감소값과 합친다 (비율은 곱, 고정은 합 — C9-A2 와 같은 규칙)
+    // 한쪽이 0 이면 그대로 둔다 (1-(1-a)*(1-0) 는 부동소수점 끝자리를 흔들어 기존 값과 미세하게 달라진다)
+    const mergeShred = (part) => {
+      const pct = (k) => Math.min(SHRED_CAP, !part[k] ? (cv[k] || 0) : !cv[k] ? part[k] : 1 - (1 - cv[k]) * (1 - part[k]));
+      return { armorShred: pct("armorShred"), mrShred: pct("mrShred"),
+        armorFlatShred: (cv.armorFlatShred || 0) + part.armorFlatShred,
+        mrFlatShred: (cv.mrFlatShred || 0) + part.mrFlatShred };
+    };
+    out.shred = { ...mergeShred(shred.fight), detail: shred.detail };        // 한타 한 번 기준 (콤보)
+    out.shredLong = mergeShred(shred.long);                                  // 길게 싸울 때 기준 (초당 피해)
+    // 적용 순서는 그대로다: 고정 감소 → 비율 감소 → 비율 관통 → 고정 관통 (mitigation)
+    const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY, out.shred.armorShred, out.shred.armorFlatShred)
+      * (1 + (cv.physDmgMult || 0));
+    const magMit = mitigation(TARGET.MR, t.MPENP, t.MPEN, out.shred.mrShred, out.shred.mrFlatShred)
+      * (1 + (cv.magicDmgMult || 0) + lowAmp);
+    // 초당 피해 쪽은 '길게 싸울 때' 가동률로 한 번 더 센다. 차이가 없으면 보정은 정확히 1 이라 값이 그대로다
+    const same = out.shred.armorShred === out.shredLong.armorShred && out.shred.mrShred === out.shredLong.mrShred
+      && out.shred.armorFlatShred === out.shredLong.armorFlatShred && out.shred.mrFlatShred === out.shredLong.mrFlatShred;
+    const adjP = same ? 1 : mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY, out.shredLong.armorShred, out.shredLong.armorFlatShred)
+      / Math.max(1e-12, mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY, out.shred.armorShred, out.shred.armorFlatShred));
+    const adjM = same ? 1 : mitigation(TARGET.MR, t.MPENP, t.MPEN, out.shredLong.mrShred, out.shredLong.mrFlatShred)
+      / Math.max(1e-12, mitigation(TARGET.MR, t.MPENP, t.MPEN, out.shred.mrShred, out.shred.mrFlatShred));
+    // 초당 피해에 쓸 보정 (한타 기준으로 센 값에 곱한다). 고정 피해는 저항과 무관하므로 1
+    const dpsAdj = same ? () => 1 : (kind) => (kind === "magic" ? adjM : kind === "physical" ? adjP : 1);
+    out.shredAdj = { physical: adjP, magic: adjM };
+    // C9-B: 저항 감소로 아군이 더 넣는 피해. 내 피해(combo·dps)와 섞지 않고 지원 쪽(out.allyDmg)으로만 간다.
+    // 점수에 들어가는 것은 '확인된 아군의 평균 한 명분'(avg) 이고, 팀 합계(sum)는 근거 표시·점검용으로 같이 둔다.
+    // 한타 쪽은 out.shred, 길게 싸울 때 쪽은 out.shredLong 으로 따로 센다 (섞지 않는다). 점수는 한타 쪽만 쓴다 —
+    // out.allyDmg 는 '한타 한 번에 아군이 더 넣는 피해' 라서 단위가 같다 (allyGain 과 같은 AUTO_FIGHT_SEC 초)
+    const myShredKeys = shredKeysOf(cv, shred.detail, false);
+    out.shred.keys = myShredKeys;   // 아군 쪽에서 '같은 효과를 이미 들고 있나' 를 가릴 때 쓴다 (F11 → C9-B)
+    const allyShred = shredAllyGain(myShredKeys, AUTO_FIGHT_SEC);
+    out.shredAlly = { ...allyShred, long: same ? null : shredAllyGain(shredKeysOf(cv, shred.detail, true), AUTO_FIGHT_SEC) };
+    if (allyShred.avg > 0) out.allyDmg += allyShred.avg;
     // 스킬 증강({{SpellName}}): 원본 설명이 '챔피언 스킬 하나'에만 건다. 어느 스킬인지는 게임 카드에만 나와서
     // 배운 스킬(Q·W·E·R, 재사용 대기시간이 있는 것) 중 하나가 같은 확률로 대상이라고 보고 기대값을 낸다 (가정, 실게임 검증 필요).
     // 궁극기도 대상이 될 수 있다: 같은 계열 증강 설명에 '궁극기가 대상이면' 규칙이 있다 (위키 Terrain'd·Chain Reaction)
@@ -669,9 +935,18 @@
       }
       // 한 번 쓸 때 피해 = 기대 배수, 재사용 대기시간 = 피해 기준 기대 발동 빈도에 맞춘 값 (콤보는 한 번, 초당 피해는 빈도)
       const cd = !cdBase ? cdNormal : (ohwK || cobalt) ? eMult / Math.max(eRateMult, 1e-9) : cdNormal;
+      // v0.1.95 F5-B 충전형: 오래 싸울 때의 발동 간격은 '충전 1개가 차는 시간' 이다 (게임 파일 값).
+      // 켜는 스킬은 rules.json 의 dpsRate 로 하나씩 적는다 — 설치물·평타 강화형은 적중 조건이 달라 켜지 않는다.
+      // 한타 한 번 피해(combo)는 그대로 한 번만 센다. 처음 들고 있는 충전량을 초당 피해와 콤보에 두 번 세지 않으려는 것이다.
+      const ammoSec = sp.dpsRate === "ammo" && sp.ammo
+        ? (sp.ammo.recharge[Math.max(0, Math.min(rank, sp.ammo.recharge.length) - 1)] || 0) : 0;
+      const rateBase = ammoSec || cdBase;  // 초당 피해에 들어갈지 가리는 바탕값
+      const rateCd = ammoSec ? (sp.ammo.noHaste ? ammoSec : ammoSec * 100 / (100 + haste)) : cd;
       if (!disabled && cdBase > 0) out.boundCastRate += eCobaltRate * weave;
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
       let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0, ally = 0, selfShield = 0, selfHeal = 0;
+      let perSecDmg = 0;  // v0.1.95 F5-E: 값 자체가 '초당 피해' 인 효과(토글 장판·지속 독·강화 평타)가 만드는 초당 피해
+      let cdDmg = 0;      // 재사용 대기시간으로 나눠 초당 피해를 내는 보통 스킬 몫 (위 몫과 겹치지 않게 따로 센다)
       // 보석 건틀릿: 스킬도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값
       // 보석 팔찌(26.21): 궁극기만 치명타 (ultCritDmg)
       const critMul = cv.skillCritDmg || (sp.slot === "R" && cv.ultCritDmg) || 0;
@@ -681,15 +956,66 @@
         if (v.ally) { const g = allyGain("allyOnhit", v.value, v.ally.sec, v.ally.hits, asCapOf) * ALLY_TARGETS; out.allyDmg += g; ally += g; continue; }
         if (v.onhit && DMG_KINDS.includes(v.kind)) {
           // 스킬의 '기본 지속 효과' 적중 시 피해: 기본 공격마다 (초당 피해의 평타 쪽). 스킬 피해 증폭은 안 받는다
+          // v0.1.95 F5-C: '4번째 기본 공격마다'(every) 처럼 몇 번에 한 번인 효과는 그 횟수로 나눠 한 대당 평균으로 센다
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
-          onhit += v.value * mit * dealt * (1 + flags.trueBonus);
+          // 적중 피해는 초당 피해(평타 쪽)로만 간다 → 길게 싸울 때 기준 보정 (C9-A4)
+          onhit += v.value / Math.max(1, v.every || 1) * mit * dealt * (1 + flags.trueBonus) * dpsAdj(v.kind);
           continue;
         }
+        // v0.1.95 F5-E: 값이 '초당 피해' 인 토글 장판 (신지드 Q 맹독의 자취·카서스 E 부패).
+        // 켜 두는 스킬이라 '한 번 쓰는 피해' 가 아니다 → 초당 피해에 초당 값을 그대로, 한타 한 번 피해에는 콤보 시간만큼.
+        // 실제로 맞히는 비율은 다른 스킬과 똑같이 바깥에서 SKILL_DPS_SHARE 가 건다 (새 가정값을 만들지 않는다).
+        if (v.perSec && DMG_KINDS.includes(v.kind)) {
+          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
+          const per = v.value * dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * mit * (1 + flags.trueBonus);
+          perSecDmg += per * dpsAdj(v.kind);
+          raw += v.value * COMBO_WINDOW * dealt * (1 + flags.skillDmgMult);
+          dmg += per * COMBO_WINDOW;
+          continue;
+        }
+        // v0.1.95 F5-E: 몇 초에 걸쳐 들어가는 지속 피해 총량 (티모 E 맹독 다트: 평타 적중마다 다시 걸려 덧씌워진다).
+        // 덧씌움이라 여러 번 쌓이지 않는다 → 초당은 총량 ÷ 지속시간이 상한, 한타 한 번 피해에는 총량 한 번.
+        if (v.dotSec && DMG_KINDS.includes(v.kind)) {
+          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
+          const total = v.value * dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * mit * (1 + flags.trueBonus);
+          // 평타로 다시 거는 스킬이면 평타가 지속시간보다 느릴 때 그만큼 빈다 (공격 속도 반영)
+          const refreshed = v.dotNeedsAuto ? Math.min(1, (t.AS || 0) * v.dotSec) : 1;
+          perSecDmg += total / v.dotSec * refreshed * dpsAdj(v.kind);
+          raw += v.value * dealt * (1 + flags.skillDmgMult);
+          dmg += total;
+          continue;
+        }
+        // v0.1.95 F5-E: 기본 공격을 강화하는 스킬 (렝가 Q·애쉬 Q 는 평타 한 대를 대체, 유나라 Q 는 적중 시 얹는다).
+        // 대체형은 '평타 한 대 피해와의 차이' 만 센다 (평타 피해는 이미 autoDps 에 있다 — 이중 계산 방지).
+        if (v.empower && DMG_KINDS.includes(v.kind)) {
+          const e = v.empower;
+          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
+          const gain = Math.max(0, v.value - (e.mode === "extra" ? 0 : (t.AD || 0)));
+          const hit = gain * mit * dealt * (1 + flags.trueBonus);
+          if (e.mode === "once") {
+            // 충전 1개마다 다음 평타 한 대만 강화 (렝가 Q)
+            const sec = ammoSec || cdNormal || 1;
+            perSecDmg += hit / Math.max(sec, 0.5) * dpsAdj(v.kind);
+            dmg += hit;
+          } else {
+            // 지속시간 동안 모든 평타가 강화 (애쉬 Q·유나라 Q) → 평타 쪽으로, 가동률만큼
+            const as = Math.max(t.AS || 0, 1e-6);
+            const needSec = Math.max(0, (e.need - e.dur * as * (e.perHit || 1)) / (as * (e.perHit || 1)));
+            const up = e.dur / (e.dur + needSec);
+            onhit += hit * up * dpsAdj(v.kind);
+            out.empowerUptime = { ...(out.empowerUptime || {}), [sp.slot]: Math.round(up * 1000) / 1000 };
+          }
+          continue;
+        }
+        // v0.1.95 F5-C: 기본 공격을 대체하는 스킬(제리 Q '이 스킬은 기본 공격으로 간주됩니다').
+        // 평타에 더하지 않고 평타 한 대의 피해를 이 값으로 바꾼다. 스킬 피해로는 세지 않는다 (이중 계산)
+        if (v.autoReplace && DMG_KINDS.includes(v.kind)) { out.autoHit = v.value; continue; }
         if (DMG_KINDS.includes(v.kind)) {
           const amp = dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * skillCrit * ((ohwK || cobalt) && cdBase ? eMult : 1);
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
+          cdDmg += v.value * amp * mit * (1 + flags.trueBonus) * dpsAdj(v.kind);
         } else if (v.kind === "shield" || v.kind === "heal") {
           // 회복·보호막: 대상(게임 규칙)에 따라 자기 생존과 아군 지원으로 나눈다 (v0.1.93 P4-A)
           const amt = v.kind === "shield"
@@ -700,7 +1026,7 @@
           else { heal += amt * sh.ally; selfHeal += amt * sh.self; }
         }
       }
-      out.spells.push({ slot: sp.slot, rank, cd, values: vals, dmg, shield, heal, disabled, onhit, ...(ally ? { ally } : {}), ...(selfShield || selfHeal ? { selfShield, selfHeal } : {}) });
+      out.spells.push({ slot: sp.slot, rank, cd: rateCd, values: vals, dmg, shield, heal, disabled, onhit, ...(ally ? { ally } : {}), ...(selfShield || selfHeal ? { selfShield, selfHeal } : {}) });
       out.spellOnhit += onhit;
       out.combo += dmg;
       out.comboRaw += raw;
@@ -711,7 +1037,8 @@
       out.kitShield += shield;  // 서포터 아이템 발동(향로·월석)은 아군에게 준 몫만 (자기 보호막으로는 발동하지 않는다)
       out.kitHeal += heal;
       // 원래 재사용 대기시간이 아주 짧은 스킬(징크스 Q 같은 전환형)은 DPS에서 제외, 가속으로 짧아진 건 0.5초까지만
-      if (cdBase > 0.5) out.skillDps += dmg / Math.max(cd, 0.5);
+      if (rateBase > 0.5) out.skillDps += cdDmg / Math.max(rateCd, 0.5);
+      out.skillDps += perSecDmg;  // 초당 값으로 센 몫은 재사용 대기시간과 상관없다 (보통 스킬 몫 cdDmg 와 겹치지 않는다)
     });
     // 증강·아이템 고유 효과·패시브: 발동 빈도에 따라 콤보·DPS·회복/보호막에 더한다
     const casts = out.spells.filter((s) => !s.disabled).length;
@@ -722,7 +1049,11 @@
     out.augDps = 0;
     out.castDps = 0;  // augDps 중 스킬을 써야 나오는 몫 (시전 빈도 100% 기준)
     out.atkDps = 0;  // augDps 중 기본 공격으로 나오는 몫 (적중·기본 공격 시·N회 공격) — 실험 설정 autoUptime 용
-    out.itemSelfHp = 0;  // 아이템 효과의 자기 회복·보호막 (버티는 힘에 더함)
+    out.itemSelfHp = 0;  // 아이템 효과의 자기 회복·보호막 합 (버티는 힘에 더함)
+    // 그 합을 회복과 보호막으로 갈라 둔다 (v0.1.95 Phase 4 C1): 치유 감소(고통스러운 상처)는 보호막을 막지 못하므로
+    // 상대 회복량 추정(app.js enemyTarget)은 itemSelfHeal 만 써야 한다. 버티는 힘은 예전처럼 합(itemSelfHp)을 쓴다
+    out.itemSelfHeal = 0;
+    out.itemSelfShield = 0;
     out.castDpsUsed = 0;  // 같은 몫을 '실제로 쓰여 맞는 스킬 빈도'(× SKILL_DPS_SHARE, 효과 상한 적용)로 센 값 — 초당 피해에 쓴다
     out.effects = [];
     // 한 번에 여러 발 (rules effectCount: 탄환 세례 5발 · 마법 미사일 3발 · 쌍둥이 불꽃 1 + 치명타 확률 × 3)
@@ -785,7 +1116,7 @@
         // 아이템 효과의 회복·보호막(스테락의 도전·케이닉 루컨·워모그의 갑옷 …)은 자기 자신에게만 → 버티는 힘(EHP)으로 (흡혈·생명선과 같게).
         // 2026-11-14 예전엔 '회복·보호막(지원)' 지표에 넣어, 지원 기준값(600)이 작은 탓에 메이지·서포터 계산 최적이 스테락·케이닉·워모그가 됐고
         // (공식 추천 가산이 가리고 있었음), 레오나 + 탱크 엔진의 점검표 증강 효과 2/3가 스테락 보호막 증가분이었다
-        if (e.item) { out.itemSelfHp += amt; continue; }
+        if (e.item) { out.itemSelfHp += amt; if (e.kind === "shield") out.itemSelfShield += amt; else out.itemSelfHeal += amt; continue; }
         // 챔피언 기술(패시브·규칙 효과)의 회복·보호막만 아군에게 줄 수 있다 (아이템·증강 효과는 자기 자신에게만: 스테락·케이닉 루컨)
         const sh = itemOrAugFx(e) ? { self: 1, ally: 0 } : targetShare(e.target, helps);
         row.toSelf = amt * sh.self;
@@ -804,30 +1135,36 @@
       // 취약: 아이템·지속 피해 효과도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값 (rules effectCritDmg)
       const effCrit = itemOrAug && cv.effectCritDmg ? 1 + Math.min(1, t.CRIT) * (cv.effectCritDmg + (t.CRITDMG - BASE_CRIT_DMG) - 1) : 1;
       const hit = v * mit * dealt * (1 + flags.trueBonus) * (itemOrAug ? 1 + (cv.effectDmgMult || 0) : 1) * effCrit;
+      const hitD = hit * dpsAdj(kind);  // 초당 피해 쪽은 길게 싸울 때 기준 (C9-A4)
       row.hit = hit;
-      if (tr.type === "time") { out.augCombo += hit; out.augDps += hit / Math.max(tr.sec, e.cooldown || 0); }
+      if (tr.type === "time") { out.augCombo += hit; out.augDps += hitD / Math.max(tr.sec, e.cooldown || 0); }
       else if (tr.type === "attacks") {
         // 적중 시 중첩으로 세는 효과(베인 은화살·카이사 플라즈마, trigger.onhitStacks)는 구인수의 두 번째 적중도 한 번 더 쌓는다
         row.stackRepeat = tr.onhitStacks ? t.onhitRepeat || 0 : 0;
-        const a = hit * rate(t.AS * (1 + row.stackRepeat) / tr.n);
+        const a = hitD * rate(t.AS * (1 + row.stackRepeat) / tr.n);
         out.augDps += a; out.atkDps += a;
       }
-      else if (tr.type === "onhit") { const a = hit * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0)); out.augDps += a; out.atkDps += a; }
+      else if (tr.type === "onhit") { const a = hitD * rate(t.AS) * (1 + Math.min(1, t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0)); out.augDps += a; out.atkDps += a; }
       // '기본 공격 시'(on-attack) 효과 (루난의 허리케인 탄환): 공격마다 1번, 치명타 적용. 적중 효과 반복(구인수·한 발에 두 놈)은 안 받는다
-      else if (tr.type === "onattack") { row.dps = hit * rate(t.AS) * (1 + Math.min(1, t.critAuto ?? t.CRIT) * (t.CRITDMG - 1)); out.augDps += row.dps; out.atkDps += row.dps; }
-      else if (tr.type === "cast") { const v = hit * rate(castRate); out.augCombo += hit * comboTimes(casts); out.augDps += v; out.castDps += v; out.castDpsUsed += hit * rate(castRate * EXP.skillShare); }
+      else if (tr.type === "onattack") { row.dps = hitD * rate(t.AS) * (1 + Math.min(1, t.critAuto ?? t.CRIT) * (t.CRITDMG - 1)); out.augDps += row.dps; out.atkDps += row.dps; }
+      else if (tr.type === "cast") { const v = hitD * rate(castRate); out.augCombo += hit * comboTimes(casts); out.augDps += v; out.castDps += v; out.castDpsUsed += hitD * rate(castRate * EXP.skillShare); }
       // 지정 스킬 하나로 쌓은 표식을 기본 공격으로 터뜨림 (핏빛 코발트): 콤보 한 번에 대상 스킬 1번 × 터뜨리는 비율, 초당은 대상 스킬 빈도
-      else if (tr.type === "boundCast") { const v = hit * out.boundCastRate; out.augCombo += hit * (targetable ? weave : 0); out.augDps += v; out.castDps += v; out.castDpsUsed += v * EXP.skillShare; }
+      else if (tr.type === "boundCast") { const v = hitD * out.boundCastRate; out.augCombo += hit * (targetable ? weave : 0); out.augDps += v; out.castDps += v; out.castDpsUsed += v * EXP.skillShare; }
       else out.augCombo += hit;
     }
-    // 흡수: 스킬로 준 피해(방어 적용 후)의 일부를 회복, 죽음의 순환: 회복량의 일부를 마법 피해로
-    if (cv.skillVamp) out.heal += out.spells.reduce((a, sp) => a + sp.dmg, 0) * cv.skillVamp * (aram.healing || 1) * (1 + t.HSP);
-    if (cv.healToDamage && out.heal > 0) {
-      const hd = out.heal * cv.healToDamage * magMit * dealt;
-      out.augCombo += hd;
-      out.effects.push({ src: "회복 → 피해", kind: "magic", value: out.heal * cv.healToDamage, hit: hd, trigger: "once" });
-    }
     out.combo += out.augCombo;
+    // v0.1.95 Phase 5A: 끝없는 절망 '고뇌' — 그 효과가 '실제로 입힌 피해(방어 적용 후)'의 250% 를 자기 자신에게 회복.
+    // 순환 참조 막기: 이미 계산이 끝난 그 효과 줄(row.hit)만 읽는다. 회복이 피해를 다시 키우지 않고, 자기 자신도 다시 읽지 않는다.
+    // 들어가는 자리: 아이템 자기 회복(itemSelfHeal) → selfHealAll → 버티는 힘 · 정령의 형상 회복 증폭 · 죽음의 순환 ·
+    //   상대 회복량 추정(app.js selfHealOf)까지 한 번에 따라온다. 아군에게 주는 회복이 아니라 지원 지표에는 안 들어간다
+    if (cv.selfHealOfDmg) {
+      const row = out.effects.find((r) => r.src === cv.selfHealOfDmg.src && r.hit > 0);
+      if (row) {
+        const amt = row.hit * cv.selfHealOfDmg.pct * (aram.healing || 1) * (1 + t.HSP);
+        out.itemSelfHeal += amt;
+        out.itemSelfHp += amt;
+      }
+    }
     // 치유 감소(고통스러운 상처 40%): 상대가 한타에서 회복할 양 중 못 하게 막는 몫 = 그만큼 더 깎은 것과 같다 → 한타 피해에 더한다.
     // 기준 상대의 회복량(TARGET.HEAL)은 상대를 모르면 0 이라 기본 추천에서는 값이 0 이다 (위 TARGET 설명)
     if (cv.healCut && TARGET.HEAL > 0) {
@@ -835,19 +1172,61 @@
       out.combo += out.healCut;
       out.effects.push({ src: "치유 감소", kind: "true", value: out.healCut, hit: out.healCut, trigger: "once" });
     }
+    // v0.1.95 Phase 5: 보호막 감소(독사의 송곳니 '보호막 파괴자') — 치유 감소와 같은 꼴이다.
+    // 상대가 한타에서 받을 보호막 중 못 받게 막는 몫 = 그만큼 더 깎은 것과 같다 → 한타 피해에 더한다.
+    // 상대를 모르면 TARGET.SHIELD 가 0 이라 기본 추천 순위는 안 바뀐다 (치유 감소와 같은 기준)
+    if (cv.shieldCut && TARGET.SHIELD > 0) {
+      out.shieldCut = TARGET.SHIELD * Math.min(1, cv.shieldCut);
+      out.combo += out.shieldCut;
+      out.effects.push({ src: "보호막 감소", kind: "true", value: out.shieldCut, hit: out.shieldCut, trigger: "once" });
+    }
     const critMul = 1 + (t.critAuto ?? t.CRIT) * (t.CRITDMG - 1);
     // 한 발에 두 놈: 치명타 평타는 적중 효과를 한 번 더 (conv.onhitOnCrit 번) → 적중 효과에 (1 + 치명타 확률 × 횟수)
     // 구인수의 격노검: 다 쌓인 뒤 세 번째 평타마다 적중 효과를 한 번 더 (t.onhitRepeat = 쌓는 동안까지 평균 낸 값)
     const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0);
-    out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS * onCrit;
+    // 평타 한 대의 피해: 보통은 공격력, 기본 공격을 대체하는 스킬이 있으면 그 값 (제리 Q)
+    out.autoDps = (out.autoHit || t.AD) * t.AS * critMul * physMit * dpsAdj("physical") * dealt * (1 + flags.trueBonus)
+      + out.spellOnhit * t.AS * onCrit;
     // ---- 버티는 힘: 체력 × 저항 + 무적·피해 감소(그동안 받을 피해) + 생명선 회복 + 아이템 피해 감소
     // 흡혈: 콤보 한 번(COMBO_WINDOW 초) 동안 준 피해로 회복한 만큼 더 버틴다. 생명력 흡수는 기본 공격 피해만, 모든 피해 흡혈은 스킬·효과 피해까지.
     // 예전엔 흡혈 수치를 합계만 내고 점수엔 안 써서 '마도사의 주스 상자'(모든 피해 흡혈 10%)가 누구에게나 이득 0 → D 였다 (2026-10-22 점검)
     const autoCombo = out.autoDps * COMBO_WINDOW;
     out.vampHeal = ((t.LS || 0) * autoCombo + (t.OMNIVAMP || 0) * (autoCombo + out.combo)) * (aram.healing || 1);
+    // 흡수(skillVamp): 스킬로 준 피해(방어 적용 후)의 일부를 '내' 체력으로 회복 → 흡혈과 같은 칸에 넣는다.
+    // v0.1.95 Phase 4 E1 전에는 out.heal(아군에게 준 회복)에 더해, 버티는 힘에서 빠지고 지원 지표를 부풀리고
+    // 상대 회복량 추정(app.js selfHealOf)에도 안 잡혔다. 생명력 흡수·모든 피해 흡혈과는 출처가 달라 겹치지 않는다
+    if (cv.skillVamp) {
+      out.skillVampHeal = out.spells.reduce((a, sp) => a + sp.dmg, 0) * cv.skillVamp * (aram.healing || 1) * (1 + t.HSP);
+      out.vampHeal += out.skillVampHeal;
+    }
     // 정령의 형상 '무한한 활력': 자신이 받는 회복·보호막 증가 → 자기 회복(생명선·흡혈·아이템 자기 회복·보호막)에 곱한다
     // 챔피언 기술의 자기 회복·보호막(out.selfHeal·selfShield)도 버티는 힘으로 (v0.1.93 P4-A, 예전엔 지원 지표에 들어갔다)
-    const extraHp = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHp + out.selfHeal + out.selfShield) * (1 + (cv.selfHealMult || 0));
+    // 네 칸을 갈라 둔다 (E1): 자기 회복 selfHealAll · 아군 회복 heal · 자기 보호막 selfShieldAll · 아군 보호막 shield
+    out.selfHealAll = ((cv.selfHeal || 0) + out.vampHeal + out.itemSelfHeal + out.selfHeal) * (1 + (cv.selfHealMult || 0));
+    out.selfShieldAll = (out.itemSelfShield + out.selfShield) * (1 + (cv.selfHealMult || 0));
+    // v0.1.95 Phase 4 E4·F12: 회복도 보호막도 아닌 두 갈래를 따로 둔다.
+    //   selfHp     최대 체력·현재 체력 증가 (원형질 안전벨트 '생명선' 의 최대 체력 몫)
+    //   selfAbsorb 주문 방어막·피해 흡수 (감시의 장막 '적의 다음 스킬을 막아 주는 주문 방어막')
+    // 둘 다 '자신이 받는 회복·보호막 효과 증가'(정령의 형상 무한한 활력)의 대상이 아니라 곱하지 않는다.
+    // 버티는 힘에는 네 갈래 모두 들어가고, 죽음의 순환(회복 → 피해)은 selfHealAll 과 체력 재생(regenHeal)을 읽는다.
+    out.selfHpAll = cv.selfHp || 0;
+    out.selfAbsorbAll = cv.selfAbsorb || 0;
+    // v0.1.95 Phase 5: 한타 한 번(AUTO_FIGHT_SEC 초) 동안의 체력 재생. 챔피언 기본 재생(5초당)에 아이템의
+    // '기본 체력 재생 %'(HP5P)를 더해 센다. 칼바람 회복 보정도 받는다.
+    // 버티는 힘·상대 회복량 추정에는 넣지 않는다 — 그 둘은 '한타에서 받는 회복·보호막' 기준이고 재생은 한타 밖에서 차는 몫이 대부분이라
+    // 범위를 넓히면 전 챔피언 값이 함께 움직인다. 지금은 원본이 '회복하거나 재생하면'이라고 적은 죽음의 순환에만 연결한다 (후속 목록)
+    out.regenHeal = ((stats.base && stats.base.HP5) || 0) * (1 + (t.HP5P || 0)) * (AUTO_FIGHT_SEC / 5) * (aram.healing || 1);
+    // 죽음의 순환(healToDamage): 원본은 '체력을 회복하거나 재생하면 그 70% 만큼 가장 가까운 적에게 마법 피해'.
+    // 자기 회복(selfHealAll)과 체력 재생(regenHeal)을 센다 — 보호막은 회복이 아니다 (E2 전에는 아군에게 준 회복을 읽었다).
+    // 한 번만 돈다: 이 피해로 다시 흡혈하지 않는다 (피해 → 회복 → 피해 순환을 끊으려고 흡혈을 먼저 구한 뒤에 더한다)
+    const healForDmg = out.selfHealAll + out.regenHeal;
+    if (cv.healToDamage && healForDmg > 0) {
+      const hd = healForDmg * cv.healToDamage * magMit * dealt;
+      out.augCombo += hd;
+      out.combo += hd;
+      out.effects.push({ src: "회복 → 피해", kind: "magic", value: healForDmg * cv.healToDamage, hit: hd, trigger: "once" });
+    }
+    const extraHp = out.selfHealAll + out.selfShieldAll + out.selfHpAll + out.selfAbsorbAll;
     // 무적·피해 감소(존야 시간 정지·천상의 구원 …): 그동안 '안 받는 피해'는 저항을 지난 뒤 단위(받는 피해 초당)예요.
     // 버티는 힘은 맞을 수 있는 생피해 단위라, 바꿀 때 기준 상대의 저항 배수를 써요. 내 저항으로 곱하면 방어력이 높을수록
     // 무적이 커져 탱커가 최대 2.5배 과대평가됐어요 (2026-11-16 존야 실험에서 드러남, docs/v0.1.93_P4B_1단계_존야.md).
@@ -899,7 +1278,14 @@
       const active = (cv.allyActiveHeal || 0) * hsp + (cv.allyActiveShield || 0) * (aram.shielding || 1) * (1 + t.HSP);
       out.allySupport = chain + helia + active;
       out.support += out.allySupport;
+      // v0.1.95 Phase 4 C4: 서포터 아이템이 주는 몫도 '회복'과 '보호막'으로 갈라 둔다 (합계 allySupport 는 그대로).
+      // 치유 감소(고통스러운 상처)는 회복만 깎고 보호막은 못 막아서, 상대 회복량 추정에는 회복 쪽만 쓴다
+      out.allySupportHeal = out.kitHeal * (cv.allyHealMult || 0) + helia + (cv.allyActiveHeal || 0) * hsp;
+      out.allySupportShield = out.kitShield * (cv.allyShieldMult || 0) + (cv.allyActiveShield || 0) * (aram.shielding || 1) * (1 + t.HSP);
     }
+    // v0.1.95 Phase 4 C4: 이 챔피언이 '아군에게 주는 회복'을 한 칸으로 (기술 heal + 서포터 아이템 회복).
+    // 자기 회복(selfHealAll)·보호막(shield·selfShieldAll·allySupportShield)·최대 체력(selfHpAll)·주문 방어막(selfAbsorbAll)과 겹치지 않는 별개 칸이다
+    out.allyHealAll = out.heal + (out.allySupportHeal || 0);
     return out;
   }
 
@@ -908,7 +1294,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt };
+  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, setAllies, allyKey, allyModel, shredCombine, shredFold, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt, mitigation, shredExpect };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);

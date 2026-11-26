@@ -311,17 +311,21 @@ function enemyInfo() {
   const fromItems = list.some((c) => byItems(c) != null);
   // 가장 위협적인 적 (킬·아이템으로 평균보다 1.5배 넘게 큰 적): 조언 문장에 이름을 쓴다
   const fed = list.filter((c) => weight(c) >= 1.5 * (wsum / list.length) && (build(c) || {}).kills >= 5).map((c) => c.name);
-  // 회복 많은 적: 스킬·패시브 중 회복 효과가 2개 이상 (특성 HEALSHIELD 는 보호막도 섞여 럭스까지 잡혔다)
-  const heals = (c) => (c.spells || []).filter((sp) => (sp.effects || []).some((x) => x && x.kind === "heal")).length
-    + (((c.passive || {}).effects || []).some((x) => x && x.kind === "heal") ? 1 : 0);
-  // 산 아이템도 본다: 흡혈 아이템을 산 적은 회복 많음, 방어 아이템 2개 이상이면 탱커
-  // 확인된 상대 증강도 본다 (소환사 주문 칸 + Tab 점수판): 회복·흡혈 → 회복 많음, 체력·방어 → 탱커, 군중 제어 → 강인함
+  // 회복 많은 적 (v0.1.95 Phase 4 C4): 추천 점수가 쓰는 바로 그 회복 추정값으로 고른다.
+  // 예전엔 '회복 효과 칸 수 2개 이상 + 흡혈 아이템 + 회복 증강'이라는 개수 규칙이라, 문구는 치유 감소를 권하는데
+  // 점수는 자기 회복만 봐서 안 움직였다 (소라카: 문구 판정 3, 계산에 들어간 값 27). 이제 둘이 같은 숫자를 본다.
+  // 기준은 '회복이 있는 전 챔피언의 중앙값'(healBaseline) — 보통 수준의 회복 챔피언 한 명만큼은 회복한다는 뜻이다
+  const healRow = (c) => { const r = enemyHealRows().find((x) => x.id === c.id); return r ? r.heal : healEstOf(c, [], []); };
+  // 확인된 상대 증강도 본다 (소환사 주문 칸 + Tab 점수판): 체력·방어 → 탱커, 군중 제어 → 강인함.
+  // 회복 증강의 회복량은 아직 추정값에 안 들어간다 (공식 데이터에 수치가 없다) → 문구 주석으로만 (후속 F22)
   const healAug = (c) => augsWith(c, ["HEALSHIELD", "VAMP"], 0.5);
   const tankAug = (c) => augsWith(c, ["HP", "ARMOR", "MR"]);
-  const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem) || healAug(c).length);
+  const healMin = healBaseline();
+  const healers = list.filter((c) => healRow(c) >= healMin && healMin > 0).sort((a, b) => healRow(b) - healRow(a));
+  const healSum = list.reduce((a, c) => a + healRow(c), 0);
   const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length + tankAug(c).length >= 2);
   const ccAugs = list.flatMap((c) => augsWith(c, ["CC"]).map((a) => ({ c, a })));
-  return { list, magic, healers, tanks, fromItems, fed, ccAugs, healAug, tankAug };
+  return { list, magic, healers, tanks, fromItems, fed, ccAugs, healAug, tankAug, healSum, healMin, healRow };
 }
 
 // ---- 상대 아이템 반영 (2026-10-15): 적이 실제로 산 아이템(게임 안 Tab 점수판에 보이는 정보)으로
@@ -337,30 +341,72 @@ function avgSlotBonus() {
   }
   const D = St.DEFAULT_TARGET;
   slotBonus = Object.fromEntries(Object.keys(sum).map((k) => [k, Math.max(0, (D[k] - sum[k]) / S.SLOTS)]));
+  // 빈 칸이 올려 주는 추가 체력은 체력과 같다: 아이템이 올리는 체력은 전부 추가 체력이다 (stats.js bonusHP = HP - base.HP)
+  slotBonus.bonusHP = slotBonus.HP;
   return slotBonus;
 }
 // 확인된 적 증강(소환사 주문 칸)의 능력치: 급속 성장·차원 이동처럼 체력을 올리는 것 (나머지 증강은 공식 데이터에 없다)
 const enemyAugStats = (e) => (e.augments || []).length ? S.augStatsOf(e.augments, state.data.rules, e.champ) : [];
+// 그 적이 한타 한 번에 '자기 자신을 회복'하는 양 (치유 감소 아이템 값의 근거, v0.1.93 P4-B 5단계).
+// 기술 자기 회복 + 생명력 흡수·모든 피해 흡혈 + 아이템 자기 회복만 센다. 보호막은 빼는데, 고통스러운 상처가 보호막은 막지 못해서다
+// (v0.1.95 Phase 4 C1: 예전엔 아이템 회복과 보호막이 itemSelfHp 한 통에 섞여, 스테락·케이닉 루컨·불멸의 철갑궁의 보호막까지 '회복'으로 셌다.
+//  실제 5판 중 3판에서 추정 회복량의 33~76%가 보호막이었다). 아군이 주는 회복은 아직 안 센다 (Phase 4 C4 검토 중)
+// v0.1.95 Phase 4 E4: 규칙값으로 들어오는 자기 회복(원형질 안전벨트 '생명선' 등)이 세 칸 어디에도 없어 빠져 있었다
+// → stats.js 가 한 칸으로 묶어 주는 selfHealAll 을 쓴다 (기술 자기 회복 + 흡혈 + 아이템 회복 + 규칙값, 받는 회복 증가까지).
+// 최대 체력 증가(selfHpAll)·주문 방어막(selfAbsorbAll)·보호막(selfShieldAll)은 회복이 아니라 여전히 안 센다.
+const selfHealOf = (m) => (m.selfHealAll != null ? m.selfHealAll : (m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHeal || 0));
+// v0.1.95 Phase 4 C4: 그 적이 '아군에게 주는 회복' (기술 회복 + 서포터 아이템 회복: 월석 연쇄·헬리아·구원·미카엘).
+// 치유 감소는 상대가 받는 회복을 모두 깎으므로 자기 회복과 같은 무게로 센다.
+// 보호막(shield·allySupportShield)·최대 체력 증가(selfHpAll)·주문 방어막(selfAbsorbAll)은 회복이 아니라 안 센다 (C1·E4 와 같은 기준).
+const allyHealOf = (m) => (m.allyHealAll != null ? m.allyHealAll : (m.heal || 0));
+// 한타 한 번에 그 적이 '자기 + 아군'에게 주는 회복. TARGET.HEAL 과 조언이 함께 쓰는 단 하나의 추정값이다 (C4)
+const healEstOf = (champ, items, augs) => { const m = St.evaluate(champ, 18, items, augs, { aram: state.aram }).m; return selfHealOf(m) + allyHealOf(m); };
+// v0.1.95 Phase 5: 보호막도 같은 꼴로 — 자기 보호막(기술·아이템) + 아군에게 씌워 주는 보호막 (서포터 아이템 몫 포함).
+// 회복과 섞지 않는다: 고통스러운 상처는 보호막을 못 막고, 보호막 파괴자는 회복을 못 막는다 (C1 이 가른 네 칸을 그대로 쓴다)
+const selfShieldOf = (m) => (m.selfShieldAll != null ? m.selfShieldAll : 0) + (m.selfAbsorbAll || 0);
+const allyShieldOf = (m) => (m.shield || 0) + (m.allySupportShield || 0);
+const shieldEstOf = (champ, items, augs) => { const m = St.evaluate(champ, 18, items, augs, { aram: state.aram }).m; return selfShieldOf(m) + allyShieldOf(m); };
+// '회복이 많다'의 기준: 회복이 있는 전 챔피언(18레벨 맨몸)의 중앙값. 데이터에서 구하므로 패치마다 따라간다.
+// 기존 조언은 '회복 효과가 2개 이상인 적이 2명 이상'이라는 개수 규칙이었다 → 같은 추정값 위로 옮긴 것이 이 기준이다
+let healMid = null;
+function healBaseline() {
+  if (healMid != null) return healMid;
+  const v = state.data.champions.map((c) => healEstOf(c, [], [])).filter((x) => x > 0).sort((a, b) => a - b);
+  healMid = v.length ? v[Math.floor(v.length / 2)] : 0;
+  return healMid;
+}
+// 적별 회복 추정 (한 판 안에서는 같은 빌드면 다시 계산하지 않는다)
+let healRowsCache = null;
+function enemyHealRows() {
+  const b = state.enemyBuilds || [];
+  const key = JSON.stringify(b.map((e) => [e.champ.id, e.items.map((i) => i.id), (e.augments || []).map((a) => a.id)])) + "|" + state.aram;
+  if (healRowsCache && healRowsCache.key === key) return healRowsCache.rows;
+  const rows = b.map((e) => ({ id: e.champ.id, heal: healEstOf(e.champ, e.items, enemyAugStats(e)),
+    shield: shieldEstOf(e.champ, e.items, enemyAugStats(e)) }));
+  healRowsCache = { key, rows };
+  return rows;
+}
 // 적 전원의 18레벨 능력치 평균: 산 아이템 그대로 + 아직 안 산 칸은 평균 빌드만큼 산다고 본다 (게임 초반에 상대가 너무 약하게 잡히지 않게)
 function enemyTarget() {
   const b = state.enemyBuilds || [];
   if (!b.length) return null;
   const sb = avgSlotBonus();
-  const sum = { ARMOR: 0, MR: 0, HP: 0 };
+  const sum = { ARMOR: 0, MR: 0, HP: 0, bonusHP: 0 };
   for (const e of b) {
     const t = St.computeStats(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).total;
     const empty = Math.max(0, S.SLOTS - e.items.length);
-    for (const k of Object.keys(sum)) sum[k] += (t[k] + empty * sb[k]) / b.length;
+    for (const k of Object.keys(sum)) sum[k] += ((k === "bonusHP" ? t.bonusHP : t[k]) + empty * sb[k]) / b.length;
   }
   const r5 = (v) => Math.round(v / 5) * 5;  // 5 단위: 작은 차이로 계산을 전부 다시 하지 않게
-  // 적들이 한타 한 번에 자기 자신을 회복하는 양의 평균 (치유 감소 아이템 값의 근거, v0.1.93 P4-B 5단계).
-  // 기술 회복·생명력 흡수·아이템 자기 회복만 센다 (보호막은 고통스러운 상처가 안 막는다). 산 아이템만 본다 (안 산 칸은 0)
-  let heal = 0;
-  for (const e of b) {
-    const m = St.evaluate(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).m;
-    heal += ((m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHp || 0)) / b.length;
-  }
-  return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50, HEAL: Math.round(heal / 10) * 10 };
+  // v0.1.95 Phase 4 C4: 자기 회복 + 아군에게 주는 회복을 모두 더한 뒤 적 수로 나눈다 = '적 한 명이 평균적으로 받는 회복'.
+  // 아군 회복을 팀 합으로 두면 자기 회복(1인분)과 단위가 섞인다. 소라카 예: (자기 135 + 아군 1045) ÷ 5 = 236 (예전엔 27)
+  const heal = enemyHealRows().reduce((a, r) => a + r.heal, 0) / b.length;
+  // v0.1.95 Phase 5: 보호막도 같은 식으로 1인분 (독사의 송곳니 '보호막 파괴자'가 쓴다)
+  const shield = enemyHealRows().reduce((a, r) => a + (r.shield || 0), 0) / b.length;
+  // 추가 체력(BONUS_HP)도 함께: 상대 추가 체력 비례 피해(도미닉 경의 인사)가 쓴다. 예전엔 안 돌려줘 늘 기본값 300 이었다
+  // (v0.1.95 Phase 4 C2 · 실제 5판 상대 평균은 50~1500 이었다). 체력과 같은 50 단위로 맞춘다
+  return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50,
+    bonusHP: Math.round(sum.bonusHP / 50) * 50, HEAL: Math.round(heal / 10) * 10, SHIELD: Math.round(shield / 10) * 10 };
 }
 // 지금 상대 (실제 레벨 + 산 아이템만): '지금 수치'(능력치 패널)와 조언·기록에 쓴다.
 // 아이템·증강 순위는 '18레벨 완성' 기준이라 위의 예상 상대(enemyTarget)를 쓴다 (2026-10-15 검토: 둘을 섞지 않는다)
@@ -380,10 +426,73 @@ function enemyNow() {
 function withNowTarget(fn) {
   const now = !state.target && enemyNow();
   if (!now) return fn();
-  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: St.TARGET.HEAL };
-  St.setTarget({ ...now, HEAL: St.TARGET.HEAL });  // 회복량(치유 감소 근거)은 예상 상대 기준 그대로
+  const saved = savedTarget();
+  St.setTarget({ ...now, bonusHP: St.TARGET.BONUS_HP, HEAL: St.TARGET.HEAL });  // 회복량·추가 체력(치유 감소·거인 학살 근거)은 예상 상대 기준 그대로
   try { return fn(); } finally { St.setTarget(saved); }
 }
+// ---- F11 아군 정보 (2026-11-26): 게임이 실제로 알려 주는 아군 챔피언·레벨·아이템·증강을 추천 엔진 쪽까지 들고 온다.
+// C9-B(2026-11-26)부터는 추천 점수에도 쓴다: 내 저항 감소로 '아군이' 더 넣게 되는 피해 (stats.js setAllies).
+// 확인된 값(게임 데이터)과 추정값(엔진이 계산한 것)을 섞지 않고 따로 적는다.
+// 나는 아군 목록에서 빠져 있다 (desktop.py parse_live) — 내 피해를 아군 몫으로 두 번 세지 않으려는 것이다.
+const allyAugStats = (a) => (a.augments || []).length ? S.augStatsOf(a.augments, state.data.rules, a.champ) : [];
+const ALLY_BIG = 1e6;  // 저항을 아주 크게 해서 피해 유형을 갈라낼 때 쓰는 값 (tools/ally_damage_mix.js 와 같은 방법)
+// 그 아군이 넣는 피해의 물리·마법·고정 비중 (방어 적용 뒤 실제로 들어가는 피해 기준).
+// 기준 상대를 잠깐 바꿔 재고 반드시 되돌린다. 계산 기억(memo) 열쇠에 기준 상대가 들어 있어 캐시는 더럽혀지지 않는다.
+function allyDamageMix(c, level, items, augStats) {
+  const saved = savedTarget();
+  let baseRun = null;
+  const at = (armor, mr) => {
+    St.setTarget({ ...saved, ARMOR: armor, MR: mr });
+    const r = St.evaluate(c, level, items, augStats, { aram: state.aram });
+    if (armor === saved.ARMOR && mr === saved.MR) baseRun = r;
+    return { dps: (r.m.autoDps || 0) + (r.m.skillDps || 0), combo: r.m.combo || 0 };
+  };
+  try {
+    const all = at(saved.ARMOR, saved.MR);
+    const tr = at(ALLY_BIG, ALLY_BIG).dps;
+    const phys = Math.max(0, at(saved.ARMOR, ALLY_BIG).dps - tr);
+    const mag = Math.max(0, at(ALLY_BIG, saved.MR).dps - tr);
+    const sum = phys + mag + Math.max(0, tr);
+    const r3 = (x) => Math.round(x * 1000) / 1000;
+    const t = baseRun.stats.total;
+    return { dps: Math.round(all.dps), combo: Math.round(all.combo),
+      phys: sum > 0 ? r3(phys / sum) : 0, magic: sum > 0 ? r3(mag / sum) : 0, trueDmg: sum > 0 ? r3(Math.max(0, tr) / sum) : 0,
+      // C9-B: 그 아군 자신의 관통과 이미 들고 있는 저항 감소 (내 감소를 더했을 때의 '순수 증가분' 만 세려고)
+      pen: { ARPEN: t.ARPEN || 0, LETHALITY: t.LETHALITY || 0, MPENP: t.MPENP || 0, MPEN: t.MPEN || 0 },
+      shredKeys: (baseRun.m.shred || {}).keys || {} };
+  } finally { St.setTarget(saved); }
+}
+// 아군 한 명 한 명과 팀 합계. members[].seen = 게임이 알려 준 값, members[].calc = 엔진이 낸 추정값
+function allyInfo() {
+  const b = state.allyBuilds || [];
+  if (!b.length) return null;
+  const members = b.map((a) => {
+    const level = Math.max(1, Math.min(18, a.level || 1));
+    const full = allyDamageMix(a.champ, level, a.items, allyAugStats(a));
+    const { pen, shredKeys, ...calc } = full;
+    return {
+      seen: { champ: a.champ.id, name: a.champ.name, level, items: a.items.map((i) => i.name),
+        augments: a.augments.map((x) => x.name),
+        // 증강은 소환사 주문 칸에 보이는 것만 확인된다 (적과 같은 한계) — 안 보이는 증강은 '없음'이 아니라 '모름'이다
+        augmentsKnown: "spell" },
+      calc,
+      // C9-B 로 엔진에 넘기는 몫 (기록에는 넣지 않는다): 관통과 이미 들고 있는 저항 감소
+      model: { name: a.champ.id, dps: calc.dps, phys: calc.phys, magic: calc.magic, pen, keys: shredKeys },
+    };
+  });
+  const dps = members.reduce((x, m) => x + m.calc.dps, 0);
+  const mix = { phys: 0, magic: 0, trueDmg: 0 };
+  for (const m of members) for (const k of Object.keys(mix)) mix[k] += m.calc[k] * (dps > 0 ? m.calc.dps / dps : 1 / members.length);
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  return { n: members.length, members,
+    // 팀 합계는 추정값이다 (아군이 실제로 얼마나 때리는지는 모른다)
+    calc: { dps: Math.round(dps), combo: members.reduce((x, m) => x + m.calc.combo, 0), phys: r3(mix.phys), magic: r3(mix.magic), trueDmg: r3(mix.trueDmg) },
+    // 아군 5명 중 몇 명을 봤나 (나를 뺀 4명이 정상). 적으면 일부만 확인된 상태다
+    full: members.length >= 4,
+    // C9-B: 엔진에 넘길 아군 모델. 본 아군만 넣는다 — 모자란 인원을 기준 아군(ALLY) 으로 채우지 않는다
+    models: members.map((m) => m.model) };
+}
+
 // 적이 실제로 산 방어 아이템 수 (조언 근거: 예상 빌드가 아니라 산 것만)
 function enemyResistItems() {
   const n = { ARMOR: 0, MR: 0 };
@@ -395,18 +504,29 @@ function enemyResistItems() {
 // 상대가 아이템을 살 때마다 체력 3000 → 2950(1.7%) 같은 작은 변화에도 계산 기억이 전부 무효가 되어
 // 게임 중(0.5코어) 추천 계산이 0.9~2.2초씩 걸렸다 (2026-10-24 벨코즈 판: 느린 계산 11번 중 8번이 상대 변화 직후)
 const TARGET_STEP = 0.05;
+// 기준 상대를 잠깐 바꿨다 되돌릴 때 챙겨야 할 값 (setTarget 이 받는 이름 그대로).
+// 빠뜨리면 setTarget 이 나머지를 기본값으로 되돌려 버린다 — 추가 체력이 여기 없어 C2 전에는 복원이 안 됐다
+const savedTarget = () => ({ ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, bonusHP: St.TARGET.BONUS_HP, HEAL: St.TARGET.HEAL });
+// 계산 기억(캐시) 열쇠에 넣는 기준 상대 값: 추천 계산이 보는 상대 값 전부
+const targetKey = () => [St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.BONUS_HP, St.TARGET.HEAL];
 function applyEnemyTarget() {
   if (state.target) return false;  // 상대를 직접 골랐으면 그대로
-  const before = JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]);
+  const before = JSON.stringify(targetKey());
   const next = enemyTarget();
   const T = St.TARGET;
   // 이미 적 기준으로 잡혀 있고, 새 값이 모든 항목에서 TARGET_STEP 안이면 그대로 (변화가 쌓여 넘으면 그때 바꾼다)
   // 회복량(HEAL)은 0에서 시작해 기준 비율로는 재기 어려워서 값이 바뀌면 바로 반영한다 (치유 감소 아이템 순위가 걸려 있다)
-  const small = next && state.targetFromEnemy && next.HEAL === T.HEAL
+  // 추가 체력도 회복량처럼 값이 바뀌면 바로 반영한다 (거인 학살 계열 순위가 걸려 있다).
+  // 밴드로 재 본 두 방식 모두 안 됐다 (2026-11-25 tools/heal_churn.js · tools/band_check.js 로 408 이벤트에서 측정):
+  //   ① 자기 값의 5% → 추가 체력 300 일 때 밴드(15)가 반올림 단위(50)보다 작아 408 번 중 408 번 재계산
+  //   ② 체력의 5% → 추가 체력은 체력보다 작게 움직여 '추가 체력을 아예 안 보는 것'과 숫자가 같았다
+  //      (재계산 57 번으로 같고, 추가 체력이 최대 150 달라도 기준을 안 바꿔 127 자리가 묵은 값으로 남았다.
+  //       그중 4 자리는 1순위·Top3·다음 구매가 실제로 달라졌다)
+  const small = next && state.targetFromEnemy && next.HEAL === T.HEAL && next.bonusHP === T.BONUS_HP
     && ["ARMOR", "MR", "HP"].every((k) => Math.abs(next[k] - T[k]) < Math.abs(T[k]) * TARGET_STEP);
   if (!small) { St.setTarget(next); state.targetFromEnemy = !!next; }
   showTarget();
-  return JSON.stringify([St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.HEAL]) !== before;
+  return JSON.stringify(targetKey()) !== before;
 }
 function showTarget() {
   const T = St.TARGET, id = state.target;
@@ -460,7 +580,7 @@ function enemyMoved() {
   return Object.keys(T_MOVED).some((k) => Math.abs(T[k] - D[k]) >= D[k] * T_MOVED[k]);
 }
 function atDefault(fn) {
-  const saved = { ARMOR: St.TARGET.ARMOR, MR: St.TARGET.MR, HP: St.TARGET.HP, HEAL: St.TARGET.HEAL };
+  const saved = savedTarget();
   St.setTarget(null);
   try { return fn(); } finally { St.setTarget(saved); }
 }
@@ -479,7 +599,8 @@ function counterItems(avail, keep) {
   if (!enemyMoved()) return [];
   const d = state.data;
   // 가중치도 키에 (계산이 state.weights 를 쓴다. 빠져 있어 게임 중 가중치를 바꿔도 '🛡️ 적 대응'이 옛 목록으로 남았다, 2026-10-23 점검)
-  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts(), state.weights]);
+  // 상대 회복량(HEAL)도 키에 — 치유 감소 아이템 순위가 여기서 갈린다 (2026-11-24 B3: 캐시 여섯 곳 모두 빠져 있었다)
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), ...targetKey(), statOpts(), state.weights, St.allyKey()]);
   if (counterCache.key === key) return counterCache.value;
   const base = atDefault(() => S.rankItems(d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), state.chosen.length ? "augment" : "balanced")).filter(keep);
   const bi = new Map(base.map((r, i) => [r.item.id, i]));
@@ -490,13 +611,21 @@ function counterItems(avail, keep) {
 
 // 적 구성 조언 (게임 화면 상자·애드온): 받는 피해 쪽 방어, 회복 많으면 치유 감소, 탱커 많으면 관통
 
+// v0.1.95 Phase 4 C5: 대응을 '점수에 들어가는가'로 나눈다.
+//   계산됨(A) — 상대 값을 실제로 읽어 점수에 들어간다: 치유 감소(TARGET.HEAL) · 관통/저항(TARGET.ARMOR·MR) · 추가 체력(TARGET.BONUS_HP)
+//   계산 밖(B) — 환산할 수 있으나 데이터나 통로가 없다: 보호막 감소(수치 0%) · 공속 대응(상대 공속 미전달) · 군중 제어 대응(받는 CC 모델 없음)
+// (B)는 조언 줄에 '계산 밖'으로 남겨 참고만 하고, 다음 구매·바꾸기에는 밀지 않는다.
+// 아이템 자체를 추천에서 빼는 것은 아니다 — 기본 능력치·구현된 효과·증강 연계로 올라오는 정상 추천은 그대로다.
+// (B) → (A) 승격 조건은 docs/v0.1.95_Phase4_수정안.md 보완 3 과 docs/향후_개선_목록.md 에 적어 둔다
+const ADVICE_CALC = new Set(["치유 감소", "관통", "방어력", "마법 저항"]);
+const adviceCalc = (why) => ADVICE_CALC.has(why);
+const UNCALC_NOTE = " · 계산에는 안 들어감(참고)";
 function enemyAdvice() {
   const e = enemyInfo();
-  state.adviceWant = [];  // 조언이 권한 완성 아이템 {name, why} → 다음 구매 3번째 자리 후보 (renderNextBuy)
-  state.adviceNeed = [];  // 조언이 필요하다고 본 효과 {why, names(같은 계열을 가졌어도 후보), have(이미 갖춤)} → 6칸이 찼을 때 바꾸기 (swapAdvice)
+  state.adviceNeed = [];  // 조언이 필요하다고 본 효과 {why, names(같은 계열을 가졌어도 후보), have(이미 갖춤)} → 6칸이 찼을 때 바꾸기 (swapAdvice).
+  // v0.1.95 Phase 4 C5: 점수에 들어가는 대응(A)만 넣는다. 계산 밖(B)은 조언 줄에만 남는다
   if (!e || !state.champ) return [];
   const out = [];
-  const want = (names, why) => { for (const n of names) if (!state.adviceWant.some((w) => w.name === n)) state.adviceWant.push({ name: n, why }); };
   const pct = Math.round(e.magic * 100);
   const items = state.data.items.filter((i) => i.kind === "legendary");
   // 내 피해 유형은 고른 증강의 환산·특징 변경까지 반영한다 (아이템 추천과 같은 기준: rankItems 의 convert·withChosenFeatures).
@@ -513,7 +642,7 @@ function enemyAdvice() {
   const ownedLimits = new Set(state.items.map((i) => i.limit).filter(Boolean));
   const typeOk = (i) => (mineType === "magic" ? (i.tags.AP || 0) >= 0.5 : (i.tags.AD || 0) >= 0.5 && (critOk || !hasCrit(i)));
   const fits = (i) => !(i.limit && ownedLimits.has(i.limit)) && !state.items.some((o) => o.name === i.name) && typeOk(i);
-  const need = (why, list, have) => state.adviceNeed.push({ why, names: byRank(list.filter(typeOk).map((i) => i.name)), have });
+  const need = (why, list, have) => { if (adviceCalc(why)) state.adviceNeed.push({ why, names: byRank(list.filter(typeOk).map((i) => i.name)), have }); };
   // 후보 이름은 지금 다음 구매 순위 순서로 (조언에 먼저 쓴 아이템 = 다음 구매에 들어가는 아이템)
   const order = state.rankOrder || [];
   const byRank = (names) => names.slice().sort((a, b) => (order.indexOf(a) + 1 || 1e9) - (order.indexOf(b) + 1 || 1e9));
@@ -536,7 +665,9 @@ function enemyAdvice() {
   // 실제로 받은 피해가 아니라 적 챔피언 유형(마법·물리·혼합)·산 아이템·킬로 짐작한 비율이라 '추정'이라고 쓴다
   out.push(`적 구성 ${e.fromItems ? "(산 아이템 반영)" : "추정"}: 마법 ${pct}% · 물리 ${100 - pct}%` + (e.fed.length ? ` (많이 큼: ${e.fed.join("·")})` : "")
     + (resWant ? ` → ${resLabel} 우선` + (resItems.length ? `: ${resItems.slice(0, 2).join(" 또는 ")}` : "") : ""));
-  if (e.healers.length >= 2) {
+  // v0.1.95 Phase 4 C4: 추천 점수와 같은 추정값으로 판정한다 — 적 팀 회복 합이 '보통 수준의 회복 챔피언 2명'만큼일 때.
+  // 예전 규칙('회복 효과 2개 이상인 적이 2명 이상')을 같은 숫자 위로 옮긴 것이다
+  if (e.healSum >= 2 * e.healMin && e.healers.length) {
     // 치유 감소(고통스러운 상처)가 설명에 있는 아이템 중 내 유형에 맞는 것
     // 효과 이름('고통스러운 상처')이 없고 '…의 상처를 남깁니다'만 적힌 아이템도 있다 (화공 펑크 사슬검·가시 갑옷).
     // 이름만 찾아서 가렌에게 맞는 화공 펑크 사슬검을 놓치고 부품만 권했다 (2026-10-22 일관성 점검 R2)
@@ -551,8 +682,10 @@ function enemyAdvice() {
       if (state.champ.tags.includes("Tank")) want.push("덤불 조끼");
       gw = Object.values(state.data.parts || {}).filter((pt) => want.includes(pt.name)).map((pt) => `${pt.name}(부품 ${pt.gold}G)`);
     }
-    out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + augNote(e.healers, e.healAug) + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
-    want(gw.filter((n) => !n.includes("(부품")), "치유 감소");
+    // 추정 회복량을 함께 적는다: 조언과 점수가 같은 숫자를 본다는 것을 화면에서 확인할 수 있게 (C4)
+    out.push(`적 회복 많음 (${e.healers.slice(0, 3).map((c) => `${c.name} ${fmt(e.healRow(c))}`).join(" · ")}` 
+      + `${e.healers.length > 3 ? ` 외 ${e.healers.length - 3}명` : ""} · 한 명이 받는 양 ${fmt(St.TARGET.HEAL)})`
+      + augNote(e.healers, e.healAug) + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
   }
   // 관통: 탱커가 많거나, 적이 산 아이템으로 내 피해 유형 쪽 방어가 평소보다 25% 이상 높으면
   // 근거는 적이 실제로 산 아이템만 (예상 빌드로 채운 값이 아니라): 내 피해 쪽 방어 아이템을 팀이 3개 이상 샀으면
@@ -568,7 +701,6 @@ function enemyAdvice() {
     const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})${augNote(e.tanks, e.tankAug)}` : "",
       resHigh ? `적이 ${resKey === "MR" ? "마법 저항" : "방어"} 아이템 ${resN}개 (지금 평균 ${resKey === "MR" ? "마법 저항력" : "방어력"} ${fmt(now[resKey])})` : ""].filter(Boolean).join(" · ");
     out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
-    want(pen, "관통");
   }
   // 팀 평균에 묻히는 위협을 적 하나하나로 (2026-10-16 기획: "탱커 2명이 체력 아이템 다수" 처럼)
   const threats = enemyThreats();
@@ -577,17 +709,15 @@ function enemyAdvice() {
   if (threats.shield >= 3) {
     const cut = items.filter((i) => i.name === "독사의 송곳니" && fits(i)).map((i) => i.name);
     need("보호막 감소", items.filter((i) => i.name === "독사의 송곳니"), state.items.some((i) => i.name === "독사의 송곳니"));
-    out.push(`적 보호막 많음 (보호막 아이템 ${threats.shield}개)` + (cut.length ? ` → 보호막 감소: ${cut.join("")}` : ""));
-    want(cut, "보호막 감소");
+    out.push(`적 보호막 많음 (보호막 아이템 ${threats.shield}개)` + (cut.length ? ` → 보호막 감소: ${cut.join("")}` : "") + UNCALC_NOTE);
   }
   // 공격 속도: 공격 속도 아이템을 2개 이상 산 적이 있고 내가 앞에서 맞는 챔피언이면 공격 속도 대응 방어 아이템
   const front = state.champ.tags.includes("Tank") || (state.champ.melee && !state.champ.tags.includes("Assassin"));
   if (threats.as.length && front) {
     const asDef = (i) => ["얼어붙은 심장", "란두인의 예언", "가시 갑옷"].includes(i.name);
     const def = items.filter(asDef).map((i) => i.name).slice(0, 2);
-    state.adviceNeed.push({ why: "공속 대응", names: def, have: state.items.some(asDef) });  // 방어 아이템이라 내 피해 유형과 상관없이
-    out.push(`적 공격 속도 높음 (${threats.as.join("·")})` + (def.length ? ` → 검토: ${def.join(" 또는 ")}` : ""));
-    want(def, "공속 대응");
+    // C5: 상대 공격 속도가 계산에 안 들어와 점수가 안 움직인다 → 참고 줄로만 (다음 구매·바꾸기에는 안 민다)
+    out.push(`적 공격 속도 높음 (${threats.as.join("·")})` + (def.length ? ` → 검토: ${def.join(" 또는 ")}` : "") + UNCALC_NOTE);
   }
   // 군중 제어 증강이 2개 이상이면 강인함 신발·정화 (확인된 적 증강만: 소환사 주문 칸 + Tab 점수판)
   if (e.ccAugs.length >= 2) {
@@ -595,10 +725,8 @@ function enemyAdvice() {
     const boots = state.data.items.find((i) => i.name === "헤르메스의 발걸음");
     const hasBoots = state.items.some((i) => i.name === "헤르메스의 발걸음");
     const opts = [boots && !hasBoots ? boots.name : "", ...qss.filter((i) => !state.items.some((o) => o.name === i.name)).map((i) => i.name)].filter(Boolean);
-    out.push(`적 군중 제어 증강 (${e.ccAugs.map((x) => `${x.c.name} ${x.a.name}`).join(" · ")})` + (opts.length ? ` → 검토: ${opts.join(" 또는 ")}` : ""));
-    want(qss.filter(fits).map((i) => i.name), "군중 제어 대응");
-    state.adviceNeed.push({ why: "군중 제어 대응", names: qss.map((i) => i.name),
-      have: hasBoots || state.items.some((i) => i.name === "헤르메스의 시미터") });
+    // C5: 받는 군중 제어 시간 모델이 없어 강인함·해제는 점수로 환산되지 않는다 → 참고 줄로만
+    out.push(`적 군중 제어 증강 (${e.ccAugs.map((x) => `${x.c.name} ${x.a.name}`).join(" · ")})` + (opts.length ? ` → 검토: ${opts.join(" 또는 ")}` : "") + UNCALC_NOTE);
   }
   // 상대 증강: 소환사 주문 칸에 보이는 것만 확인된 정보로 (나머지는 공식 데이터에 없어 추측하지 않는다)
   const seen = (state.enemyBuilds || []).filter((x) => x.augments.length).map((x) => `${x.champ.name} ${x.augments.map((a) => a.name).join("·")}`);
@@ -610,7 +738,6 @@ function enemyAdvice() {
     const names = state.counter.items.map((id) => (state.data.items.find((i) => i.id === id) || {}).name).filter(Boolean).slice(0, 2);
     out.push(`${state.counter.why} → 적 대응: ${names.join(" 또는 ")}`);
   }
-  want(resItems, resLabel);  // 저항은 마지막 후보 (치유 감소·관통처럼 콕 집은 대응이 먼저)
   return out;
 }
 // 적 하나하나가 산 아이템으로 본 위협 (팀 평균에 묻히지 않게). 이름은 위협이 큰 순서로 최대 3명
@@ -745,10 +872,10 @@ function setTargetChamp(id) {
     const [b] = S.buildConcepts(d.items, S.profile(enemy, d.tags), [], [], d.rules, enemy, statOpts(), ["balanced"]);
     const items = b.pick.map((p) => p.item);
     const t = St.computeStats(enemy, 18, items, [], statOpts()).total;
-    // 그 챔피언이 한타에 자기를 회복하는 양 (치유 감소 아이템 값의 근거, enemyTarget 과 같은 계산)
-    const em = St.evaluate(enemy, 18, items, [], statOpts()).m;
-    const heal = (em.selfHeal || 0) + (em.vampHeal || 0) + (em.itemSelfHp || 0);
-    St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP), HEAL: Math.round(heal / 10) * 10 });
+    // 그 챔피언이 한타에 자기를 회복하는 양 (치유 감소 아이템 값의 근거).
+    // 여기는 '기준 상대 한 명'이라 아군 회복은 더하지 않는다 (C4 의 ÷ 적 수는 받을 아군이 있을 때의 환산이다)
+    const heal = selfHealOf(St.evaluate(enemy, 18, items, [], statOpts()).m);
+    St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP), bonusHP: Math.round(t.bonusHP), HEAL: Math.round(heal / 10) * 10 });
   }
   showTarget();
   if ($("#target-champ").value !== state.target) $("#target-champ").value = state.target;
@@ -933,7 +1060,7 @@ let tierCache = { key: null, value: null };
 // 선택지 3장이 모두 D인 경우가 46.2%라 '도전 · 강한 선택'처럼 엇갈렸다 (2026-10-24 진단 C04). 연계 우선 버튼은 그대로 둔다
 const tierMode = () => (state.tierMode === "auto" ? "total" : state.tierMode);
 function getTiers() {
-  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts()]);
+  const key = JSON.stringify([state.champ && state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.aram, state.weights, tierMode(), state.target, ...targetKey(), statOpts(), St.allyKey()]);
   if (tierCache.key !== key) {
     const d = state.data;
     tierCache = { key, value: S.augmentTiers(d.augments, d.items, state.weights, state.chosen, state.items, d.rules, state.champ, statOpts(), tierMode()) };
@@ -1095,7 +1222,9 @@ const TRIGGER_TIP = {
 // 능력치(규칙 statsResolved) → 쓰는 법. 효과 종류 태그보다 먼저 본다 (태그는 '적 방어력 감소'도 방어력으로 적혀 있다)
 const STAT_TIP = [
   [["ARPEN", "MPENP", "LETHALITY", "MPEN", "trueBonus"], "단단한 적(탱커)을 상대로 특히 세요."],
-  [["HSP", "skillVamp", "OMNIVAMP", "LS", "selfHeal", "shieldMult"], "오래 붙어 싸울수록 이득이에요."],
+  // 중첩형 저항 감소 (C9-A3 _shred): 때릴수록 쌓이니 길게 싸울수록 좋다
+  [["_shred", "armorShred", "mrShred", "armorFlatShred", "mrFlatShred"], "때릴수록 적의 방어력·마법 저항력이 깎이니 길게 붙어 싸우세요."],
+  [["HSP", "skillVamp", "OMNIVAMP", "LS", "selfHeal", "selfHp", "selfAbsorb", "shieldMult"], "오래 붙어 싸울수록 이득이에요."],
   [["controlSec", "fearPerCast"], "적을 묶고 아군과 같이 들어가세요."],
   [["HASTE", "basicHaste", "slotHaste", "AStoHASTE", "APtoHASTE", "refundPct", "refundAll"], "스킬을 쉬지 않고 돌리세요."],
   [["ultHaste", "ultHasteAdd", "ultRefundEvery"], "궁극기를 아끼지 말고 한타마다 쓰세요."],
@@ -1445,7 +1574,7 @@ function pushOverlay(rows, src) {
 let verdictCache = { key: null, value: [] };
 function itemVerdicts() {
   if (!state.champ || !state.items.length) return [];
-  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts()]);
+  const key = JSON.stringify([state.champ.id, state.chosen.map((a) => a.id), state.items.map((i) => i.id), state.weights, state.target, ...targetKey(), statOpts(), St.allyKey()]);
   if (verdictCache.key === key) return verdictCache.value;
   const d = state.data;
   const concept = state.chosen.length ? "augment" : "balanced";
@@ -1612,7 +1741,9 @@ function sendOverlay(src) {
   } : null;
   const sw = swapAdvice();
   const swap = sw && !sw.review ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0, why: sw.why || null } : null;
-  api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null,
+  // 기록용 아군 정보 (F11): 본 값과 추정값을 갈라 둔다. 엔진에 넘기는 models 는 기록에 넣지 않는다 (같은 값이 두 벌 남는다)
+  const ally = state.allyInfo ? (({ models, ...rest }) => rest)(state.allyInfo) : null;
+  api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, ally, box: state.boxWhy || null, src: src || null,
     calcMs: state.calcMs, calcSeq: state.calcSeq, statCheck: statCheck(), pickFix: state.pickFix || undefined,
     // 상점 창 안에서 자리를 찾아볼 아이템 (시험: 기록만). 다음 구매 위 3개 + 바꿀 때 살 것
     shopMarks: [...new Set([...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id).filter(Boolean).slice(0, 3)
@@ -1953,7 +2084,7 @@ function buyNowCurrent(gold) {
   // 결과를 바꾸는 것은 모두 키에: 살 수 있는 후보(골드는 이걸로), 가중치·칼바람·적 마법 비율(statOpts)·기준 상대 방어
   // (v0.1.55 후속 기획 A-②: 예전 키엔 가중치·statOpts·기준 상대가 없어 적 구성이 바뀌어도 옛 추천이 남을 수 있었다)
   const key = JSON.stringify([state.champ.id, level, state.items.map((i) => i.id), inv, [...cands.values()].map((c) => [c.id, c.gold]),
-    state.chosen.map((a) => a.id), tops, state.weights, statOpts(), St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP]);
+    state.chosen.map((a) => a.id), tops, state.weights, statOpts(), ...targetKey(), St.allyKey()]);
   if (buyNowMemo.key === key) return buyNowMemo.value;
   const have = [...state.items, ...inv.filter((id) => partOf(id) && !isItem(id)).map((id) => ({ id, name: partOf(id).name, stats: partOf(id).stats || {} }))];
   const ranked = S.buyNowGains([...cands.values()], state.weights, state.chosen, have, d.rules, state.champ, statOpts(), level);
@@ -2028,28 +2159,13 @@ function renderNextBuy(rows) {
     const c = avail.find((r) => r.counter && fit3(r));
     if (c) pick[2] = c;
   }
-  // 조언(치유 감소·관통·보호막 감소·공속 대응)이 권한 아이템이 위 3개에 없으면 3번째 자리에 (이유를 붙여서).
-  // 2026-10-17 지적: 조언 줄과 다음 구매가 따로 놀았다 (조언은 필멸자의 운명, 다음 구매엔 없음).
-  // 보호막 감소·공속 대응 효과는 점수 계산에 없어 순위가 안 오른다 → 순위와 상관없이. 관통은 계산에 있으니 8위 안일 때만.
-  // 치유 감소는 v0.1.93 P4-B 5단계부터 점수에 들어가지만, 우리 계산에 회복량이 안 잡히는 적(아군을 회복시키는 소라카 등)도
-  // 있어서 조언 쪽은 그대로 둔다 (점수로 이미 올라왔으면 아래 조건에서 걸러진다)
+  // v0.1.95 Phase 4 C5: 조언이 권한 아이템을 3번째 자리에 끼워 넣던 것을 없앴다.
+  // 2026-10-17 에 '조언 줄과 다음 구매가 따로 논다'고 해서 넣었는데, 점수 근거 없이 올라오는 아이템이 생겼다
+  // (보호막 감소·공속 대응·군중 제어 대응은 계산에 아예 없다). 이제는 두 갈래다:
+  //   계산되는 대응(치유 감소·관통·저항) → 점수가 이미 올려 주므로 그대로 순위로 올라온다
+  //   계산 밖 대응 → 조언 줄에 '계산에는 안 들어감(참고)'으로만 남는다 (아이템을 추천에서 빼지는 않는다)
+  // 점수로 설명되는 '적 대응'(state.counter: 적이 산 아이템으로 순위가 실제로 오른 것)은 위에서 그대로 들어간다
   const adv = enemyAdvice();
-  // 이유는 조언 순서대로, 같은 이유 안에서는 지금 순위가 가장 높은 아이템 (저항 아이템은 후보가 여럿)
-  const wanted = [...new Set((state.adviceWant || []).map((w) => w.why))].map((why) => {
-    const names = state.adviceWant.filter((w) => w.why === why).map((w) => w.name);
-    // 위 2개 중 같은 계열(치명상 등)과 겹치면 그 자리를 대응 아이템으로 바꾼다 (도미닉 대신 필멸자의 운명: 둘 다 관통, 필멸자는 치유 감소까지)
-    const r = avail.slice(0, why === "관통" ? COUNTER_TOP : avail.length).find((x) => names.includes(x.item.name)
-      && (fit3(x) || pick.slice(0, 2).some((o) => !o.must && o.item.limit && o.item.limit === x.item.limit)));
-    return r ? { w: { name: r.item.name, why }, r } : null;
-  }).find(Boolean);
-  if (wanted && !pick.some((r) => r.counter || r.item.name === wanted.w.name) && pick.length === 3) {
-    const at = pick.slice(0, 2).findIndex((o) => !o.must && !o.building && o.item.limit && o.item.limit === wanted.r.item.limit);
-    const slot = at >= 0 ? at : !fixedAt(2) ? 2 : -1;
-    if (slot >= 0) {
-      wanted.r.advice = wanted.w.why;
-      pick[slot] = wanted.r;
-    }
-  }
   // 추천이 바뀌면 왜 바뀌었는지 (상황 → 필요): 사람이 보고 따를지 정하게.
   // 새로 들어온 아이템마다 원인을 붙인다: 적 상황(조언·적 대응)이 먼저, 그다음 고른 증강
   // (2026-10-17 그레이브즈 판: 탄환 세례를 고르자 세릴다의 원한이 들어왔는데 이유가 안 보였다)
@@ -2063,8 +2179,7 @@ function renderNextBuy(rows) {
     const newAug = now.augs.filter((n) => !prev.augs.includes(n)).at(-1);
     // 조언 때문이면 짧은 이유 이름만 ('마법 저항' 등). 예전엔 그 순간의 '적 구성 … 마법 77% · 물리 23%' 문장을 통째로 붙여
     // 다음 구매가 바뀔 때까지 옛 %가 남아, 상자에 지금 값 줄(76%)과 같은 줄이 두 번 보였다 (피드백 #20)
-    const why = (r) => r.advice ? r.advice
-      : r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
+    const why = (r) => r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
       : now.enemy !== prev.enemy && now.enemy ? `${now.enemy}에 맞춰` : null;
     const added = pick.filter((r) => !prev.names.includes(r.item.name)).map((r) => [r.item.name, why(r)]).filter(([, w]) => w);
     // 새로 들어온 게 없고 1순위만 바뀌었으면 '먼저'로 (고른 증강·적 변화가 원인일 때만)
@@ -2076,8 +2191,8 @@ function renderNextBuy(rows) {
   } else if (!now.names.length) state.nextChange = null;
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
     + (state.nextChange ? `<div class="small next-change">${esc(state.nextChange)}</div>` : "")
-    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.building ? "(만드는 중)" : r.must ? "(증강)" : r.counter ? "(적 대응)" : r.advice ? `(${r.advice})` : ""))}">
-      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.building ? ` <span class="chip syn" title="산 부품 ${fmt(r.sunk)}G 어치를 이 아이템에 쓰고 있어요">🧩 만드는 중</span>` : r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.advice ? ` <span class="chip adv">🛡️ ${esc(r.advice)}</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
+    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.building ? "(만드는 중)" : r.must ? "(증강)" : r.counter ? "(적 대응)" : ""))}">
+      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.building ? ` <span class="chip syn" title="산 부품 ${fmt(r.sunk)}G 어치를 이 아이템에 쓰고 있어요">🧩 만드는 중</span>` : r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc([r.tie, itemReason(r)].filter(Boolean).join(" · "))}</div>${gainLine(r.gain)}</div></div>`).join("") : swapHtml());
   if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);
   box.insertAdjacentHTML("beforeend", `<div id="buy-now" class="small"></div>`);
@@ -2275,6 +2390,7 @@ let liveLast = "";
 let liveEnded = false;
 let liveShop = false, goldDrawnAt = 0, boxSent = null;
 let enemyBuildKey = "";
+let allyBuildKey = "";  // F11: 아군 챔피언·레벨·아이템·증강이 바뀔 때만 다시 센다
 const BUY_SHOW = 6;  // 초. 아이템을 산 직후 상자를 띄우는 시간 (상점 창 인식이 안 돼도)
 const PICK_SHOW = 8;  // 초. 증강을 고른 직후 그 증강 기준 다음 구매 상자를 띄우는 시간 (상점 창 인식이 안 돼도)
 // 증강을 고르면 그 증강 기준 다음 구매(첫 완성 아이템)를 잠깐 띄운다. 상자는 상점이 열린 걸 알아봤을 때·죽었을 때·산 직후에만 떠서,
@@ -2313,11 +2429,13 @@ function applyLive(L) {
     el.textContent = "게임 대기 중";
     if (state.gold != null) { state.gold = null; state.inventory = []; state.enemies = []; renderBuyNow(); }
     if ((state.enemyBuilds || []).length) { state.enemyBuilds = []; enemyBuildKey = ""; applyEnemyTarget(); }
+    if ((state.allyBuilds || []).length) { state.allyBuilds = []; state.allyInfo = null; allyBuildKey = ""; St.setAllies(null); }  // F11: 이전 판 아군이 남지 않게
     if (liveLast) { liveLast = ""; liveEnded = true; }  // 게임이 끝남 → 다음 게임은 새로 시작
     return;
   }
   if (liveEnded) {  // 같은 챔피언으로 다음 게임을 해도 고른 증강·선택지는 비운다
     liveEnded = false;
+    state.allyBuilds = []; state.allyInfo = null; allyBuildKey = ""; St.setAllies(null);  // F11: 아군도 새 판 기준으로
     augTimers = {};
     state.chosen = [];
     resetAnvil();
@@ -2396,11 +2514,33 @@ function applyLive(L) {
   })).filter((x) => x.champ);
   const ebKey = JSON.stringify(eb.map((x) => [x.champ.id, x.items.map((i) => i.id).sort(), x.augments.map((a) => a.id), x.boardAugs.map((a) => a.id)]));
   const enemyChanged = ebKey !== enemyBuildKey;
-  if (enemyChanged) { enemyBuildKey = ebKey; state.enemyBuilds = eb; applyEnemyTarget(); }
+  let targetMoved = false;
+  if (enemyChanged) { enemyBuildKey = ebKey; state.enemyBuilds = eb; targetMoved = applyEnemyTarget(); }
   else if (eb.length) {
     // 레벨만 바뀜: 예상 상대(18레벨)는 그대로, 지금 상대 표시만 새로
     const lv = eb.map((x) => `${x.level}/${x.kills}`).join(",");
     if (lv !== (state.enemyBuilds || []).map((x) => `${x.level}/${x.kills}`).join(",")) { state.enemyBuilds = eb; showTarget(); }
+  }
+  // 아군이 산 아이템·레벨·보이는 증강 (F11): 적과 같은 방식으로 읽는다. 바뀔 때만 다시 센다.
+  // 추천 점수에는 아직 넣지 않는다 (C9-B 승인 전) — 화면·기록에만 쓴다
+  const ab = (L.allyBuilds || []).map((x) => ({
+    champ: d.champions.find((c) => c.id.toLowerCase() === String(x.champion).toLowerCase()),
+    level: x.level || 1,
+    items: (x.items || []).map((id) => d.items.find((i) => i.id === String(id))).filter((i) => i && (i.kind === "legendary" || i.kind === "boots"))
+      .filter((it, i, arr) => arr.findIndex((y) => y.name === it.name) === i).slice(0, S.SLOTS),
+    augments: (x.augments || []).map(spellAugment).filter(Boolean),
+  })).filter((x) => x.champ);
+  const abKey = JSON.stringify(ab.map((x) => [x.champ.id, x.level, x.items.map((i) => i.id).sort(), x.augments.map((a) => a.id)]));
+  // 기준 상대가 바뀌면 아군 피해 유형 비중도 다시 잰다: 비중을 잰 상대와 배율비를 계산하는 상대가 달라지면 안 된다
+  const allyChanged = abKey !== allyBuildKey || (targetMoved && ab.length > 0);
+  if (allyChanged) {
+    allyBuildKey = abKey;
+    state.allyBuilds = ab;
+    // 아군의 능력치를 잴 때는 아군 설정을 잠깐 비운다 (아군 계산이 이전 아군 상태에 딸려 들어가지 않게)
+    St.setAllies(null);
+    state.allyInfo = allyInfo();  // 아군이 바뀔 때만 계산한다 (아이템 후보마다 다시 세지 않는다)
+    // C9-B: 본 아군만 엔진에 넘긴다. 한 명도 못 봤으면 null → 엔진이 대체 모델 한 명으로 센다
+    St.setAllies(state.allyInfo ? state.allyInfo.models : null);
   }
   trackTimers(L);  // 증강 쿨타임: 체력은 매번 바뀌니 아래 '같은 값이면 그만' 전에
   if (checkPickByStats()) {
@@ -2411,7 +2551,8 @@ function applyLive(L) {
   }
   // 상대 능력치가 바뀌면(적이 방어 아이템을 삼) 순위·빌드를 다시 계산한다
   // 계산에 들어가는 상대 값: 예상 상대 능력치 + 받는 피해의 마법 비율(statOpts enemyMagic, 0.1 단위)
-  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, statOpts().enemyMagic ?? null]);
+  // 아군 지문도 열쇠에 (C9-B): 아군이 아이템을 사거나 레벨이 오르면 추천을 다시 계산해야 한다
+  const key = JSON.stringify([champ && champ.id, level, items.map((i) => i.id), enemyKey, ...targetKey(), statOpts().enemyMagic ?? null, St.allyKey()]);
   if (key === liveLast && enemyChanged && state.champ) {
     // 적이 아이템을 샀지만 계산 값은 그대로(작은 변화): 조언(치유 감소·저항·관통)과 다음 구매만 다시 그린다
     renderNextBuy(itemRanking()); renderChosenItems(); sendOverlay("enemy");
@@ -2422,6 +2563,8 @@ function applyLive(L) {
     if (invChanged && state.champ) { renderNextBuy(itemRanking()); renderChosenItems(); }
     else if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay("gold"); }
     else if (boxChanged) sendOverlay("box");
+    // 아군이 바뀌었는데 계산 값(아군 지문 포함)은 그대로 — 점수에 영향이 없는 변화라 기록만 새로 보낸다
+    else if (allyChanged) sendOverlay("ally");
     return;
   }
   const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));

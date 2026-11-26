@@ -262,7 +262,7 @@ test("증강 인식: 읽은 선택지를 채우고 게임 화면 카드에 보�
   const sent = [];
   p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
   p.w.applyLive({ enabled: true, inGame: true, champion: "Poppy", level: 6, items: ["3084"] });
-  const offers = ["눈 폭발", "강타자", "정신 변환"];
+  const offers = ["점액 천지", "강타자", "정신 변환"];
   p.w.applyAug({ offers, seq: 1, picked: null, pickSeq: 0 });
   assert.deepEqual(p.qa("#offers input[type=search]").map((e) => e.value), offers);
   const cards = sent.at(-1).cards;
@@ -277,21 +277,21 @@ test("증강 인식: 읽은 선택지를 채우고 게임 화면 카드에 보�
   assert.match(p.text("#chosen"), /강타자/);
   assert.deepEqual(p.qa("#offers input[type=search]").map((e) => e.value), ["", "", ""]);
   // 못 정했으면 선택지를 남기고 직접 누르게 한다
-  p.w.applyAug({ offers: null, seq: 2, picked: null, pickedFrom: ["눈 폭발", "탱크 엔진", "정신 변환"], pickSeq: 2 });
+  p.w.applyAug({ offers: null, seq: 2, picked: null, pickedFrom: ["점액 천지", "탱크 엔진", "정신 변환"], pickSeq: 2 });
   assert.match(p.text("#offer-result"), /이걸로 선택/);
   // 새로고침한 칸 이름을 못 읽었으면 몇 번째 칸인지까지 알려 준다 (v0.1.94 그레이브즈 판)
   p.w.applyAug({ offers: null, seq: 3, picked: null, pickedFrom: [null, "탱크 엔진", "정신 변환"], pickedSlot: 0, pickSeq: 5 });
   assert.match(p.text("#offer-result"), /왼쪽 칸은 새로고침한 뒤 이름을 못 읽었어요/);
   assert.match(p.text("#offer-result"), /이걸로 선택/);
   // 이름을 다 읽었는데 못 정한 경우엔 칸 안내를 붙이지 않는다
-  p.w.applyAug({ offers: null, seq: 2, picked: null, pickedFrom: ["눈 폭발", "탱크 엔진", "정신 변환"], pickedSlot: 1, pickSeq: 2 });
+  p.w.applyAug({ offers: null, seq: 2, picked: null, pickedFrom: ["점액 천지", "탱크 엔진", "정신 변환"], pickedSlot: 1, pickSeq: 2 });
   assert.doesNotMatch(p.text("#offer-result"), /이름을 못 읽었어요/);
   // 증강 칸 그림으로 확인: 못 정한 것은 채우고 (가벼운 모드도)
-  p.w.applyAug({ offers: null, seq: 2, picked: "정신 변환", pickedFrom: ["눈 폭발", "탱크 엔진", "정신 변환"], by: "hud", replaces: null, pickSeq: 3 });
+  p.w.applyAug({ offers: null, seq: 2, picked: "정신 변환", pickedFrom: ["점액 천지", "탱크 엔진", "정신 변환"], by: "hud", replaces: null, pickSeq: 3 });
   assert.match(p.text("#chosen"), /정신 변환/);
   // 클릭 짐작이 틀렸으면 빼고 바꾼다
-  p.w.applyAug({ offers: null, seq: 1, picked: "눈 폭발", pickedFrom: offers, by: "hud", replaces: "강타자", pickSeq: 4 });
-  assert.match(p.text("#chosen"), /눈 폭발/);
+  p.w.applyAug({ offers: null, seq: 1, picked: "점액 천지", pickedFrom: offers, by: "hud", replaces: "강타자", pickSeq: 4 });
+  assert.match(p.text("#chosen"), /점액 천지/);
   assert.doesNotMatch(p.text("#chosen"), /강타자/);
   assert.deepEqual(p.errors, []);
 });
@@ -529,6 +529,80 @@ test("아이템이 있어야 하는 증강(강철 같은 심장)을 고르면 �
   assert.deepEqual(p.errors, []);
 });
 
+// ---- v0.1.95 Phase 4 F11: 실제 아군 정보 연결 (전달·기록까지. 추천 점수에는 아직 안 쓴다)
+// 화면 안의 state 는 밖에서 못 읽으므로 기록으로 나가는 값(set_overlay 의 ally)으로 본다
+test("F11 아군 정보: 게임이 알려 준 아군을 본 값과 추정값으로 갈라 내보낸다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const allyBuilds = [
+    { champion: "Jhin", level: 16, items: ["3006", "3031"], augments: ["GrowthSpurt"] },
+    { champion: "Lux", level: 15, items: ["3020", "6655"] },
+    { champion: "Garen", level: 16, items: ["3047", "3071"] },
+    { champion: "Sona", level: 14, items: ["3504"] }];
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Ashe", level: 16, items: ["3006"],
+    enemies: ["Velkoz", "Rammus"], enemyBuilds: [{ champion: "Velkoz", level: 16, items: [] }], allyBuilds });
+  await until(() => sent.length && sent.at(-1).ally);
+  const info = sent.at(-1).ally;
+  assert.equal(info.n, 4, "나를 뺀 아군 4명");
+  assert.ok(info.full, "4명이면 다 본 것");
+  assert.deepEqual(info.members.map((m) => m.seen.champ), ["Jhin", "Lux", "Garen", "Sona"]);
+  assert.ok(!info.members.some((m) => m.seen.champ === "Ashe"), "내가 아군 목록에 들어가면 피해를 두 번 세요");
+  const jhin = info.members[0];
+  assert.deepEqual(jhin.seen.items, ["광전사의 군화", "무한의 대검"], "본 값: 산 아이템 이름");
+  assert.equal(jhin.seen.level, 16);
+  assert.equal(jhin.seen.augmentsKnown, "spell", "증강은 소환사 주문 칸에 보이는 것만 확인돼요");
+  assert.ok(jhin.calc.dps > 0 && Number.isFinite(jhin.calc.dps), "추정값: 초당 피해");
+  for (const m of info.members) {
+    const sum = m.calc.phys + m.calc.magic + m.calc.trueDmg;
+    assert.ok(Math.abs(sum - 1) < 0.01, `${m.seen.champ} 비중 합 ${sum}`);
+  }
+  const byId = Object.fromEntries(info.members.map((m) => [m.seen.champ, m.calc]));
+  assert.ok(byId.Jhin.phys > byId.Lux.phys, "진이 룩스보다 물리 비중이 높아야 해요");
+  assert.ok(byId.Lux.magic > byId.Jhin.magic, "룩스가 진보다 마법 비중이 높아야 해요");
+  assert.ok(info.calc.dps > 0 && Math.abs(info.calc.phys + info.calc.magic + info.calc.trueDmg - 1) < 0.01, "팀 합계도 추정값");
+  p.w.close();
+});
+
+test("F11 아군 정보: 기준 상대를 되돌려 추천이 흔들리지 않는다", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.pywebview = { api: { set_overlay: () => {} } };
+  const T = () => [p.w.Stats.TARGET.ARMOR, p.w.Stats.TARGET.MR, p.w.Stats.TARGET.HP, p.w.Stats.TARGET.BONUS_HP, p.w.Stats.TARGET.HEAL];
+  const before = T();
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Ashe", level: 16, items: ["3006"], enemies: [],
+    allyBuilds: [{ champion: "Lux", level: 16, items: ["6655"] }] });
+  assert.deepEqual(T(), before, "아군 피해 유형을 재려고 바꾼 기준 상대를 되돌려야 해요");
+  p.w.close();
+});
+
+test("F11 아군 정보: 없거나 일부만 있어도 그대로 돌아가고, 판이 끝나면 지운다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const live = (x) => p.w.applyLive({ enabled: true, inGame: true, champion: "Ashe", level: 16, items: ["3006"], enemies: [], ...x });
+  // 아군 정보가 아예 없음: 추천은 그대로 나온다
+  live({});
+  await until(() => sent.length);
+  assert.equal(sent.at(-1).ally, null, "없으면 비워 보낸다");
+  assert.ok(p.text("#next-buy").length > 0, "아군 정보가 없어도 다음 구매는 나와야 해요");
+  // 일부만 (2명) · 아이템이 비어 있어도
+  live({ allyBuilds: [{ champion: "Lux", level: 9, items: [] }, { champion: "Garen", level: 9, items: [] }] });
+  await until(() => sent.at(-1).ally);
+  assert.equal(sent.at(-1).ally.n, 2);
+  assert.equal(sent.at(-1).ally.full, false, "4명이 안 되면 일부만 본 것");
+  const dps0 = sent.at(-1).ally.calc.dps;
+  // 아군이 아이템을 사면 다시 센다
+  live({ allyBuilds: [{ champion: "Lux", level: 9, items: ["6655"] }, { champion: "Garen", level: 9, items: [] }] });
+  await until(() => sent.at(-1).ally && sent.at(-1).ally.calc.dps !== dps0);
+  assert.ok(sent.at(-1).ally.calc.dps > dps0, "아이템을 사면 추정 피해가 올라야 해요");
+  // 게임이 끝났다 들어오면(재접속·다음 판) 이전 아군이 남지 않는다
+  p.w.applyLive({ enabled: true, inGame: false });
+  live({ allyBuilds: [{ champion: "Sona", level: 5, items: [] }] });
+  await until(() => sent.at(-1).ally && sent.at(-1).ally.n === 1);
+  assert.deepEqual(sent.at(-1).ally.members.map((m) => m.seen.champ), ["Sona"], "이전 판 아군(룩스·가렌)이 남으면 안 돼요");
+  p.w.close();
+});
+
 test("적 대응: 적이 산 아이템 때문에 순위가 크게 오른 아이템·증강을 표시한다 (케일 판 실제 적 아이템)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
@@ -653,7 +727,9 @@ test("상대 아이템 반영: 적이 산 아이템으로 상대 능력치·관�
   assert.equal(e.resistItems.MR, 4, "실제로 산 마법 저항 아이템 수");
   const advice = e.advice.join("\n");
   assert.match(advice, /적이 마법 저항 아이템 4개 \(지금 평균 마법 저항력 \d+\) → 관통/);
-  assert.match(advice, /회복 많음 \([^)]*베인/, "흡혈 아이템을 산 적은 회복 많음");
+  // v0.1.95 Phase 4 C4: '회복 많음'은 추천 점수가 쓰는 회복 추정값으로 고르고, 그 값을 줄에 함께 적는다.
+  // 흡혈 아이템 한 개(베인)는 추정 회복량이 기준에 못 미쳐 더 이상 이름이 오르지 않는다 (조언과 점수를 맞춘 결과)
+  assert.match(advice, /회복 많음 \(소라카 [\d,]+ · 한 명이 받는 양 \d+\)/, advice);
   // 레벨만 오르면 예상 상대는 그대로, 지금 상대만 바뀐다
   const tBefore = T();
   live([[id("가시 갑옷"), id("태양불꽃 방패")], [id("대자연의 힘"), id("정령의 형상"), id("케이닉 루컨")], [], [id("몰락한 왕의 검")], [id("케이닉 루컨")]], 16);
@@ -799,7 +875,9 @@ test("적 증강도 대응 규칙에: 회복→치유 감소, 체력·방어→�
   p.w.renderItemList();
   p.w.sendOverlay();
   advice = sent.at(-1).enemy.advice.join("\n");
-  assert.ok(advice.includes(`적 회복 많음 (럭스·아리) (적 증강: 럭스 ${heal[0].name} · 아리 ${heal[1].name})`), advice);
+  // v0.1.95 Phase 4 C4: 회복 증강의 회복량은 아직 추정값에 안 들어간다 (공식 데이터에 수치가 없다).
+  // 조언과 점수가 같은 숫자를 보게 바꾼 뒤로, 증강만 보고 '회복 많음'이라고 하지 않는다 (후속 F22 로 등록)
+  assert.doesNotMatch(advice, /적 회복 많음/, advice);
   assert.match(advice, /적 군중 제어 증강 \(이즈리얼 .* · 징크스 .*\) → 검토: 헤르메스의 발걸음/, advice);
   assert.ok(p.w.enemyInfo().tanks.some((c) => c.id === "Xerath"), "체력·방어 증강 2개면 탱커로 센다 (관통 조언 기준)");
   assert.doesNotMatch(advice, /제라스 탱커/, "적별 (산 아이템) 줄은 산 아이템만");
@@ -891,8 +969,10 @@ test("게임 중 능력치 표에 게임 실제 값을 옆에 보여 주고, 5% 
   assert.deepEqual(p.errors, []);
 });
 
-test("적 대응 조언이 권한 아이템은 '다음 구매' 3번째에 이유와 함께 (치유 감소는 점수에 없어 순위와 상관없이)", async () => {
-  // 2026-10-17 지적: 조언은 '치유 감소: 필멸자의 운명'인데 다음 구매엔 없었다
+// v0.1.95 Phase 4 C5 (2026-11-26): 2026-10-17 에 '조언과 다음 구매가 따로 논다'고 해서 조언 아이템을
+// 3번째 자리에 끼워 넣었는데, 점수 근거 없는 추천이 됐다 → 강제 삽입을 없앴다.
+// 조언은 그대로 보이고, 계산되는 대응(치유 감소)은 점수가 알아서 올려 준다.
+test("적 대응 조언은 보이되 '다음 구매'에 아이템을 끼워 넣지 않는다 (C5)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
   p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
@@ -901,14 +981,10 @@ test("적 대응 조언이 권한 아이템은 '다음 구매' 3번째에 이유
     enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
   p.w.sendOverlay();
   const next = sent.at(-1).hud.find((x) => x.startsWith("다음 구매"));
-  assert.match(next, /> 필멸자의 운명\(치유 감소\)$/, next);
-  assert.match(p.text("#next-buy"), /🛡️ 치유 감소/);
-  // 이미 샀으면 다시 권하지 않는다
-  const mr = p.data.items.find((i) => i.name === "필멸자의 운명").id;
-  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 12, items: [mr], enemies: foes,
-    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
-  p.w.sendOverlay();
-  assert.doesNotMatch(sent.at(-1).hud.find((x) => x.startsWith("다음 구매")), /필멸자의 운명/);
+  assert.doesNotMatch(next, /\(치유 감소\)|\(관통\)|\(마법 저항\)|\(방어력\)/, next);
+  assert.doesNotMatch(p.text("#next-buy"), /🛡️ 치유 감소/);
+  // 조언 줄 자체는 그대로 (아이템 이름까지)
+  assert.match(sent.at(-1).enemy.advice.join("\n"), /적 회복 많음 \(.*\) → 치유 감소: /);
   assert.deepEqual(p.errors, []);
 });
 
@@ -1086,7 +1162,10 @@ test("6칸이 다 찼어도 적 대응(치유 감소)이 필요하면 바꾸기�
   const foes = ["Samira", "Caitlyn"];
   const live = (items, builds) => p.w.applyLive({ enabled: true, inGame: true, champion: "Kindred", level: 18, items, enemies: foes,
     enemyBuilds: foes.map((c) => ({ champion: c, level: 18, items: builds })) });
-  live(six, [id("피바라기")]);
+  // v0.1.95 Phase 4 C4: '회복 많음'은 추정 회복량으로 판정한다. 흡혈 아이템 하나로는 기준에 못 미쳐
+  // 적이 실제로 많이 회복하는 빌드(흡혈 아이템을 채운 빌드)로 바꿨다
+  const vamp = p.data.items.filter((i) => i.kind === "legendary" && (i.tags.VAMP || 0) >= 0.5).map((i) => i.id).slice(0, 6);
+  live(six, vamp);
   p.w.renderItemList();
   p.w.sendOverlay();
   const sw = sent.at(-1).swap;
@@ -1099,7 +1178,7 @@ test("6칸이 다 찼어도 적 대응(치유 감소)이 필요하면 바꾸기�
   assert.match(p.text("#next-buy"), /적 대응으로 바꾸면 좋아요/);
   assert.match(sent.at(-1).hud[0], /적 대응\(치유 감소\)/);
   // 이미 치유 감소 아이템이 있으면 적 대응 바꾸기 없음
-  live([...six.slice(0, 5), buy.id], [id("피바라기")]);
+  live([...six.slice(0, 5), buy.id], vamp);
   p.w.renderItemList();
   p.w.sendOverlay();
   assert.notEqual((sent.at(-1).swap || {}).why, "치유 감소");
@@ -1107,7 +1186,7 @@ test("6칸이 다 찼어도 적 대응(치유 감소)이 필요하면 바꾸기�
   const orig = p.w.itemVerdicts;
   p.w.itemVerdicts = () => orig().map((v) => ({ ...v, mark: "👍" }));
   // 같은 계열(도미닉 ↔ 필멸자의 운명)은 둘 다 못 가져서 바꾸기가 맞다 → 계열이 겹치지 않는 빌드로
-  live(six.map((x) => (x === id("도미닉 경의 인사") ? id("무한의 대검") : x)), [id("피바라기")]);
+  live(six.map((x) => (x === id("도미닉 경의 인사") ? id("무한의 대검") : x)), vamp);
   p.w.renderItemList();
   p.w.sendOverlay();
   assert.equal(sent.at(-1).swap, null, "게임 화면에 바꾸기 아이콘을 보내지 않는다");
@@ -1145,7 +1224,10 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],
     enemyBuilds: [heal, heal2, { champion: "Aatrox", level: 9, items: [] }] });
   p.w.renderItemList();
-  assert.match(p.text("#next-buy"), /🔁 필멸자의 운명 ← 치유 감소/);
+  // v0.1.95 Phase 4 C5: 조언이 아이템을 끼워 넣지 않으므로 '← 치유 감소' 같은 조언 원인 줄은 더 이상 나오지 않는다.
+  // 적이 바뀌어 순위가 움직였으면 원인은 '적 …에 맞춰'로 적힌다 (점수가 실제로 바뀐 경우만)
+  assert.doesNotMatch(p.text("#next-buy"), /← 치유 감소|← 관통|← 마법 저항|← 방어력/);
+  assert.match(p.text("#next-buy"), /적 회복 많음 \(.*\) → 치유 감소: /);
   assert.deepEqual(p.errors, []);
 });
 
@@ -1169,7 +1251,8 @@ test("적 마법 비중이 높으면 마법 저항 아이템을 다음 구매에
   assert.ok(m1 > m0, `킬 12개 럭스 → 마법 비중 ${m0}% → ${m1}%`);
   assert.match(txt, /많이 큼: 럭스/);
   assert.match(txt, /마법 저항 우선: /);
-  assert.ok(sent.at(-1).hud.some((l) => l.startsWith("다음 구매") && /\(마법 저항\)/.test(l)), sent.at(-1).hud.join("\n"));
+  // v0.1.95 Phase 4 C5: 저항 조언도 다음 구매에 끼워 넣지 않는다 (점수가 올리면 그대로 올라온다)
+  assert.ok(!sent.at(-1).hud.some((l) => l.startsWith("다음 구매") && /\(마법 저항\)/.test(l)), sent.at(-1).hud.join("\n"));
   assert.deepEqual(p.errors, []);
 });
 
@@ -1766,4 +1849,181 @@ test("성장 능력치: 중첩이 늘면 추정값도 따라 올라간다", asyn
   assert.ok(seen.length >= 3, `세 번 이상 맞춰야 해요: ${seen}`);
   assert.ok(seen[seen.length - 1] > seen[0], `중첩이 늘면 추정값도 늘어요: ${seen}`);
   p.w.Date.now = () => Date.now();
+});
+
+// 2026-11-24 B3: 화면 쪽 캐시 다섯 곳(적 대응·연계 티어·아이템 평가·지금 살 것·게임 연동)의 열쇠에
+// 상대 회복량이 빠져 있었다. 회복량만 바뀌면 같은 결과 객체를 그대로 돌려줬다 (값이 같은지가 아니라 '다시 계산했는지'를 본다)
+test("상대 회복량만 바뀌어도 화면 쪽 캐시가 다시 계산한다", async () => {
+  const p = await loadPage();
+  p.pickChamp("Galio");
+  p.click(p.itemRow("판금 장화"));
+  const St = p.w.Stats, T = { ARMOR: 170, MR: 65, HP: 3450 };
+  St.setTarget({ ...T, HEAL: 0 });
+  const v0 = p.w.itemVerdicts(), t0 = p.w.getTiers();
+  assert.equal(p.w.itemVerdicts(), v0, "같은 값이면 기억한 결과를 그대로 (적중)");
+  assert.equal(p.w.getTiers(), t0, "같은 값이면 기억한 결과를 그대로 (적중)");
+  St.setTarget({ ...T, HEAL: 450 });
+  assert.notEqual(p.w.itemVerdicts(), v0, "회복량이 올랐는데 아이템 평가가 그대로다");
+  assert.notEqual(p.w.getTiers(), t0, "회복량이 올랐는데 연계 티어가 그대로다");
+  St.setTarget({ ...T, HEAL: 0 });
+  assert.notEqual(p.w.itemVerdicts(), v0, "회복량이 내렸는데 아이템 평가가 그대로다");
+  St.setTarget(null);
+  assert.deepEqual(p.errors, []);
+});
+
+test("게임 연동: 상대 회복량만 바뀌어도 추천을 다시 계산한다", async () => {
+  const p = await loadPage();
+  // 적 다섯 명의 아이템을 요우무(공격력·관통) ↔ 피바라기(공격력·생명력 흡수)로만 바꾼다.
+  // 둘 다 방어력·마법 저항력·체력이 0이라 기준 상대의 ARMOR·MR·HP 는 그대로고 회복량(HEAL)만 0 → 370 이 된다.
+  // 추천 결과가 눈에 띄게 바뀌는지는 챔피언마다 다르므로, '다시 계산했는가'(기억 적중/빗나감)를 본다.
+  // 예전엔 게임 연동 열쇠에 회복량이 없어 이 변화가 '작은 변화'로 분류돼 빌드·티어를 다시 계산하지 않았다
+  const foes = ["Darius", "Lux", "Malphite", "Sejuani", "Ziggs"];
+  const live = (enemyItem) => ({
+    enabled: true, inGame: true, champion: "Galio", level: 11, items: [], enemies: foes,
+    enemyBuilds: foes.map((champion) => ({ champion, level: 11, items: [enemyItem] })),
+  });
+  p.w.applyLive(live("3142"));
+  await until(() => p.qa("#build .item").length > 0);
+  await new Promise((r) => setTimeout(r, 1500));  // 나눠 계산(warmThenRender)이 끝나기를 기다린다
+  const T = p.w.Stats.TARGET, base = { ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, heal0 = T.HEAL;
+  p.w.Scoring.memoStats(true);
+  p.w.applyLive(live("3072"));
+  await until(() => p.w.Scoring.memoStats().miss > 0, 20000);
+  const st = p.w.Scoring.memoStats();
+  assert.deepEqual({ ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, base, "회복량 말고 다른 상대 값도 바뀌었다 (시험이 성립 안 함)");
+  assert.ok(T.HEAL > heal0, `회복량 추정이 안 올랐다: ${heal0} → ${T.HEAL}`);
+  assert.ok(st.miss > 0, `회복량만 바뀌었더니 다시 계산하지 않았다 (hit ${st.hit} / miss ${st.miss})`);
+  assert.deepEqual(p.errors, []);
+});
+
+// ---- v0.1.95 Phase 4 C1·C2 (2026-11-25)
+// C1: 상대 회복량 추정이 아이템 '보호막'까지 회복으로 셌다 (stats.js 가 자기 회복·보호막을 한 통에 담음).
+//     고통스러운 상처는 보호막을 막지 못하므로 치유 감소 아이템 값이 부풀려졌다.
+// C2: 상대 추가 체력(BONUS_HP)이 enemyTarget() 에서 아예 안 넘어와 늘 기본값 300 이었다 (도미닉 경의 인사가 탱커 상대에도 같은 값).
+// 아래 아이템은 상대 기준의 방어력·마법 저항력·체력을 건드리지 않는 것으로 골랐다 (회복·보호막·추가 체력만 따로 움직이게):
+//   요우무의 유령검 3142 (공격력·관통) · 불멸의 철갑궁 6673 (보호막 560, 공격력·치명타) · 무덤꽃 3137 (회복 115, 주문력·관통)
+const FOES = ["Darius", "Lux", "Malphite", "Sejuani", "Ziggs"];
+const liveWith = (enemyItem, items = []) => ({
+  enabled: true, inGame: true, champion: "Galio", level: 11, items, enemies: FOES,
+  enemyBuilds: FOES.map((champion) => ({ champion, level: 11, items: [enemyItem] })),
+});
+
+test("게임 연동: 상대가 보호막 아이템만 사면 회복량 추정은 오르지 않는다 (C1)", async () => {
+  const p = await loadPage();
+  p.w.applyLive(liveWith("3142"));
+  await until(() => p.qa("#build .item").length > 0);
+  const T = p.w.Stats.TARGET;
+  const base = { ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, heal0 = T.HEAL;
+  p.w.applyLive(liveWith("6673"));
+  await until(() => p.qa("#build .item").length > 0);
+  assert.deepEqual({ ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, base, "보호막 아이템이 다른 상대 값까지 바꿨다 (시험이 성립 안 함)");
+  assert.equal(T.HEAL, heal0, `보호막을 회복으로 셌다: ${heal0} → ${T.HEAL}`);
+  assert.deepEqual(p.errors, []);
+});
+
+test("게임 연동: 상대가 진짜 회복 아이템을 사면 회복량 추정이 오르고 다시 계산한다 (Phase 3 보호막 아닌 조건)", async () => {
+  const p = await loadPage();
+  p.w.applyLive(liveWith("3142"));
+  await until(() => p.qa("#build .item").length > 0);
+  await new Promise((r) => setTimeout(r, 1500));  // 나눠 계산(warmThenRender)이 끝나기를 기다린다
+  const T = p.w.Stats.TARGET;
+  const base = { ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, heal0 = T.HEAL;
+  p.w.Scoring.memoStats(true);
+  p.w.applyLive(liveWith("3137"));
+  await until(() => p.w.Scoring.memoStats().miss > 0, 20000);
+  const st = p.w.Scoring.memoStats();
+  assert.deepEqual({ ARMOR: T.ARMOR, MR: T.MR, HP: T.HP }, base, "회복 아이템이 다른 상대 값까지 바꿨다 (시험이 성립 안 함)");
+  assert.ok(T.HEAL > heal0, `회복량 추정이 안 올랐다: ${heal0} → ${T.HEAL}`);
+  assert.ok(st.miss > 0, `회복량만 바뀌었더니 다시 계산하지 않았다 (hit ${st.hit} / miss ${st.miss})`);
+  assert.deepEqual(p.errors, []);
+});
+
+test("게임 연동: 상대 추가 체력이 기준 상대에 들어간다 (C2)", async () => {
+  const p = await loadPage();
+  p.w.applyLive(liveWith("3142"));
+  await until(() => p.qa("#build .item").length > 0);
+  const T = p.w.Stats.TARGET;
+  const bonus0 = T.BONUS_HP;
+  assert.ok(bonus0 > 0, "추가 체력이 0 이면 안 돼요");
+  p.w.applyLive(liveWith("3083"));  // 워모그의 갑옷: 체력 1000
+  await until(() => T.BONUS_HP !== bonus0, 20000);
+  assert.ok(T.BONUS_HP > bonus0 + 500, `상대가 체력 1000 아이템을 샀는데 추가 체력이 그대로다: ${bonus0} → ${T.BONUS_HP}`);
+  assert.ok(T.BONUS_HP < T.HP, "추가 체력이 최대 체력보다 클 수는 없어요");
+  assert.deepEqual(p.errors, []);
+});
+
+test("상대 추가 체력만 바뀌어도 화면 쪽 캐시가 다시 계산한다 (C2 캐시 열쇠)", async () => {
+  const p = await loadPage();
+  p.pickChamp("Jinx");
+  p.click(p.itemRow("도미닉 경의 인사"));
+  const St = p.w.Stats, T = { ARMOR: 170, MR: 65, HP: 3450, HEAL: 0 };
+  St.setTarget({ ...T, bonusHP: 300 });
+  const v0 = p.w.itemVerdicts(), t0 = p.w.getTiers();
+  assert.equal(p.w.itemVerdicts(), v0, "같은 값이면 기억한 결과를 그대로 (적중)");
+  assert.equal(p.w.getTiers(), t0, "같은 값이면 기억한 결과를 그대로 (적중)");
+  St.setTarget({ ...T, bonusHP: 2000 });
+  assert.notEqual(p.w.itemVerdicts(), v0, "추가 체력이 올랐는데 아이템 평가가 그대로다");
+  assert.notEqual(p.w.getTiers(), t0, "추가 체력이 올랐는데 연계 티어가 그대로다");
+  St.setTarget(null);
+  assert.deepEqual(p.errors, []);
+});
+
+test("기준 상대를 잠깐 바꿨다 되돌리는 모든 길에서 추가 체력이 남는다 (C2 복원)", async () => {
+  const p = await loadPage();
+  p.pickChamp("Jinx");
+  const St = p.w.Stats;
+  St.setTarget({ ARMOR: 170, MR: 65, HP: 3450, bonusHP: 1800, HEAL: 120 });
+  const snap = () => [St.TARGET.ARMOR, St.TARGET.MR, St.TARGET.HP, St.TARGET.BONUS_HP, St.TARGET.HEAL].join();
+  const before = snap();
+  p.w.atDefault(() => assert.equal(St.TARGET.BONUS_HP, St.DEFAULT_TARGET.BONUS_HP, "기본 상대 안에서는 기본 추가 체력"));
+  assert.equal(snap(), before, "atDefault 뒤 추가 체력이 사라졌다");
+  p.w.withNowTarget(() => true);
+  assert.equal(snap(), before, "withNowTarget 뒤 추가 체력이 사라졌다");
+  St.setTarget(null);
+  assert.deepEqual(p.errors, []);
+});
+
+// C2 갱신 조건 (2026-11-25): 추가 체력은 완충 밴드에서 빼고 값이 바뀌면 바로 반영한다.
+// 밴드로 재면 추가 체력이 최대 150 달라도 기준이 안 바뀌어 묵은 값으로 추천했다 (tools/band_check.js: 408 중 127 자리).
+// 적 5명 중 2명만 체력 250 아이템을 사면 평균 추가 체력은 100 오른다 — 체력 밴드(약 160)보다 작아서 예전엔 통째로 넘어갔다
+const liveMix = (n, hpItem = "3814", base = "3142") => ({
+  enabled: true, inGame: true, champion: "Galio", level: 11, items: [], enemies: FOES,
+  enemyBuilds: FOES.map((champion, i) => ({ champion, level: 11, items: [i < n ? hpItem : base] })),
+});
+
+test("게임 연동: 적 일부만 체력 아이템을 사도 추가 체력이 바로 반영된다 (C2 갱신 조건)", async () => {
+  const p = await loadPage();
+  p.w.applyLive(liveMix(0));
+  await until(() => p.qa("#build .item").length > 0);
+  const T = p.w.Stats.TARGET;
+  const bonus0 = T.BONUS_HP, heal0 = T.HEAL, hp0 = T.HP;
+  p.w.applyLive(liveMix(2));
+  await until(() => p.qa("#build .item").length > 0);
+  await new Promise((r) => setTimeout(r, 300));
+  assert.equal(T.HEAL, heal0, "이 아이템은 회복이 없어야 해요 (시험이 성립 안 함)");
+  assert.ok(Math.abs(T.HP - hp0) < hp0 * 0.05, `최대 체력 변화가 밴드를 넘으면 예전 코드도 갱신해서 시험이 성립 안 해요: ${hp0} → ${T.HP}`);
+  assert.ok(T.BONUS_HP > bonus0, `밴드 안이라고 추가 체력 갱신을 통째로 넘겼다: ${bonus0} → ${T.BONUS_HP}`);
+  assert.deepEqual(p.errors, []);
+});
+
+// ---- v0.1.95 Phase 4 C9-B: 아군이 추천 계산까지 들어간다
+test("C9-B 아군을 엔진에 넘기고, 판이 끝나면 비운다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const live = (x) => p.w.applyLive({ enabled: true, inGame: true, champion: "Ashe", level: 16, items: ["3006"], enemies: [], ...x });
+  live({ allyBuilds: [{ champion: "Lux", level: 16, items: ["6655"] }, { champion: "Garen", level: 16, items: ["3071"] }] });
+  await until(() => sent.length && sent.at(-1).ally);
+  const k1 = p.w.Stats.allyKey();
+  assert.ok(k1, "아군을 봤으면 엔진에도 넘어가야 해요");
+  assert.ok(!/Ashe/.test(k1), "내가 아군으로 들어가면 안 돼요");
+  assert.equal(sent.at(-1).ally.models, undefined, "기록에는 엔진용 모델을 넣지 않아요");
+  // 아군이 아이템을 사면 지문이 바뀐다 → 추천을 다시 계산한다
+  live({ allyBuilds: [{ champion: "Lux", level: 16, items: ["6655", "3020"] }, { champion: "Garen", level: 16, items: ["3071"] }] });
+  await until(() => p.w.Stats.allyKey() !== k1);
+  assert.notEqual(p.w.Stats.allyKey(), k1);
+  // 판이 끝나면 비운다 (다음 판에 이전 아군이 남지 않게)
+  p.w.applyLive({ enabled: true, inGame: false });
+  assert.equal(p.w.Stats.allyKey(), "", "판이 끝나면 아군을 비워야 해요");
+  p.w.close();
 });

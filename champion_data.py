@@ -363,6 +363,15 @@ def process_champion(cid, detail, bin_json, champ_name=""):
         unresolved_total += len(unresolved)
         cd = (spell.get("cooldownTime") or [])[1:ranks + 1] or sp.get("cooldown", [])
         cost = (spell.get("mana") or [])[1:ranks + 1] or sp.get("cost", [])
+        # 충전형 스킬(게임 파일 mMaxAmmo·mAmmoRechargeTime): 오래 싸울 때의 발동 간격은 '충전 1개가 차는 시간' 이다.
+        # 여기서는 값만 실어 보낸다 — 초당 피해에 쓸지는 rules.json 에 챔피언·스킬마다 적는다 (v0.1.95 F5-B).
+        ammo = None
+        mx = (spell.get("mMaxAmmo") or [])[1:ranks + 1]
+        rc = (spell.get("mAmmoRechargeTime") or [])[1:ranks + 1]
+        if mx and rc and max(rc) > 0:
+            ammo = {"max": [int(v) for v in mx], "recharge": [round(v, 2) for v in rc]}
+            if spell.get("mCooldownNotAffectedByCDR"):
+                ammo["noHaste"] = True  # 스킬 가속을 받지 않는다 (닐라 E)
         spells.append({
             "cc": spell_cc_seconds(re.sub(r"<[^>]+>", "", text)),
             "slot": SLOTS[i], "name": sp["name"], "ranks": ranks,
@@ -370,6 +379,7 @@ def process_champion(cid, detail, bin_json, champ_name=""):
             "range": max([r for r in (sp.get("range") or []) if isinstance(r, (int, float))] or [0]),
             "cooldown": [round(c, 2) for c in cd], "cost": [round(c, 1) for c in cost],
             "tooltip": text, "effects": effects, "unresolved": unresolved,
+            **({"ammo": ammo} if ammo else {}),
         })
     return spells, unresolved_total
 

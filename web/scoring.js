@@ -252,7 +252,9 @@
       // 효과 종류 태그를 그대로 따르면 '부식'(적 방어력 감소)에 방어력 아이템, '사악한 정신'(주문력 +80)에 징크스 주문력 아이템이 들어갔다
       // (2026-10-15 추천 품질 점검). 숫자가 있는 증강의 나머지 효과는 수치 계산이 맡는다
       const scales = scaleTags(a, rule);
-      const mine = (liftBy[a.name] = liftBy[a.name] || { _scales: scales, _convert: Object.values(rule.convert || {}) });
+      // _dmg: 피해 계산에 실제로 쓰이는 능력치 (반대 유형 차단을 풀 근거). rule.lift 로 직접 정한 증강은 그 태그를 근거로 본다
+      const dmg = rule.lift ? new Set(Object.keys(rule.lift)) : scaleTags(a, rule, true);
+      const mine = (liftBy[a.name] = liftBy[a.name] || { _scales: scales, _dmg: dmg, _convert: Object.values(rule.convert || {}) });
       const up = (t, v) => { lift[t] = Math.max(lift[t] || 0, v); (liftSrc[t] = liftSrc[t] || []).push(a.name); mine[t] = Math.max(mine[t] || 0, v); };
       // rule.lift: 빌드가 따라갈 태그를 직접 정한 증강 ({}면 아이템으로 안 커짐: 티아라 매혹, 눈덩이 가속 …)
       if (rule.lift) for (const [t, v] of Object.entries(rule.lift)) up(t, v);
@@ -285,22 +287,36 @@
     AStoCRITDMG: ["AS"], AStoHASTE: ["AS"], critStackAS: ["CRIT"], onhitOnCrit: ["CRIT", "ONHIT"], effectCritDmg: ["CRIT"], skillCritDmg: ["CRIT"], ultCritDmg: ["CRIT"] };
   // 발동 방식 → 발동을 늘리는 능력치: 평타 발동은 공격 속도·적중, 스킬 발동은 스킬 가속, 치명타 확률 발동은 치명타
   const TRIGGER_TAG = { onhit: ["AS", "ONHIT"], attacks: ["AS", "ONHIT"], onattack: ["AS"], cast: ["HASTE"], boundCast: ["HASTE"] };
+  // 치명타가 '스킬·아이템 효과'에 붙는 증강 (보석 건틀릿·보석 팔찌·취약). 치명타 아이템을 원하는 건 평타 증강과 같지만(CRIT 유지),
+  // 그 치명타가 터지는 곳은 평타가 아니라 스킬이다. 2026-11-24 B1: 같은 CRIT 태그로 묶여 지표 가중치가 통째로 평타(dps) 칸으로 갔다
+  const SKILL_CRIT_KEYS = ["skillCritDmg", "effectCritDmg", "ultCritDmg"];
+  const ATTACK_TRIGGER = new Set(["onhit", "attacks", "onattack"]);
+  const CRIT_SKILL = "CRITSKILL";  // 아이템 태그가 아니다: metricWeights 가 치명타 몫을 어느 칸에 넣을지 고를 때만 쓴다
   const treeKeys = (n, out = new Set()) => {
     if (Array.isArray(n)) { for (const x of n) treeKeys(x, out); return out; }
     if (n && typeof n === "object") { for (const k of Object.keys(n.r || {})) out.add(k); for (const x of n.a || []) treeKeys(x, out); }
     return out;
   };
-  function scaleTags(a, rule) {
+  // dmgOnly: 피해 쪽 계산에 쓰이는 능력치만 (회복·보호막 계수는 뺀다).
+  // 2026-11-24 B2: '전술적 대비'(사망 시 보호막 = 주문력 300%)의 주문력이 징크스의 반대 유형 차단을 통째로 껐다.
+  // 보호막이 커지는 건 맞지만 그건 빌드 유형을 바꿀 근거가 아니다 — 피해 계수에 들어갈 때만 반대 유형을 연다
+  function scaleTags(a, rule, dmgOnly = false) {
     const st = rule.statsResolved;
     if (!(a.effects && a.effects.length) && !st) return null;
     const out = new Set();
     for (const e of a.effects || []) {
-      for (const k of [...Object.keys(e.ratios || {}), ...treeKeys(e.tree || [])]) for (const t of RATIO_TAG[k] || []) out.add(t);
-      if (e.kind !== "heal" && e.kind !== "shield") for (const t of TRIGGER_TAG[(e.trigger || {}).type] || []) out.add(t);
-      else out.add("HEALSHIELD");  // 회복·보호막 효과는 회복·보호막 효과(%) 아이템으로 커진다
-      if (e.chance === "CRIT" || e.countCrit) out.add("CRIT");
+      const heal = e.kind === "heal" || e.kind === "shield";
+      if (!(dmgOnly && heal)) for (const k of [...Object.keys(e.ratios || {}), ...treeKeys(e.tree || [])]) for (const t of RATIO_TAG[k] || []) out.add(t);
+      if (!heal) for (const t of TRIGGER_TAG[(e.trigger || {}).type] || []) out.add(t);
+      else if (!dmgOnly) out.add("HEALSHIELD");  // 회복·보호막 효과는 회복·보호막 효과(%) 아이템으로 커진다
+      if (e.chance === "CRIT" || e.countCrit) {
+        out.add("CRIT");
+        // 평타로 발동하는 효과가 아니면 그 치명타는 스킬·효과 쪽에서 터진다 (쌍둥이 불꽃: 스킬 피해 시 투사체)
+        if (!ATTACK_TRIGGER.has((e.trigger || {}).type)) out.add(CRIT_SKILL);
+      }
     }
     for (const k of Object.keys(st || {})) for (const t of MULT_TAG[k] || []) out.add(t);
+    for (const k of SKILL_CRIT_KEYS) if (st && k in st) out.add(CRIT_SKILL);
     return out;
   }
 
@@ -353,6 +369,9 @@
     const out = {};
     for (const t of Object.keys(w)) out[t] = (base[t] || 0) * champK + (lift[t] || 0) * concept.aug;
     for (const t of ctx.zero) out[t] = 0;
+    // 증강이 올린 치명타 중 '스킬·효과에 붙는' 몫 (챔피언 본래 치명타 성향은 여기 안 들어간다 → 평타 칸에 그대로 남는다)
+    if (lift[CRIT_SKILL]) out[CRIT_SKILL] = Math.min(lift[CRIT_SKILL], lift.CRIT || 0) * concept.aug;
+    if (ctx.zero.has && ctx.zero.has("CRIT")) out[CRIT_SKILL] = 0;
     return out;
   }
 
@@ -406,11 +425,20 @@
       // 고른 증강이 반대 유형을 키우면 막지 않는다. 내 유형도 똑같이 키우는 증강(불을 밝혀: 공격력·주문력)은 반대로 가는 증강이 아니다
       const liftOf = (keys) => Math.max(0, ...keys.map((t) => lift[t] || 0));
       const converts = Object.keys(conv).some((t) => rule.off.includes(conv[t]) || rule.off.includes(t));
-      const flips = converts || (liftOf(rule.off) >= 0.5 && liftOf(rule.off) > liftOf(rule.own));
+      // 2026-11-24 B2: 반대 유형을 여는 근거는 '그 능력치가 증강의 피해 계산에 실제로 쓰일 때'다.
+      // 회복·보호막 계수에만 쓰이는 주문력(전술적 대비: 사망 시 보호막)이나 수치 계산이 아예 없는 설명 태그
+      // (3연발·주문 분산·다중 공격의 주문력 태그)로는 열지 않는다 — 물리 챔피언 78명 전원의 차단이 통째로 꺼졌다
+      const dmgLift = (t) => Object.values(ctx.liftBy || {}).some((l) => (l[t] || 0) >= 0.5 && l._dmg && l._dmg.has(t));
+      const opened = rule.off.filter((t) => (lift[t] || 0) >= 0.5 && dmgLift(t));
+      const flips = converts || (opened.length > 0 && liftOf(rule.off) > liftOf(rule.own));
       const off = (item) => isOffItem(critTags(item, conv));
-      if (!flips) {
-        bootsOff = off;  // 신발은 공식 추천이 반대여도 빌드 유형에 맞춘다 (2026-11-12 점검: 원딜 카이사 빌드에 마법사의 신발)
-        if (committed || !officialAgainst(champ, rule, pool)) typeOff = off;
+      // 연계되는 능력치를 가진 반대 유형 아이템만 연다: 치명타 증강을 고른 마법 챔피언에게 무한의 대검(공격력+치명타)은 막지 않고,
+      // 치명타가 없는 공격력 아이템(몰락한 왕의 검)은 계속 뒤로 민다. 유형 환산 증강은 지금처럼 전체 해제
+      const offUnlinked = (item) => { const t = critTags(item, conv); return isOffItem(t) && !opened.some((k) => (t[k] || 0) >= 0.5); };
+      if (!flips || !converts) {
+        const blocked = flips ? offUnlinked : off;
+        bootsOff = blocked;  // 신발은 공식 추천이 반대여도 빌드 유형에 맞춘다 (2026-11-12 점검: 원딜 카이사 빌드에 마법사의 신발)
+        if (committed || !officialAgainst(champ, rule, pool)) typeOff = blocked;
       }
     }
     // 마법 챔피언에게 공격 속도 신발(광전사의 군화)은 공격 속도·적중 시 효과를 키우는 증강이나 공식 추천이 있을 때만
@@ -419,6 +447,9 @@
     const noAsBoots = champ.damageType === "magic" && !((lift.AS || 0) >= 0.5 || (lift.ONHIT || 0) >= 0.5);
     return (item) => {
       if (cantBuy(champ, item)) return true;
+      // 고른 증강이 이름으로 요구·연계하는 아이템은 반대 유형이어도 막지 않는다 (무한의 대검 업그레이드·궁극의 히드라 …).
+      // 2026-11-24 B2: 예전엔 그 증강의 '태그'가 반대 유형 전체를 열어 줘서 같이 통과했다. 이제 그 아이템만 통과시킨다
+      if ((ctx.wanted || {})[item.name]) return false;
       const t = critTags(item, conv);
       if (noCrit && (t.CRIT || 0) >= 0.5) return true;
       if (item.kind === "boots") {
@@ -574,9 +605,13 @@
 
   // 빌드 가중치 → 지표 가중치 (합 1)
   function metricWeights(iw) {
+    // 치명타 가중치를 스킬 몫(combo)과 평타 몫(dps)으로 나눈다 (2026-11-24 B1).
+    // 둘 다 유효하면 둘 다 남는다: 징크스 + 보석 건틀릿이면 챔피언 본래 치명타는 평타 칸, 증강이 올린 몫은 스킬 칸
+    const critSkill = Math.min(iw[CRIT_SKILL] || 0, iw.CRIT || 0);
+    const critAtk = Math.max(0, (iw.CRIT || 0) - critSkill);
     const mw = {
-      combo: (iw.AP || 0) + (iw.AD || 0) + 0.5 * ((iw.LETHAL || 0) + (iw.MPEN || 0)) + 0.3 * (iw.HASTE || 0),
-      dps: (iw.AS || 0) + (iw.CRIT || 0) + 0.5 * (iw.ONHIT || 0) + 0.3 * (iw.AD || 0),
+      combo: (iw.AP || 0) + (iw.AD || 0) + 0.5 * ((iw.LETHAL || 0) + (iw.MPEN || 0)) + 0.3 * (iw.HASTE || 0) + critSkill,
+      dps: (iw.AS || 0) + critAtk + 0.5 * (iw.ONHIT || 0) + 0.3 * (iw.AD || 0),
       ehp: ((iw.HP || 0) + (iw.ARMOR || 0) + (iw.MR || 0)) / 2,
       support: iw.HEALSHIELD || 0,
       mobility: 0.4 * (iw.MS || 0),  // 기동성은 피해·생존보다 덜 중요하게
@@ -976,7 +1011,7 @@
       // 균형: 맞지 않는 유형의 아이템을 모두 요구하는 퀘스트(메이지 + 궁극의 히드라)엔 빌드를 맞추지 않는다 (몰빵은 맞춘다).
       // 증강 자체가 그 유형을 키우니(lift) 증강 방향을 빼고 챔피언 본래 유형으로 판단
       if (c.key === "balanced" && champ && !isHybrid(champ) && ctx.mustAll.size) {
-        const own = offTypeFilter(champ, { ...ctx, lift: {}, tags: {} }, c, items, fixed);
+        const own = offTypeFilter(champ, { ...ctx, lift: {}, tags: {}, wanted: {} }, c, items, fixed);
         const byName = (n) => items.find((i) => i.name === n);
         if (own) cctx = { ...cctx, must: cctx.must.filter((g) => !(g.length === 1 && ctx.mustAll.has(g[0]) && byName(g[0]) && own(byName(g[0])))) };
       }
@@ -985,7 +1020,7 @@
         ? new Set(buildConcepts(items, w, [], fixed, rules, champ0, statOpts, ["balanced"])[0].pick.filter((p) => !p.fixed && p.item.kind === "legendary").map((p) => p.item.name))
         : null;
       // 반대 유형 = 증강이 키우는 방향(lift)을 뺀 챔피언 본래 유형 기준
-      const offType = core && champ ? offTypeFilter(champ, { ...ctx, lift: {}, tags: {} }, c, items, fixed) : null;
+      const offType = core && champ ? offTypeFilter(champ, { ...ctx, lift: {}, tags: {}, wanted: {} }, c, items, fixed) : null;
       const cmw = num ? conceptMetricWeights(w, chosen, rules, champ0, c, statOpts) : null;
       const amw = num && c.focus ? augOutputWeights(chosen, rules, champ0, statOpts) : null;
       const fallback = c.focus && AUG_DELTA != null && num && chosen.length
@@ -1270,17 +1305,23 @@
   const objId = (o) => (o && typeof o === "object" ? (objNo.get(o) || (objNo.set(o, ++objSeq), objSeq)) : null);
   function memoKey(name, list, w, chosen, fixed, champ, statOpts, extra, rules = null) {
     const T = (typeof Stats !== "undefined" && Stats.TARGET) || {};
+    // 상대 회복량(HEAL)도 키에: 치유 감소 아이템의 값이 여기서 나온다. 빠져 있어 회복량만 바뀌면 옛 빌드가 그대로 나왔다 (2026-11-24 B3)
     // 공식 추천 아이템 유무도 키에 (같은 챔피언을 공식 추천 없이 비교하는 점검·테스트가 이전 결과를 돌려받지 않게)
     return JSON.stringify([name, ids(list).join(","), champ && champ.id, (champ && champ.features) || null,
       Boolean(champ && champ.officialItems), champ && champ.similarItems ? champ.similarItems.from.join() : null, ids(chosen), ids(fixed),
-      w, statOpts, extra, objId(rules), [T.ARMOR, T.MR, T.HP]]);
+      w, statOpts, extra, objId(rules), [T.ARMOR, T.MR, T.HP, T.BONUS_HP, T.HEAL],
+      // 아군도 열쇠에 (C9-B): 저항 감소 점수에 아군의 피해 유형·관통·이미 들고 있는 감소가 들어간다
+      (typeof Stats !== "undefined" && Stats.allyKey && Stats.allyKey()) || ""]);
   }
+  let memoHit = 0, memoMiss = 0;  // 적중률 확인용 (게임 중 성능 점검·테스트에서만 읽는다)
   function remember(key, fn) {
     if (memo.has(key)) {
       const v = memo.get(key);
       memo.delete(key); memo.set(key, v);  // 최근 사용으로
+      memoHit++;
       return v;
     }
+    memoMiss++;
     const v = fn();
     memo.set(key, v);
     if (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value);
@@ -1297,12 +1338,18 @@
         () => buildConceptsRaw(items, w, chosen, fixed, rules, champ, statOpts, [c.key])[0]));
   }
   const clearMemo = () => { memo.clear(); AOW.clear(); USAGE.clear(); };
+  // 적중률: 열쇠가 맞아 다시 계산하지 않은 비율. reset 은 세는 값만 0으로 (기억한 결과는 그대로)
+  const memoStats = (reset = false) => {
+    const r = { hit: memoHit, miss: memoMiss, size: memo.size, rate: memoHit + memoMiss ? memoHit / (memoHit + memoMiss) : 0 };
+    if (reset) { memoHit = 0; memoMiss = 0; }
+    return r;
+  };
   const setMemoMax = (n) => { MEMO_MAX = n; while (memo.size > MEMO_MAX) memo.delete(memo.keys().next().value); };
 
   const api = {
     SLOTS, TAG_LABEL, CONCEPTS, profile, scoreAugment, rankAugments, augContext, augStatsOf, ruleOf, metricWeights,
     numericAugmentGains, hasNumbers, augmentTiers, twistSupport, augContribution, ruleConflict, SYNERGY_MARK, itemSynergy,
-    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, setTraitOverride, setNormMode, setNormMedian, setNormScale, setNumK, normOf, clearMemo, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
+    conceptWeights, conceptMetricWeights, augOutputWeights, augmentUsage, setAugmentOfficial, setOfficialScale, setAugmentDelta, buildConcepts, rankItems, offSlots, scoreItem, setTagSkip, setTraitOverride, setNormMode, setNormMedian, setNormScale, setNumK, normOf, clearMemo, memoStats, setMemoMax, withChosenFeatures, officialWeights, attachSimilar, autoShare, setSimilarK, tieOrder, TIE_BAND, TIER_CUTS, buyNowGains,
   };
   if (typeof module !== "undefined") module.exports = api;
   else root.Scoring = api;

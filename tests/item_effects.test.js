@@ -276,3 +276,35 @@ test("라일라이의 수정홀: 피해를 주는 스킬 칸만 센다 (전 챔�
   const vals = new Set(d.champions.filter((c) => c.spells).map((c) => Math.round(add(c) * 100)));
   assert.ok(vals.size > 1, `전 챔피언이 같은 값이면 조건을 안 보는 것: ${[...vals].join(",")}`);
 });
+
+// ---- v0.1.95 Phase 4 C1: 아이템 효과의 자기 회복과 자기 보호막을 따로 센다
+// 예전엔 둘 다 out.itemSelfHp 한 통에 담겨, 상대 회복량 추정(app.js enemyTarget)이 보호막까지 '회복'으로 셌다.
+// 고통스러운 상처(치유 감소)는 보호막을 막지 못하므로 치유 감소 아이템의 값이 부풀려졌다 (실제 5판 중 3판에서 추정값의 33~76%가 보호막)
+// v0.1.95 Phase 5 (E3): 피바라기의 '초과 회복 → 보호막'은 같은 흡혈의 넘친 몫이라 두 번 세지 않으려고 뺐다 → 목록에서 제외
+const SHIELD_ITEMS = ["불멸의 철갑궁", "케이닉 루컨", "스테락의 도전", "파멸의식 고서"];
+const HEAL_ITEMS = ["죽음의 무도", "워모그의 갑옷", "무덤꽃", "갈라진 하늘", "황혼과 새벽", "꽃피는 새벽의 검"];
+
+test("아이템 자기 보호막은 회복과 따로 센다 (치유 감소가 막는 건 회복뿐)", () => {
+  const c = champ("Jinx");
+  for (const n of SHIELD_ITEMS) {
+    const m = ev(c, [item(n)]).m;
+    assert.ok(m.itemSelfShield > 0, `${n}: 보호막이 안 잡혀요 (${m.itemSelfShield})`);
+    assert.equal(m.itemSelfHeal, 0, `${n}: 보호막인데 회복으로 셌어요 (${m.itemSelfHeal})`);
+  }
+  for (const n of HEAL_ITEMS) {
+    const m = ev(c, [item(n)]).m;
+    assert.ok(m.itemSelfHeal > 0, `${n}: 회복이 안 잡혀요 (${m.itemSelfHeal})`);
+    assert.equal(m.itemSelfShield, 0, `${n}: 회복인데 보호막으로 셌어요 (${m.itemSelfShield})`);
+  }
+});
+
+// 분리해도 버티는 힘(EHP)은 그대로여야 한다: extraHp 는 itemSelfHp(합)를 쓰므로 합이 깨지지 않는지 본다
+test("보호막을 갈라도 자기 생존력 계산은 그대로: itemSelfHp = 자기 회복 + 자기 보호막", () => {
+  for (const id of ["Jinx", "Garen", "Soraka", "Darius", "Lux"]) {
+    const c = champ(id);
+    for (const n of [...SHIELD_ITEMS, ...HEAL_ITEMS]) {
+      const m = ev(c, [item(n)]).m;
+      near(m.itemSelfHp, (m.itemSelfHeal || 0) + (m.itemSelfShield || 0), 1e-9, `${id}/${n}`);
+    }
+  }
+});

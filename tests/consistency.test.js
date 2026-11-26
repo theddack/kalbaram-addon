@@ -11,12 +11,13 @@ const setup = async () => {
   const item = (n) => p.data.items.find((i) => i.name === n);
   const isAP = (n) => ((item(n) || {}).tags || {}).AP >= 0.5;
   const isAD = (n) => ((item(n) || {}).tags || {}).AD >= 0.5;
-  // 흡혈 아이템을 산 적 = 회복 많음 (enemyInfo healItem)
+  // 회복 많음 판정은 v0.1.95 Phase 4 C4 부터 '추천 점수가 쓰는 회복 추정값'이다 (흡혈 아이템 개수가 아니라).
+  // 흡혈 아이템 한두 개로는 추정 회복량이 기준(회복이 있는 챔피언의 중앙값 2명분)에 못 미친다 → 적 전원에게 3개씩 준다
   const vamp = p.data.items.filter((i) => i.kind === "legendary" && (i.tags.VAMP || 0) >= 0.5).map((i) => i.id);
   const live = (champion, extra = {}) => p.w.applyLive({ enabled: true, inGame: true, champion, level: 14, gold: 0, gameTime: 700, items: [],
     enemies: ["Darius", "Fiora", "Lux", "Ahri", "Malphite"], ...extra });
-  const healers = (aug = {}) => ["Darius", "Fiora", "Lux", "Ahri", "Malphite"].map((c, i) => ({ champion: c, level: 14,
-    items: i < 2 ? [vamp[0], vamp[1]].filter(Boolean) : [], augments: aug[c] || [] }));
+  const healers = (aug = {}) => ["Darius", "Fiora", "Lux", "Ahri", "Malphite"].map((c) => ({ champion: c, level: 14,
+    items: vamp.slice(0, 3), augments: aug[c] || [] }));
   const pick = (name) => p.w.applyAug({ offers: null, seq: 1, picked: name, pickedFrom: [name, null, null], pickSeq: (p.__ps = (p.__ps || 0) + 1) });
   const advice = () => { p.w.renderItemList(); p.w.sendOverlay(); return (sent.at(-1).enemy || {}).advice || []; };
   return { p, sent, item, isAP, isAD, live, healers, pick, advice };
@@ -46,17 +47,36 @@ test("R1b 저항 조언도 증강 유형을 따른다: 럭스 + 마법사 (물�
   p.w.close();
 });
 
-test("R2 조언이 권한 대응 아이템이 다음 구매에 들어간다 (완성 빌드 후보에 없어도): 가렌 vs 회복 많은 적", async () => {
-  const { p, sent, live, healers, advice } = await setup();
+// v0.1.95 Phase 4 C5 (2026-11-26): 예전 R2 는 '조언이 권한 아이템이 다음 구매에 들어간다'였다.
+// 그 강제 삽입이 점수 근거 없는 추천을 만들어 없앴다 → 이제 볼 것은 '조언이 아이템을 밀어 넣지 않는가'다.
+test("R2 조언은 점수를 설명만 하고 다음 구매에 아이템을 밀어 넣지 않는다: 가렌 vs 회복 많은 적", async () => {
+  const { p, live, healers, advice } = await setup();
   live("Garen", { enemyBuilds: healers() });
-  const adv = advice().find((l) => /회복/.test(l)) || "";
-  const hud = (sent.at(-1).hud || []).join("\n");
-  // 조언에 나온 이름(완성품 또는 부품)이 다음 구매·지금 살 것 줄 어디에도 없으면 조언과 구매가 따로 논다
-  const parts = Object.values(p.data.parts || {}).map((x) => x.name);
-  const named = [...p.data.items.map((i) => i.name), ...parts].filter((n) => adv.includes(n));
-  assert.ok(named.length, `조언에 아이템 이름이 없음: ${adv}`);
-  const buyLines = hud.split("\n").filter((l) => /다음 구매|지금/.test(l)).join(" / ");
-  assert.ok(named.some((n) => buyLines.includes(n)), `조언(${named.join("·")})이 다음 구매·지금 살 것(${buyLines})에 없음`);
+  const adv = advice();
+  assert.ok(adv.some((l) => /회복 많음/.test(l)), `회복 조언이 없음: ${adv.join(" / ")}`);
+  // 다음 구매 줄에 조언 이유 표가 붙은 자리가 없어야 한다 (점수로 올라온 '적 대응'은 그대로 둔다)
+  const rows = p.qa("#next-buy .next-row").map((e) => e.dataset.label || "");
+  assert.ok(rows.length, "다음 구매가 비었다");
+  const ADV = ["치유 감소", "관통", "방어력", "마법 저항", "보호막 감소", "공속 대응", "군중 제어 대응"];
+  for (const r of rows) for (const w of ADV) assert.ok(!r.includes(`(${w})`), `${r} 에 조언 표가 붙었다`);
+  p.w.close();
+});
+
+test("R2b 계산에 안 들어가는 대응은 조언 줄에 그렇게 적고, 다음 구매·바꾸기에는 안 민다 (C5)", async () => {
+  const { p, live, advice } = await setup();
+  // 보호막 아이템을 3개 이상 산 적 → '보호막 감소' 조언 (칼바람 보호막 감소 수치가 0% 라 점수에는 못 들어간다)
+  const shield = p.data.items.filter((i) => i.kind === "legendary" && (i.effects || []).some((x) => x && x.kind === "shield")).map((i) => i.id);
+  const foes = ["Darius", "Fiora", "Lux", "Ahri", "Malphite"];
+  live("Garen", { enemyBuilds: foes.map((c) => ({ champion: c, level: 18, items: shield.slice(0, 3), augments: [] })) });
+  const adv = advice();
+  assert.ok(adv.some((l) => /계산에는 안 들어감/.test(l)), `계산 밖 표시가 없음: ${adv.join(" / ")}`);
+  // 계산 밖 대응은 '6칸 바꾸기' 이유로도 나오지 않는다 (6칸을 채우고 확인)
+  const six = p.data.items.filter((i) => i.kind === "legendary").slice(0, 5).map((i) => i.id)
+    .concat(p.data.items.filter((i) => i.kind === "boots")[0].id);
+  live("Garen", { items: six, level: 18, enemyBuilds: foes.map((c) => ({ champion: c, level: 18, items: shield.slice(0, 3), augments: [] })) });
+  p.w.renderItemList();
+  const sw = p.w.swapAdvice();
+  if (sw && sw.why) assert.ok(["치유 감소", "관통", "방어력", "마법 저항"].includes(sw.why), `계산 밖 대응으로 바꾸라고 한다: ${sw.why}`);
   p.w.close();
 });
 

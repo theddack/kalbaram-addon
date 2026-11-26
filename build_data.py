@@ -769,6 +769,8 @@ def resolve_rule_stats(rules, aug_spells):
         for key, v in spec.items():
             if isinstance(v, (int, float, bool)):
                 out[key] = v
+            elif key == "_shred":  # C9-A3 중첩형 저항 감소 규칙: 숫자 해석 없이 그대로 넘긴다 (stats.js 가 푼다)
+                out[key] = v
             elif isinstance(v, str):
                 neg = v.startswith("-")
                 val = calc.value(v.lstrip("-"), 1)
@@ -1118,9 +1120,10 @@ STAT_LABEL = {
     "slotHaste": "스킬별 가속", "onhitCdr": "적중 시 재사용 대기시간 감소(초)", "refundPct": "재사용 대기시간 반환 비율",
     "refundChanceRanged": "반환 확률(원거리)", "refundChanceMelee": "반환 확률(근접)", "invulnSec": "무적 시간(초)",
     "drSec": "피해 감소 → 무적 환산(초)", "controlSec": "제어력(초)", "controlPerCast": "스킬당 제어력(초)",
-    "fearPerCast": "스킬당 공포(초)", "selfHeal": "생명선 회복", "ehpPhysMult": "받는 물리 피해 감소",
+    "fearPerCast": "스킬당 공포(초)", "selfHeal": "자기 회복", "selfHp": "최대 체력 증가", "selfAbsorb": "주문 방어막·피해 흡수",
+    "ehpPhysMult": "받는 물리 피해 감소",
     "ehpMagFlat": "마법 보호막", "bonusMANAtoAP": "추가 마나 → 주문력", "itemHPbonus": "아이템 체력 추가",
-    "bonusResistMult": "추가 방어·마법 저항", "onhitRemainingPct": "남은 재사용 대기시간 감소",
+    "bonusResistMult": "추가 방어·마법 저항", "bonusARMORmult": "추가 방어력 증가", "bonusMRmult": "추가 마법 저항력 증가", "onhitRemainingPct": "남은 재사용 대기시간 감소",
     "refundAll": "모든 스킬에 반환 적용", "manaToHP": "최대 마나 → 체력", "skillVamp": "스킬 피해 → 회복",
     "healToDamage": "회복 → 피해", "ehpMult": "받는 피해 감소", "shieldMult": "스킬 보호막 강화", "ARPEN": "방어구 관통력", "AStoHASTE": "공격 속도 → 스킬 가속 전환", "HASTEtoDmg": "스킬 가속 1당 피해량", "critToHaste": "치명타 → 스킬 가속",
     "ultRefundEvery": "궁극기 추가 사용 주기(초)", "ultTriggerHaste": "궁극기 후 가속", "ultTriggerDur": "궁극기 후 지속(초)",
@@ -1132,7 +1135,7 @@ STAT_LABEL = {
 # 0~1 비율로 저장하는 키 → 화면에 % 로
 PCT_KEYS = {"AS", "CRIT", "MSP", "LS", "OMNIVAMP", "HSP", "MPENP", "HPmult", "ADmult", "APmult", "ASmult",
             "adaptiveMult", "dmgDealtMult", "skillDmgMult", "effectDmgMult", "refundPct", "refundChanceRanged",
-            "refundChanceMelee", "ehpPhysMult", "itemHPbonus", "bonusResistMult", "onhitRemainingPct",
+            "refundChanceMelee", "ehpPhysMult", "itemHPbonus", "bonusResistMult", "bonusARMORmult", "bonusMRmult", "onhitRemainingPct",
             "bonusMANAtoAP", "ultTriggerMs", "manaToHP", "skillVamp", "healToDamage", "ehpMult", "shieldMult", "ARPEN", "skillCritDmg", "effectCritDmg", "allyHealMult", "allyShieldMult", "dmgToAllyHeal", "HASTEtoDmg"}
 
 
@@ -1808,6 +1811,84 @@ def main():
                         stack_warn.append(f"{c['name']}: effectTarget {slot} '{nm}' 효과가 없음")
                     for e in hit:
                         e["target"] = tgt
+        if rc and rc.get("dropEffects"):  # 서로 대안인 피해를 둘 다 세던 자리 (v0.1.95 F5-A, basis 에 근거)
+            # 설명 원문이 '~한 경우' 로 갈라 놓은 값은 함께 들어가지 않는다 (카서스 Q 단일 대상, 럼블 E 위험 상태).
+            # 이름이 비슷하다는 이유로 자동으로 빼지 않는다 — 챔피언·스킬·효과 이름을 규칙에 직접 적은 것만 뺀다.
+            for slot, names in rc["dropEffects"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                if sp is None:
+                    stack_warn.append(f"{c['name']}: dropEffects {slot} 스킬이 없음")
+                    continue
+                for nm in names:
+                    if not any(e.get("name") == nm for e in sp["effects"]):
+                        stack_warn.append(f"{c['name']}: dropEffects {slot} '{nm}' 효과가 없음 (패치로 이름 바뀜?)")
+                sp["effects"] = [e for e in sp["effects"] if e.get("name") not in names]
+        if rc and rc.get("spellCd"):  # 게임 원본에 재사용 대기시간이 아예 없는 스킬 (v0.1.95 F5-D, basis 에 출처)
+            # 데이터에 값이 생기면 그쪽을 쓴다 — 규칙은 0 인 자리만 채운다 (패치로 값이 들어오면 저절로 비켜난다)
+            for slot, vals in rc["spellCd"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                if sp is None:
+                    stack_warn.append(f"{c['name']}: spellCd {slot} 스킬이 없음")
+                    continue
+                if max(sp["cooldown"] or [0]) > 0:
+                    stack_warn.append(f"{c['name']}: spellCd {slot} 데이터에 값이 생겼다 ({sp['cooldown'][:3]}) → 규칙 미적용")
+                    continue
+                sp["cooldownFrom"] = "rules"
+                sp["cooldown"] = [round(float(v), 2) for v in (vals * len(sp["cooldown"]))[:len(sp["cooldown"])]]                     if len(vals) == 1 else [round(float(v), 2) for v in vals]
+        if rc and rc.get("perSecDamage"):  # 값 자체가 '초당 피해' 인 효과 (v0.1.95 F5-E, basis 에 근거)
+            for slot, names in rc["perSecDamage"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                for nm in names:
+                    e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == nm), None)
+                    if e is None:
+                        stack_warn.append(f"{c['name']}: perSecDamage {slot} '{nm}' 효과가 없음")
+                    else:
+                        e["perSec"] = True
+        if rc and rc.get("dotTotal"):  # 몇 초에 걸쳐 들어가는 총량 (v0.1.95 F5-E)
+            for slot, names in rc["dotTotal"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                for nm, spec in names.items():
+                    e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == nm), None)
+                    if e is None:
+                        stack_warn.append(f"{c['name']}: dotTotal {slot} '{nm}' 효과가 없음")
+                    else:
+                        e["dotSec"] = spec["sec"] if isinstance(spec, dict) else spec
+                        if isinstance(spec, dict) and spec.get("needsAuto"):
+                            e["dotNeedsAuto"] = True
+        if rc and rc.get("empowerAttack"):  # 기본 공격을 대체·강화하는 스킬 (v0.1.95 F5-E)
+            for slot, spec in rc["empowerAttack"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == spec["effect"]), None)
+                if e is None:
+                    stack_warn.append(f"{c['name']}: empowerAttack {slot} '{spec['effect']}' 효과가 없음")
+                else:
+                    e["empower"] = {k: v for k, v in spec.items() if k != "effect"}
+        if rc and rc.get("onhitEvery"):  # 몇 번째 기본 공격마다 들어가는 피해 (v0.1.95 F5-C, basis 에 근거)
+            for slot, names in rc["onhitEvery"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                for nm, every in names.items():
+                    e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == nm), None)
+                    if e is None:
+                        stack_warn.append(f"{c['name']}: onhitEvery {slot} '{nm}' 효과가 없음")
+                    else:
+                        e["onhit"], e["every"] = True, every
+        if rc and rc.get("autoReplace"):  # 기본 공격을 대체하는 스킬 (v0.1.95 F5-C, basis 에 근거)
+            for slot, nm in rc["autoReplace"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == nm), None)
+                if e is None:
+                    stack_warn.append(f"{c['name']}: autoReplace {slot} '{nm}' 효과가 없음")
+                else:
+                    e["autoReplace"] = True
+        if rc and rc.get("dpsRate"):  # 장기 초당 피해의 발동 간격 (v0.1.95 F5-B, basis 에 근거)
+            # 게임 파일에 충전 값이 있다고 모두 같게 세지 않는다. 바로 들어가는 피해인 스킬만 규칙에 적어 켠다
+            # (설치물·평타 강화형은 적중 조건이 달라 여기서 켜지 않는다).
+            for slot, how in rc["dpsRate"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                if sp is None or (how == "ammo" and not sp.get("ammo")):
+                    stack_warn.append(f"{c['name']}: dpsRate {slot} '{how}' 에 쓸 값이 없음")
+                    continue
+                sp["dpsRate"] = how
         if rc and rc.get("allyDealt"):  # 아군이 넣는 추가 피해 (나미 E 등): 서포터 자기 피해가 아니라 기준 아군의 적중 피해로 센다 (v0.1.93 P1)
             for slot, names in rc["allyDealt"].items():
                 sp = next((s for s in c["spells"] if s["slot"] == slot), None)
@@ -1825,10 +1906,19 @@ def main():
             c["fightBasis"] = rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if buff_basis:
             c["fightBasis"] = (c.get("fightBasis") or []) + buff_basis
+        if rc and (rc.get("dropEffects") or rc.get("dpsRate") or rc.get("onhitEvery") or rc.get("autoReplace")
+                   or rc.get("spellCd") or rc.get("perSecDamage") or rc.get("dotTotal")
+                   or rc.get("empowerAttack")) and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
+            c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("effectTarget") and not (rc.get("fight") or rc.get("rangeAt18")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("allyBasis"):  # 아군이 넣는 추가 피해(allyDealt)의 근거
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc["allyBasis"]}, {}, "", stack_warn, c["name"])
+        if rc and rc.get("aramOff") and rc["aramOff"].get("temporary"):
+            # 임시 규칙은 원본이 갱신되면 할 일이 없어진다 → 그때 알려서 지우게 한다 (중복 적용 방지, v0.1.95)
+            gone = [k for k in rc["aramOff"]["keys"] if k not in (c.get("aram") or {})]
+            if gone:
+                rule_warn.append(f"{c['name']}: aramOff 임시 규칙이 끌 값이 없다 ({', '.join(gone)}) → 원본이 갱신됐으니 rules.json 에서 지워도 된다")
         if rc and rc.get("aramOff") and c.get("aram"):  # 실게임 능력치 대조로 증강 모드에 없다고 확인한 일반 칼바람 보정
             c["aramOff"] = {k: c["aram"].pop(k) for k in rc["aramOff"]["keys"] if k in c["aram"]}
             c["aramOffWhy"] = rc["aramOff"]["why"]
