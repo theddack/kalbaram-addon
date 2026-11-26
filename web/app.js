@@ -392,6 +392,58 @@ function withNowTarget(fn) {
   St.setTarget({ ...now, bonusHP: St.TARGET.BONUS_HP, HEAL: St.TARGET.HEAL });  // 회복량·추가 체력(치유 감소·거인 학살 근거)은 예상 상대 기준 그대로
   try { return fn(); } finally { St.setTarget(saved); }
 }
+// ---- F11 아군 정보 (2026-11-26): 게임이 실제로 알려 주는 아군 챔피언·레벨·아이템·증강을 추천 엔진 쪽까지 들고 온다.
+// 지금은 '전달과 기록'까지다 — 추천 점수에는 아직 쓰지 않는다 (C9-B 는 수정안 검토 뒤).
+// 확인된 값(게임 데이터)과 추정값(엔진이 계산한 것)을 섞지 않고 따로 적는다.
+// 나는 아군 목록에서 빠져 있다 (desktop.py parse_live) — 내 피해를 아군 몫으로 두 번 세지 않으려는 것이다.
+const allyAugStats = (a) => (a.augments || []).length ? S.augStatsOf(a.augments, state.data.rules, a.champ) : [];
+const ALLY_BIG = 1e6;  // 저항을 아주 크게 해서 피해 유형을 갈라낼 때 쓰는 값 (tools/ally_damage_mix.js 와 같은 방법)
+// 그 아군이 넣는 피해의 물리·마법·고정 비중 (방어 적용 뒤 실제로 들어가는 피해 기준).
+// 기준 상대를 잠깐 바꿔 재고 반드시 되돌린다. 계산 기억(memo) 열쇠에 기준 상대가 들어 있어 캐시는 더럽혀지지 않는다.
+function allyDamageMix(c, level, items, augStats) {
+  const saved = savedTarget();
+  const at = (armor, mr) => {
+    St.setTarget({ ...saved, ARMOR: armor, MR: mr });
+    const m = St.evaluate(c, level, items, augStats, { aram: state.aram }).m;
+    return { dps: (m.autoDps || 0) + (m.skillDps || 0), combo: m.combo || 0 };
+  };
+  try {
+    const all = at(saved.ARMOR, saved.MR);
+    const tr = at(ALLY_BIG, ALLY_BIG).dps;
+    const phys = Math.max(0, at(saved.ARMOR, ALLY_BIG).dps - tr);
+    const mag = Math.max(0, at(ALLY_BIG, saved.MR).dps - tr);
+    const sum = phys + mag + Math.max(0, tr);
+    const r3 = (x) => Math.round(x * 1000) / 1000;
+    return { dps: Math.round(all.dps), combo: Math.round(all.combo),
+      phys: sum > 0 ? r3(phys / sum) : 0, magic: sum > 0 ? r3(mag / sum) : 0, trueDmg: sum > 0 ? r3(Math.max(0, tr) / sum) : 0 };
+  } finally { St.setTarget(saved); }
+}
+// 아군 한 명 한 명과 팀 합계. members[].seen = 게임이 알려 준 값, members[].calc = 엔진이 낸 추정값
+function allyInfo() {
+  const b = state.allyBuilds || [];
+  if (!b.length) return null;
+  const members = b.map((a) => {
+    const level = Math.max(1, Math.min(18, a.level || 1));
+    const calc = allyDamageMix(a.champ, level, a.items, allyAugStats(a));
+    return {
+      seen: { champ: a.champ.id, name: a.champ.name, level, items: a.items.map((i) => i.name),
+        augments: a.augments.map((x) => x.name),
+        // 증강은 소환사 주문 칸에 보이는 것만 확인된다 (적과 같은 한계) — 안 보이는 증강은 '없음'이 아니라 '모름'이다
+        augmentsKnown: "spell" },
+      calc,
+    };
+  });
+  const dps = members.reduce((x, m) => x + m.calc.dps, 0);
+  const mix = { phys: 0, magic: 0, trueDmg: 0 };
+  for (const m of members) for (const k of Object.keys(mix)) mix[k] += m.calc[k] * (dps > 0 ? m.calc.dps / dps : 1 / members.length);
+  const r3 = (x) => Math.round(x * 1000) / 1000;
+  return { n: members.length, members,
+    // 팀 합계는 추정값이다 (아군이 실제로 얼마나 때리는지는 모른다)
+    calc: { dps: Math.round(dps), combo: members.reduce((x, m) => x + m.calc.combo, 0), phys: r3(mix.phys), magic: r3(mix.magic), trueDmg: r3(mix.trueDmg) },
+    // 아군 5명 중 몇 명을 봤나 (나를 뺀 4명이 정상). 적으면 일부만 확인된 상태다
+    full: members.length >= 4 };
+}
+
 // 적이 실제로 산 방어 아이템 수 (조언 근거: 예상 빌드가 아니라 산 것만)
 function enemyResistItems() {
   const n = { ARMOR: 0, MR: 0 };
@@ -1633,7 +1685,9 @@ function sendOverlay(src) {
   } : null;
   const sw = swapAdvice();
   const swap = sw && !sw.review ? { sell: sw.sell.id, buy: sw.buy.id, sellName: sw.sell.name, buyName: sw.buy.name, cost: sw.cost, ready: sw.short === 0, why: sw.why || null } : null;
-  api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, box: state.boxWhy || null, src: src || null,
+  // 기록용 아군 정보 (F11): 본 값과 추정값을 갈라 둔다. 추천 점수에는 아직 안 쓴다
+  const ally = state.allyInfo || null;
+  api.set_overlay({ cards: overlayCards, hud, swap, timers: timersPayload(), enemy, ally, box: state.boxWhy || null, src: src || null,
     calcMs: state.calcMs, calcSeq: state.calcSeq, statCheck: statCheck(), pickFix: state.pickFix || undefined,
     // 상점 창 안에서 자리를 찾아볼 아이템 (시험: 기록만). 다음 구매 위 3개 + 바꿀 때 살 것
     shopMarks: [...new Set([...document.querySelectorAll("#next-buy .next-row")].map((e) => e.dataset.id).filter(Boolean).slice(0, 3)
@@ -2296,6 +2350,7 @@ let liveLast = "";
 let liveEnded = false;
 let liveShop = false, goldDrawnAt = 0, boxSent = null;
 let enemyBuildKey = "";
+let allyBuildKey = "";  // F11: 아군 챔피언·레벨·아이템·증강이 바뀔 때만 다시 센다
 const BUY_SHOW = 6;  // 초. 아이템을 산 직후 상자를 띄우는 시간 (상점 창 인식이 안 돼도)
 const PICK_SHOW = 8;  // 초. 증강을 고른 직후 그 증강 기준 다음 구매 상자를 띄우는 시간 (상점 창 인식이 안 돼도)
 // 증강을 고르면 그 증강 기준 다음 구매(첫 완성 아이템)를 잠깐 띄운다. 상자는 상점이 열린 걸 알아봤을 때·죽었을 때·산 직후에만 떠서,
@@ -2334,11 +2389,13 @@ function applyLive(L) {
     el.textContent = "게임 대기 중";
     if (state.gold != null) { state.gold = null; state.inventory = []; state.enemies = []; renderBuyNow(); }
     if ((state.enemyBuilds || []).length) { state.enemyBuilds = []; enemyBuildKey = ""; applyEnemyTarget(); }
+    if ((state.allyBuilds || []).length) { state.allyBuilds = []; state.allyInfo = null; allyBuildKey = ""; }  // F11: 이전 판 아군이 남지 않게
     if (liveLast) { liveLast = ""; liveEnded = true; }  // 게임이 끝남 → 다음 게임은 새로 시작
     return;
   }
   if (liveEnded) {  // 같은 챔피언으로 다음 게임을 해도 고른 증강·선택지는 비운다
     liveEnded = false;
+    state.allyBuilds = []; state.allyInfo = null; allyBuildKey = "";  // F11: 아군도 새 판 기준으로
     augTimers = {};
     state.chosen = [];
     resetAnvil();
@@ -2423,6 +2480,22 @@ function applyLive(L) {
     const lv = eb.map((x) => `${x.level}/${x.kills}`).join(",");
     if (lv !== (state.enemyBuilds || []).map((x) => `${x.level}/${x.kills}`).join(",")) { state.enemyBuilds = eb; showTarget(); }
   }
+  // 아군이 산 아이템·레벨·보이는 증강 (F11): 적과 같은 방식으로 읽는다. 바뀔 때만 다시 센다.
+  // 추천 점수에는 아직 넣지 않는다 (C9-B 승인 전) — 화면·기록에만 쓴다
+  const ab = (L.allyBuilds || []).map((x) => ({
+    champ: d.champions.find((c) => c.id.toLowerCase() === String(x.champion).toLowerCase()),
+    level: x.level || 1,
+    items: (x.items || []).map((id) => d.items.find((i) => i.id === String(id))).filter((i) => i && (i.kind === "legendary" || i.kind === "boots"))
+      .filter((it, i, arr) => arr.findIndex((y) => y.name === it.name) === i).slice(0, S.SLOTS),
+    augments: (x.augments || []).map(spellAugment).filter(Boolean),
+  })).filter((x) => x.champ);
+  const abKey = JSON.stringify(ab.map((x) => [x.champ.id, x.level, x.items.map((i) => i.id).sort(), x.augments.map((a) => a.id)]));
+  const allyChanged = abKey !== allyBuildKey;
+  if (allyChanged) {
+    allyBuildKey = abKey;
+    state.allyBuilds = ab;
+    state.allyInfo = allyInfo();  // 아군이 바뀔 때만 계산한다 (아이템 후보마다 다시 세지 않는다)
+  }
   trackTimers(L);  // 증강 쿨타임: 체력은 매번 바뀌니 아래 '같은 값이면 그만' 전에
   if (checkPickByStats()) {
     // 고른 증강을 바꿨다 → 아래 '같은 값이면 그만'에 걸리지 않게 전부 다시 계산
@@ -2443,6 +2516,8 @@ function applyLive(L) {
     if (invChanged && state.champ) { renderNextBuy(itemRanking()); renderChosenItems(); }
     else if (goldChanged) { renderBuyNow(); renderChosenItems(); sendOverlay("gold"); }
     else if (boxChanged) sendOverlay("box");
+    // F11: 아군만 바뀐 경우 — 추천 계산은 아군을 쓰지 않으므로 다시 계산하지 않고 기록만 새로 보낸다
+    else if (allyChanged) sendOverlay("ally");
     return;
   }
   const sameBuild = liveLast && JSON.stringify(JSON.parse(liveLast).filter((_, i) => i !== 1)) === JSON.stringify(JSON.parse(key).filter((_, i) => i !== 1));

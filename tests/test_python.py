@@ -1597,6 +1597,23 @@ class LiveEnemies(unittest.TestCase):
         self.assertEqual(st["champion"], "MissFortune")
         self.assertEqual(sorted(st["enemies"]), ["Chogath", "Jax", "Lissandra", "Nidalee", "Velkoz"])  # 내 팀(CHAOS)이 아닌 ORDER
 
+    def test_ally_builds_exclude_me(self):
+        """F11: 아군이 산 아이템·레벨·보이는 증강도 넘긴다. 나는 빠진다 (내 피해를 아군 몫으로 두 번 세지 않게)"""
+        raw = json.loads((ROOT / "tests" / "data" / "live_missfortune_4s.json").read_text(encoding="utf-8"))
+        st = desktop.parse_live(raw)
+        ids = [b["champion"] for b in st["allyBuilds"]]
+        self.assertNotIn("MissFortune", ids, "내가 아군 목록에 들어가면 안 된다")
+        self.assertEqual(sorted(ids), sorted(c for c in st["allies"] if c != "MissFortune"))
+        for b in st["allyBuilds"]:
+            self.assertIn("level", b)
+            self.assertIsInstance(b["items"], list)
+            self.assertIsInstance(b["augments"], list)
+
+    def test_ally_builds_empty_without_team(self):
+        """아군 정보가 없는 데이터(관전·혼자)에서도 빈 목록이면 된다 (지어내지 않는다)"""
+        st = desktop.parse_live(self.SPECTATE)
+        self.assertEqual(st["allyBuilds"], [])
+
     SPECTATE = {"activePlayer": {"error": "Spectator mode doesn't currently support this feature"},
                 "allPlayers": [{"rawChampionName": "game_character_displayname_Ahri", "team": "ORDER"},
                                {"rawChampionName": "game_character_displayname_Braum", "team": "CHAOS"}],

@@ -260,6 +260,12 @@ def parse_live(raw):
     enemies = [cid(p) for p in foes]
     # 아군 챔피언 (나 포함): Tab 점수판에서 증강 아이콘을 어느 줄 사람 것인지 가릴 때 (한 줄에 두 팀이 나란한 배치)
     allies = [cid(p) for p in players if mine and p.get("team") == mine.get("team") and cid(p)]
+    # 아군이 산 아이템·레벨 (F11, 2026-11-26): 적과 똑같이 Tab 점수판에 보이는 정보다. 나는 뺀다 (내 피해를 아군 몫으로 두 번 세지 않게).
+    # 증강은 소환사 주문 칸에 보이는 것만 (적과 같은 한계) — 보이지 않는 증강은 없는 것으로 둔다
+    mates = [p for p in players if mine and p is not mine and p.get("team") == mine.get("team") and cid(p)]
+    ally_builds = [{"champion": cid(p), "level": p.get("level"), "kills": (p.get("scores") or {}).get("kills") or 0,
+                    "items": [str(i.get("itemID")) for i in p.get("items") or [] if i.get("itemID")],
+                    "augments": spell_augments(p)} for p in mates]
     # 적이 산 아이템·레벨 (게임 안 Tab 점수판에 보이는 정보): 상대 능력치·관통·치유 감소 판단에 쓴다
     enemy_builds = [{"champion": cid(p), "level": p.get("level"), "kills": (p.get("scores") or {}).get("kills") or 0,
                      "items": [str(i.get("itemID")) for i in p.get("items") or [] if i.get("itemID")],
@@ -283,6 +289,7 @@ def parse_live(raw):
         "augmentFields": find_keys(raw, r"augment"),
         "enemies": enemies,
         "allies": allies,
+        "allyBuilds": ally_builds,
         "team": mine.get("team") if mine else None,  # ORDER(블루) · CHAOS(레드): Tab 점수판은 블루팀이 왼쪽
         "enemyBuilds": enemy_builds,
         "spellAugments": spell_augments(mine) if mine else [],
@@ -1045,6 +1052,9 @@ class Api:
             # 상대 아이템 반영: 적이 산 아이템으로 잡은 상대 능력치와 조언 (바뀔 때만)
             if payload.get("enemy"):
                 self._rec.event("enemy", payload["enemy"], dedupe=True)
+            # 아군 정보 (F11): 이번 판부터 남긴다. 예전 기록에는 없고, 없는 판은 그대로 둔다 (지어내지 않는다)
+            if payload.get("ally"):
+                self._rec.event("ally", payload["ally"], dedupe=True)
             timers = [{"name": t.get("name"), "kind": t.get("kind"), "picked": round(t.get("base") or 0),
                        "readyAt": round(t.get("readyAt") or 0), "hp": t.get("trigHp")} for t in (payload.get("timers") or [])]
             if timers:

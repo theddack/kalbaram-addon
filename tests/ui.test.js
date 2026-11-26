@@ -529,6 +529,80 @@ test("아이템이 있어야 하는 증강(강철 같은 심장)을 고르면 �
   assert.deepEqual(p.errors, []);
 });
 
+// ---- v0.1.95 Phase 4 F11: 실제 아군 정보 연결 (전달·기록까지. 추천 점수에는 아직 안 쓴다)
+// 화면 안의 state 는 밖에서 못 읽으므로 기록으로 나가는 값(set_overlay 의 ally)으로 본다
+test("F11 아군 정보: 게임이 알려 준 아군을 본 값과 추정값으로 갈라 내보낸다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const allyBuilds = [
+    { champion: "Jhin", level: 16, items: ["3006", "3031"], augments: ["GrowthSpurt"] },
+    { champion: "Lux", level: 15, items: ["3020", "6655"] },
+    { champion: "Garen", level: 16, items: ["3047", "3071"] },
+    { champion: "Sona", level: 14, items: ["3504"] }];
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Ashe", level: 16, items: ["3006"],
+    enemies: ["Velkoz", "Rammus"], enemyBuilds: [{ champion: "Velkoz", level: 16, items: [] }], allyBuilds });
+  await until(() => sent.length && sent.at(-1).ally);
+  const info = sent.at(-1).ally;
+  assert.equal(info.n, 4, "나를 뺀 아군 4명");
+  assert.ok(info.full, "4명이면 다 본 것");
+  assert.deepEqual(info.members.map((m) => m.seen.champ), ["Jhin", "Lux", "Garen", "Sona"]);
+  assert.ok(!info.members.some((m) => m.seen.champ === "Ashe"), "내가 아군 목록에 들어가면 피해를 두 번 세요");
+  const jhin = info.members[0];
+  assert.deepEqual(jhin.seen.items, ["광전사의 군화", "무한의 대검"], "본 값: 산 아이템 이름");
+  assert.equal(jhin.seen.level, 16);
+  assert.equal(jhin.seen.augmentsKnown, "spell", "증강은 소환사 주문 칸에 보이는 것만 확인돼요");
+  assert.ok(jhin.calc.dps > 0 && Number.isFinite(jhin.calc.dps), "추정값: 초당 피해");
+  for (const m of info.members) {
+    const sum = m.calc.phys + m.calc.magic + m.calc.trueDmg;
+    assert.ok(Math.abs(sum - 1) < 0.01, `${m.seen.champ} 비중 합 ${sum}`);
+  }
+  const byId = Object.fromEntries(info.members.map((m) => [m.seen.champ, m.calc]));
+  assert.ok(byId.Jhin.phys > byId.Lux.phys, "진이 룩스보다 물리 비중이 높아야 해요");
+  assert.ok(byId.Lux.magic > byId.Jhin.magic, "룩스가 진보다 마법 비중이 높아야 해요");
+  assert.ok(info.calc.dps > 0 && Math.abs(info.calc.phys + info.calc.magic + info.calc.trueDmg - 1) < 0.01, "팀 합계도 추정값");
+  p.w.close();
+});
+
+test("F11 아군 정보: 기준 상대를 되돌려 추천이 흔들리지 않는다", async () => {
+  const p = await loadPage({ simple: true });
+  p.w.pywebview = { api: { set_overlay: () => {} } };
+  const T = () => [p.w.Stats.TARGET.ARMOR, p.w.Stats.TARGET.MR, p.w.Stats.TARGET.HP, p.w.Stats.TARGET.BONUS_HP, p.w.Stats.TARGET.HEAL];
+  const before = T();
+  p.w.applyLive({ enabled: true, inGame: true, champion: "Ashe", level: 16, items: ["3006"], enemies: [],
+    allyBuilds: [{ champion: "Lux", level: 16, items: ["6655"] }] });
+  assert.deepEqual(T(), before, "아군 피해 유형을 재려고 바꾼 기준 상대를 되돌려야 해요");
+  p.w.close();
+});
+
+test("F11 아군 정보: 없거나 일부만 있어도 그대로 돌아가고, 판이 끝나면 지운다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const live = (x) => p.w.applyLive({ enabled: true, inGame: true, champion: "Ashe", level: 16, items: ["3006"], enemies: [], ...x });
+  // 아군 정보가 아예 없음: 추천은 그대로 나온다
+  live({});
+  await until(() => sent.length);
+  assert.equal(sent.at(-1).ally, null, "없으면 비워 보낸다");
+  assert.ok(p.text("#next-buy").length > 0, "아군 정보가 없어도 다음 구매는 나와야 해요");
+  // 일부만 (2명) · 아이템이 비어 있어도
+  live({ allyBuilds: [{ champion: "Lux", level: 9, items: [] }, { champion: "Garen", level: 9, items: [] }] });
+  await until(() => sent.at(-1).ally);
+  assert.equal(sent.at(-1).ally.n, 2);
+  assert.equal(sent.at(-1).ally.full, false, "4명이 안 되면 일부만 본 것");
+  const dps0 = sent.at(-1).ally.calc.dps;
+  // 아군이 아이템을 사면 다시 센다
+  live({ allyBuilds: [{ champion: "Lux", level: 9, items: ["6655"] }, { champion: "Garen", level: 9, items: [] }] });
+  await until(() => sent.at(-1).ally && sent.at(-1).ally.calc.dps !== dps0);
+  assert.ok(sent.at(-1).ally.calc.dps > dps0, "아이템을 사면 추정 피해가 올라야 해요");
+  // 게임이 끝났다 들어오면(재접속·다음 판) 이전 아군이 남지 않는다
+  p.w.applyLive({ enabled: true, inGame: false });
+  live({ allyBuilds: [{ champion: "Sona", level: 5, items: [] }] });
+  await until(() => sent.at(-1).ally && sent.at(-1).ally.n === 1);
+  assert.deepEqual(sent.at(-1).ally.members.map((m) => m.seen.champ), ["Sona"], "이전 판 아군(룩스·가렌)이 남으면 안 돼요");
+  p.w.close();
+});
+
 test("적 대응: 적이 산 아이템 때문에 순위가 크게 오른 아이템·증강을 표시한다 (케일 판 실제 적 아이템)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
