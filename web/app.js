@@ -1114,6 +1114,8 @@ const TRIGGER_TIP = {
 // 능력치(규칙 statsResolved) → 쓰는 법. 효과 종류 태그보다 먼저 본다 (태그는 '적 방어력 감소'도 방어력으로 적혀 있다)
 const STAT_TIP = [
   [["ARPEN", "MPENP", "LETHALITY", "MPEN", "trueBonus"], "단단한 적(탱커)을 상대로 특히 세요."],
+  // 중첩형 저항 감소 (C9-A3 _shred): 때릴수록 쌓이니 길게 싸울수록 좋다
+  [["_shred", "armorShred", "mrShred", "armorFlatShred", "mrFlatShred"], "때릴수록 적의 방어력·마법 저항력이 깎이니 길게 붙어 싸우세요."],
   [["HSP", "skillVamp", "OMNIVAMP", "LS", "selfHeal", "selfHp", "selfAbsorb", "shieldMult"], "오래 붙어 싸울수록 이득이에요."],
   [["controlSec", "fearPerCast"], "적을 묶고 아군과 같이 들어가세요."],
   [["HASTE", "basicHaste", "slotHaste", "AStoHASTE", "APtoHASTE", "refundPct", "refundAll"], "스킬을 쉬지 않고 돌리세요."],
