@@ -71,3 +71,26 @@ console.log("\n=== 6. 기본 저항은 올라가지 않아야 한다");
 const g0 = run("Garen", []), g1 = run("Garen", ["Fortified"]);
 const baseArmor0 = g0.t.ARMOR - g0.t.bonusARMOR, baseArmor1 = g1.t.ARMOR - g1.t.bonusARMOR;
 console.log(`  기본 방어력 ${r1(baseArmor0)} → ${r1(baseArmor1)} ${Math.abs(baseArmor0 - baseArmor1) < 1e-9 ? "(같다 ✔)" : "(다르다 ✘)"}`);
+
+console.log("\n=== 7. 해신 작쇼(추가 저항 30% 증가)와 겹칠 때 — 합연산으로 센다");
+const JAK = "해신 작쇼";
+const show = (label, ids, items) => {
+  const x = run("Garen", ids, items);
+  return { label, bonusARMOR: r1(x.t.bonusARMOR), bonusMR: r1(x.t.bonusMR), ehp: Math.round(x.m.ehp) };
+};
+const rows = [
+  show("아무것도 없음", [], ["판금 장화"]),
+  show("해신 작쇼만", [], ["판금 장화", JAK]),
+  show("요새화만", ["Fortified"], ["판금 장화"]),
+  show("해신 작쇼 + 요새화", ["Fortified"], ["판금 장화", JAK]),
+  show("해신 작쇼 + 셋 다", ["Fortified", "MysticGuard", "SteadfastPresence"], ["판금 장화", JAK]),
+];
+for (const r of rows) console.log(`  ${r.label}: 추가 방어력 ${r.bonusARMOR} · 추가 마법 저항력 ${r.bonusMR} · 버티는 힘 ${r.ehp}`);
+// 합연산(지금)과 곱연산을 견준다: 배수를 걸기 전 '추가 방어력' 을 되돌려 놓고 두 방식으로 계산한다
+const jakOnly = run("Garen", [], ["판금 장화", JAK]).t.bonusARMOR;   // 배수 1.3 만 걸린 값
+const raw = jakOnly / 1.3;                                           // 배수 전 추가 방어력
+const both = run("Garen", ["Fortified"], ["판금 장화", JAK]).t.bonusARMOR;
+const add = (raw + 20) * (1 + 0.3 + 0.25), mul = (raw + 20) * 1.3 * 1.25;  // 요새화는 방어력 20 도 준다
+console.log(`  배수 전 추가 방어력 ${r1(raw)} + 요새화 20 → 합연산 ${r1(add)} · 곱연산 ${r1(mul)} (차이 ${r1(mul - add)})`);
+console.log(`  지금 값 ${r1(both)} = 합연산`);
+console.log("  ※ 두 효과가 함께 어떻게 곱해지는지는 원본에 없다. 같은 능력치에 걸리는 % 증가를 더해서 세는 기존 방식(bonusResistMult)과 맞췄다.");
