@@ -1321,7 +1321,8 @@ test("E2 죽음의 순환: 아군에게 준 회복으로는 피해가 나지 않
   const fx = b.effects.find((e) => e.src === "회복 → 피해");
   assert.ok(fx, "회복 → 피해 효과가 있어야 해요");
   assert.ok(fx.value < a.heal * 0.7, `아군에게 준 회복까지 피해로 셌다: ${fx.value} (아군 회복 ${Math.round(a.heal)})`);
-  near(fx.value, a.selfHealAll * 0.7, a.selfHealAll * 0.05, "자기 회복의 70% 여야 해요");
+  // v0.1.95 Phase 5: 원본이 "회복하거나 재생하면" 이라 체력 재생(regenHeal)도 함께 센다
+  near(fx.value, (a.selfHealAll + a.regenHeal) * 0.7, a.selfHealAll * 0.05, "자기 회복 + 체력 재생의 70% 여야 해요");
 });
 
 test("E1+E2 중복 없음: 흡수와 죽음의 순환을 같이 골라도 회복을 한 번만 센다", () => {
@@ -1329,7 +1330,7 @@ test("E1+E2 중복 없음: 흡수와 죽음의 순환을 같이 골라도 회복
   const v = mOf(lux, [AUG_VAMP]), both = mOf(lux, [AUG_VAMP, AUG_CIRCLE]);
   const fx = both.effects.find((e) => e.src === "회복 → 피해");
   assert.ok(fx, "회복 → 피해 효과가 있어야 해요");
-  near(fx.value, v.selfHealAll * 0.7, v.selfHealAll * 0.02, "자기 회복 합의 70% (두 번 세면 두 배가 된다)");
+  near(fx.value, (v.selfHealAll + v.regenHeal) * 0.7, v.selfHealAll * 0.02, "자기 회복 합 + 체력 재생의 70% (두 번 세면 두 배가 된다)");
 });
 
 test("E2 순환 참조 없음: 죽음의 순환이 낸 피해로 다시 흡혈하지 않는다", () => {
@@ -1674,7 +1675,7 @@ test("F12 감시의 장막: 주문 방어막은 회복이 아니라 피해 흡�
 test("E4·F12 죽음의 순환은 '실제 자기 회복' 만 피해로 바꾼다", () => {
   const belt = e4m("Rammus", [BELT], ["ARAM_CircleofDeath"]);
   const rate = d.rules.augments.ARAM_CircleofDeath.statsResolved.healToDamage;
-  near(e4dmg(belt), belt.selfHealAll * rate, 1e-9, "자기 회복 몫만");
+  near(e4dmg(belt), (belt.selfHealAll + belt.regenHeal) * rate, 1e-9, "자기 회복 + 체력 재생 몫만 (최대 체력 증가·주문 방어막은 빼고)");
   assert.ok(Math.abs(e4dmg(belt) - (belt.selfHealAll + belt.selfHpAll) * rate) > 100, "최대 체력 증가까지 세면 안 돼요");
   // 주문 방어막만 있으면 피해로 바뀌는 몫이 없다
   const bare = e4m("Rammus", [], ["ARAM_CircleofDeath"]);

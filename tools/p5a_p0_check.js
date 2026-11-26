@@ -84,8 +84,11 @@ console.log("== 5. 히드라 계열 쪼개기 — 근접·원거리 계수 ==");
     const it = item(n);
     const melee = ev(champ("Garen"), [it]).m, mBase = ev(champ("Garen"), []).m;
     const ranged = ev(champ("Jinx"), [it]).m, rBase = ev(champ("Jinx"), []).m;
-    const fx = (m) => (m.effects || []).filter((e) => /Cleave/i.test(e.src || "") || e.src === n);
+    // 쪼개기(기본 지속) 줄만 본다 — 사용 효과(피의 초승달·분쇄 충격파·이단 참격)는 같은 src 로 따로 들어간다
+    const CLEAVE = { "굶주린 히드라": "RavenousCrescent", "발걸음 분쇄기": "BreakingShockwave", "불경한 히드라": "HereticalCleave" };
+    const fx = (m) => (m.effects || []).filter((e) => e.src === n && e.trigger === "onhit");
     const mv = fx(melee).reduce((a, e) => a + (e.value || 0), 0), rv = fx(ranged).reduce((a, e) => a + (e.value || 0), 0);
+    void CLEAVE;
     console.log(`  ${n}: 근접(가렌) 쪼개기 한 대 ${r2(mv)} · 원거리(징크스) ${r2(rv)}`);
     ok(mv > 0 && rv > 0, `${n} 쪼개기가 계산에 들어간다`);
     ok(near(mv, ev(champ("Garen"), [it]).t.AD * 0.4, 0.03), `${n} 근접 계수 40% 공격력`);
