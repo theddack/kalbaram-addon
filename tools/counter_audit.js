@@ -8,7 +8,9 @@ const ROOT = path.join(__dirname, "..");
 const d = require(path.join(ROOT, "web", "data.json"));
 const RI = (d.rules && d.rules.items) || {};
 const text = (i) => JSON.stringify([i.desc, i.passiveHtml]).replace(/<[^>]+>/g, "").replace(/\n/g, " ");
-const ruleKeys = (i) => Object.keys((RI[i.name] || {}).stats || {});  // rules.items 는 아이템 이름이 열쇠다
+// rules.items 는 아이템 이름이 열쇠다. C9-A3 중첩형 저항 감소(_shred)는 깎는 능력치 이름이 안쪽에 있다
+const ruleKeys = (i) => Object.entries((RI[i.name] || {}).stats || {})
+  .flatMap(([k, v]) => (k === "_shred" ? (v || []).map((x) => x.stat) : [k]));
 const statKeys = (i) => (i.stats && !Array.isArray(i.stats) ? Object.keys(i.stats) : []);
 const effKinds = (i) => (i.effects || []).map((e) => e.kind);
 // 상대 체력 비례 계수(TGT_*)를 쓰는가. 데이터의 effects 뿐 아니라 **규칙이 붙여 주는 효과**(rules.items 의 stats._effects)도 본다.

@@ -160,13 +160,14 @@ if (argv[0] === "--positive") {
 if (require.main !== module) return;
 const d = R.load();
 S.attachSimilar(d.champions, null, d.items);
-console.log("=== 핏빛 저주 (A2.5 중첩 평균 1.5 가정 유지)");
+console.log("=== 핏빛 저주 (C9-A3 공통 중첩 식 · 중첩 평균 1.5 가정 유지)");
 {
   const blight = d.items.find((i) => i.name === "핏빛 저주"), lux = d.champions.find((c) => c.id === "Lux");
-  const cv = St.computeStats(lux, 18, [blight], [], OPTS).conv;
+  const sh = St.evaluate(lux, 18, [blight], [], OPTS).m.shred;
   const mr = St.TARGET.MR;
-  const before = 100 / (100 + mr), after = St.mitigation ? St.mitigation(mr, 0, 0, cv.mrShred || 0, cv.mrFlatShred || 0) : 100 / (100 + mr * (1 - (cv.mrShred || 0)));
-  console.log(`  규칙 mrShred ${cv.mrShred} · 기준 상대 마저 ${mr} → 깎인 뒤 ${(mr * (1 - (cv.mrShred || 0))).toFixed(2)}`);
+  const before = 100 / (100 + mr), after = St.mitigation(mr, 0, 0, sh.mrShred, sh.mrFlatShred);
+  const det = (sh.detail || []).map((x) => `${x.stat} 중첩 평균 ${x.stackAvg.toFixed(2)}/포화 ${x.saturated.toFixed(2)} → ${x.value.toFixed(4)}`).join(" · ");
+  console.log(`  mrShred ${sh.mrShred} (${det || "규칙에 숫자로"}) · 기준 상대 마저 ${mr} → 깎인 뒤 ${(mr * (1 - sh.mrShred)).toFixed(2)}`);
   console.log(`  마법 피해 배율 ${before.toFixed(5)} → ${after.toFixed(5)} (+${((after / before - 1) * 100).toFixed(2)}%)`);
 }
 console.log("\n=== 저항이 0 아래로 내려가는 조합 (1차 구현은 0 에서 자른다)");
