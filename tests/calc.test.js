@@ -1613,3 +1613,23 @@ test("F5-C 평타를 대체·강화하지 않는 챔피언은 그대로다", () 
   const n = d.champions.filter((c) => c.spells.some((s) => s.effects.some((e) => e.autoReplace || e.every))).length;
   assert.equal(n, 2, "규칙에 적은 두 명(제리·트위스티드 페이트)뿐이어야 해요");
 });
+
+// ---------------------------------------------------------------- F5-D 게임 원본에 재사용 대기시간이 없는 스킬
+test("F5-D 베이가 W·탐 켄치 R 은 규칙에 적은 값으로 센다 (출처는 basis 에)", () => {
+  const vw = champ("Veigar").spells.find((s) => s.slot === "W");
+  assert.equal(vw.cooldownFrom, "rules");
+  assert.equal(vw.cooldown[0], 6.48, "위키 공식 8 × 0.9^2 (극악 120중첩 가정과 같은 기준)");
+  const tr = champ("TahmKench").spells.find((s) => s.slot === "R");
+  assert.deepEqual(tr.cooldown, [120, 100, 80]);
+  for (const id of ["Veigar", "TahmKench"]) {
+    const m = St.evaluate(champ(id), 18, [], [], { aram: true }).m;
+    assert.ok(m.skillDps > 0, `${id} 의 초당 스킬 피해가 0 이면 안 돼요`);
+  }
+});
+
+test("F5-D 규칙으로 채운 쿨타임은 두 자리뿐이다 (쉬바나 R·야스오 E 는 후속)", () => {
+  const filled = [];
+  for (const c of d.champions) for (const s of c.spells) if (s.cooldownFrom === "rules") filled.push(`${c.id} ${s.slot}`);
+  assert.deepEqual(filled.sort(), ["TahmKench R", "Veigar W"]);
+  assert.equal(champ("Shyvana").spells.find((s) => s.slot === "R").cooldown[0], 0, "쉬바나 R 은 분노로 쓰는 스킬이라 그대로예요");
+});

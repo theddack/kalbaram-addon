@@ -1821,6 +1821,18 @@ def main():
                     if not any(e.get("name") == nm for e in sp["effects"]):
                         stack_warn.append(f"{c['name']}: dropEffects {slot} '{nm}' 효과가 없음 (패치로 이름 바뀜?)")
                 sp["effects"] = [e for e in sp["effects"] if e.get("name") not in names]
+        if rc and rc.get("spellCd"):  # 게임 원본에 재사용 대기시간이 아예 없는 스킬 (v0.1.95 F5-D, basis 에 출처)
+            # 데이터에 값이 생기면 그쪽을 쓴다 — 규칙은 0 인 자리만 채운다 (패치로 값이 들어오면 저절로 비켜난다)
+            for slot, vals in rc["spellCd"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                if sp is None:
+                    stack_warn.append(f"{c['name']}: spellCd {slot} 스킬이 없음")
+                    continue
+                if max(sp["cooldown"] or [0]) > 0:
+                    stack_warn.append(f"{c['name']}: spellCd {slot} 데이터에 값이 생겼다 ({sp['cooldown'][:3]}) → 규칙 미적용")
+                    continue
+                sp["cooldownFrom"] = "rules"
+                sp["cooldown"] = [round(float(v), 2) for v in (vals * len(sp["cooldown"]))[:len(sp["cooldown"])]]                     if len(vals) == 1 else [round(float(v), 2) for v in vals]
         if rc and rc.get("onhitEvery"):  # 몇 번째 기본 공격마다 들어가는 피해 (v0.1.95 F5-C, basis 에 근거)
             for slot, names in rc["onhitEvery"].items():
                 sp = next((s for s in c["spells"] if s["slot"] == slot), None)
@@ -1864,7 +1876,8 @@ def main():
             c["fightBasis"] = rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if buff_basis:
             c["fightBasis"] = (c.get("fightBasis") or []) + buff_basis
-        if rc and (rc.get("dropEffects") or rc.get("dpsRate") or rc.get("onhitEvery") or rc.get("autoReplace")) and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
+        if rc and (rc.get("dropEffects") or rc.get("dpsRate") or rc.get("onhitEvery") or rc.get("autoReplace")
+                   or rc.get("spellCd")) and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("effectTarget") and not (rc.get("fight") or rc.get("rangeAt18")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
