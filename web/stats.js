@@ -186,8 +186,14 @@
     if (conv.resistToAD) { const ad = (t.ARMOR + t.MR) * conv.resistToAD; t.AD += ad; t.bonusAD += ad; }
     t.MANA = champ.partype === "마나" ? base.MANA + add.MANA - itemManaGone : 0;
     t.bonusMANA = champ.partype === "마나" ? add.MANA - itemManaGone : 0;
-    if (conv.bonusMANAtoAP) t.AP += t.bonusMANA * conv.bonusMANAtoAP * (1 + mult.APmult);
+    if (conv.bonusMANAtoAP) t.AP += t.bonusMANA * conv.bonusMANAtoAP * (1 + mult.APmult);  // 대천사의 지팡이: '추가' 마나의 1% 주문력
+    // v0.1.95 Phase 5A: 마나무네 '경탄' 은 '최대 마나의 2%' 라 대천사(추가 마나)와 기준이 달라 키를 따로 둔다.
+    // 마나가 없는 챔피언은 t.MANA 가 0 이라 저절로 0 이다 (설명에도 마나 기준이라 적혀 있다)
+    if (conv.maxMANAtoAD && t.MANA) { const ad = t.MANA * conv.maxMANAtoAD * (1 + mult.ADmult); t.AD += ad; t.bonusAD += ad; }
     if (conv.manaToHP && t.MANA) { t.HP += t.MANA * conv.manaToHP; t.bonusHP = t.HP - base.HP; }  // 정신 변환: 최대 마나의 50% 체력
+    // v0.1.95 Phase 5A: 혹한의 손길 '경탄' — '추가 최대 마나'의 15% 만큼 체력. 진짜 추가 체력이라
+    // 아래 추가 체력 변환(균열 생성기·지배자의 피갑옷·아트마의 심판)도 이 몫을 함께 본다
+    if (conv.bonusMANAtoHP && t.MANA) { t.HP += t.bonusMANA * conv.bonusMANAtoHP; t.bonusHP = t.HP - base.HP; }
     const apBeforeHP = t.AP;
     if (conv.bonusHPtoAP) t.AP += t.bonusHP * conv.bonusHPtoAP * (1 + mult.APmult);  // 균열 생성기: 추가 체력의 2% 주문력
     // 지배자의 피갑옷 '폭정': 추가 체력의 2.5% 공격력 (추가 공격력으로, 공격력 % 증가를 받는다)
