@@ -30,12 +30,16 @@ function oneTarget(e) {
   const t = St.computeStats(champOf(e.champ), 18, items, [], { aram: true }).total;
   const m = St.evaluate(champOf(e.champ), 18, items, [], { aram: true }).m;
   const r5 = (v) => Math.round(v / 5) * 5;
+  // v0.1.95 Phase 4 C6 재측정 (2026-11-26): 지금 web/app.js enemyTarget() 과 같은 계산으로 맞췄다.
+  //   C1 아이템 보호막을 회복에서 뺀다 · C2 추가 체력도 돌려준다 · C4 아군에게 주는 회복까지 더한다
+  const heal = (m.selfHealAll != null ? m.selfHealAll : 0) + (m.allyHealAll != null ? m.allyHealAll : (m.heal || 0));
   return { ARMOR: r5(t.ARMOR + empty * sb.ARMOR), MR: r5(t.MR + empty * sb.MR), HP: Math.round((t.HP + empty * sb.HP) / 50) * 50,
-    HEAL: Math.round(((m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHp || 0)) / 10) * 10 };
+    bonusHP: Math.round((t.bonusHP + empty * sb.HP) / 50) * 50, HEAL: Math.round(heal / 10) * 10 };
 }
 const avgTarget = (ts) => ({ ARMOR: Math.round(ts.reduce((a, t) => a + t.ARMOR, 0) / ts.length / 5) * 5,
   MR: Math.round(ts.reduce((a, t) => a + t.MR, 0) / ts.length / 5) * 5,
   HP: Math.round(ts.reduce((a, t) => a + t.HP, 0) / ts.length / 50) * 50,
+  bonusHP: Math.round(ts.reduce((a, t) => a + t.bonusHP, 0) / ts.length / 50) * 50,
   HEAL: Math.round(ts.reduce((a, t) => a + t.HEAL, 0) / ts.length / 10) * 10 });
 
 const root = "E:/Downloads/06.Up/칼바람증강Addon/data/logs/games";
