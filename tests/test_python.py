@@ -993,10 +993,10 @@ class AugOcr(unittest.TestCase):
     def test_merged_line_split_into_cards(self):
         W, H = 1920, 1080
         y = int(H * 0.46)
-        words = [("눈", 560, y, 30, 30), ("폭발", 595, y, 60, 30), ("강타자", 900, y, 90, 30),
+        words = [("점액", 560, y, 60, 30), ("천지", 625, y, 60, 30), ("강타자", 900, y, 90, 30),
                  ("정신", 1250, y, 60, 30), ("변환", 1315, y, 60, 30), ("저항", 1290, y + 40, 40, 20)]
         offers = self.o.find_offers(words, W, H, self.m)
-        self.assertEqual(self.o.slots(offers, W), ["눈 폭발", "강타자", "정신 변환"])
+        self.assertEqual(self.o.slots(offers, W), ["점액 천지", "강타자", "정신 변환"])
         # 두 장만 읽혔으면 화면 위치로 칸을 정한다
         two = self.o.find_offers(words[2:], W, H, self.m)
         self.assertEqual(self.o.slots(two, W), [None, "강타자", "정신 변환"])
