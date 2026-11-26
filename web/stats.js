@@ -217,6 +217,9 @@
     t.HASTE = add.HASTE + (aram.ability_haste || 0) + (conv.APtoHASTE ? t.AP * conv.APtoHASTE : 0);
     if (helps && conv.allyBuffHaste) t.HASTE += conv.allyBuffHaste;
     let bonusAS = base.asLevelBonus + add.AS + itemASfromAD + (helps ? conv.allyBuffAS || 0 : 0);
+    // v0.1.95 Phase 5: 꽃피는 새벽의 검 '활기' — 체력 회복 및 보호막 효과 1%당 공격 속도 1.2%.
+    // 아이템이 준 회복·보호막 효과(add.HSP)만 본다. 새벽심장이 기본 마나 재생에서 바꿔 주는 몫은 아직 안 나와 있어 빠진다 (낮게 잡은 쪽)
+    if (conv.HSPtoAS) bonusAS += add.HSP * conv.HSPtoAS;
     // 순수주의자 - 마법사: 레벨 말고 얻은 추가 공격 속도(아이템 + 간지럼 괴물이 공격력에서 바꾼 것)를 스킬 가속으로.
     // 묵직한 한 방보다 먼저 (예전엔 묵직한 한 방이 옮긴 몫을 다시 덮어써 같은 공속이 두 번 쓰였고, 간지럼 괴물 몫은 사라졌다, 2026-10-23 점검)
     if (conv.AStoHASTE) { t.HASTE += (add.AS + itemASfromAD) * 100 * conv.AStoHASTE; bonusAS = base.asLevelBonus; }
