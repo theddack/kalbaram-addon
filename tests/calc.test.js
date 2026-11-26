@@ -2070,3 +2070,25 @@ test("C9-B 아군 지문(allyKey)은 아군이 바뀔 때만 바뀐다", () => {
   St.setAllies(null);
   assert.equal(St.allyKey(), "");
 });
+
+// ---- v0.1.95 Phase 4 C4 (2026-11-26): 상대 회복량 추정이 쓰는 '아군에게 준 회복' 칸
+test("C4 아군에게 준 회복(allyHealAll) = 기술 회복 + 서포터 아이템 회복", () => {
+  const m = St.evaluate(champ("Soraka"), 18, [item("월석 재생기"), item("구원")], [], { aram: true }).m;
+  assert.ok(m.allyHealAll > 0, "소라카는 아군을 회복시킨다");
+  assert.ok(Math.abs(m.allyHealAll - (m.heal + m.allySupportHeal)) < 1e-9, `${m.allyHealAll} vs ${m.heal}+${m.allySupportHeal}`);
+  assert.ok(Math.abs(m.allySupport - (m.allySupportHeal + m.allySupportShield)) < 1e-6, "서포터 아이템 합계는 그대로");
+});
+
+test("C4 보호막은 아군 회복에 안 들어간다 (고통스러운 상처가 보호막은 못 막는다)", () => {
+  const m = St.evaluate(champ("Lulu"), 18, [item("강철의 솔라리 펜던트")], [], { aram: true }).m;
+  assert.ok(m.shield + m.allySupportShield > 0, "룰루는 아군에게 보호막을 준다");
+  assert.equal(m.allyHealAll, 0, `보호막이 회복으로 샜다: ${m.allyHealAll}`);
+});
+
+test("C4 자기 회복과 아군 회복은 따로 센다 (한 칸을 두 번 세지 않는다)", () => {
+  const m = St.evaluate(champ("Soraka"), 18, [], [], { aram: true }).m;
+  assert.ok(m.selfHealAll > 0 && m.allyHealAll > 0);
+  // 기술이 자기와 아군에게 나눠 주는 회복은 targetShare 가 갈라 둔다: 스킬 칸 합이 두 칸의 합을 넘지 않는다
+  const spells = m.spells.reduce((a, sp) => a + (sp.heal || 0) + (sp.selfHeal || 0), 0);
+  assert.ok(spells <= m.selfHealAll + m.allyHealAll + 1e-6, `${spells} > ${m.selfHealAll + m.allyHealAll}`);
+});

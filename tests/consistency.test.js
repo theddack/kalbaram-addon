@@ -11,12 +11,13 @@ const setup = async () => {
   const item = (n) => p.data.items.find((i) => i.name === n);
   const isAP = (n) => ((item(n) || {}).tags || {}).AP >= 0.5;
   const isAD = (n) => ((item(n) || {}).tags || {}).AD >= 0.5;
-  // 흡혈 아이템을 산 적 = 회복 많음 (enemyInfo healItem)
+  // 회복 많음 판정은 v0.1.95 Phase 4 C4 부터 '추천 점수가 쓰는 회복 추정값'이다 (흡혈 아이템 개수가 아니라).
+  // 흡혈 아이템 한두 개로는 추정 회복량이 기준(회복이 있는 챔피언의 중앙값 2명분)에 못 미친다 → 적 전원에게 3개씩 준다
   const vamp = p.data.items.filter((i) => i.kind === "legendary" && (i.tags.VAMP || 0) >= 0.5).map((i) => i.id);
   const live = (champion, extra = {}) => p.w.applyLive({ enabled: true, inGame: true, champion, level: 14, gold: 0, gameTime: 700, items: [],
     enemies: ["Darius", "Fiora", "Lux", "Ahri", "Malphite"], ...extra });
-  const healers = (aug = {}) => ["Darius", "Fiora", "Lux", "Ahri", "Malphite"].map((c, i) => ({ champion: c, level: 14,
-    items: i < 2 ? [vamp[0], vamp[1]].filter(Boolean) : [], augments: aug[c] || [] }));
+  const healers = (aug = {}) => ["Darius", "Fiora", "Lux", "Ahri", "Malphite"].map((c) => ({ champion: c, level: 14,
+    items: vamp.slice(0, 3), augments: aug[c] || [] }));
   const pick = (name) => p.w.applyAug({ offers: null, seq: 1, picked: name, pickedFrom: [name, null, null], pickSeq: (p.__ps = (p.__ps || 0) + 1) });
   const advice = () => { p.w.renderItemList(); p.w.sendOverlay(); return (sent.at(-1).enemy || {}).advice || []; };
   return { p, sent, item, isAP, isAD, live, healers, pick, advice };

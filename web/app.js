@@ -311,17 +311,21 @@ function enemyInfo() {
   const fromItems = list.some((c) => byItems(c) != null);
   // 가장 위협적인 적 (킬·아이템으로 평균보다 1.5배 넘게 큰 적): 조언 문장에 이름을 쓴다
   const fed = list.filter((c) => weight(c) >= 1.5 * (wsum / list.length) && (build(c) || {}).kills >= 5).map((c) => c.name);
-  // 회복 많은 적: 스킬·패시브 중 회복 효과가 2개 이상 (특성 HEALSHIELD 는 보호막도 섞여 럭스까지 잡혔다)
-  const heals = (c) => (c.spells || []).filter((sp) => (sp.effects || []).some((x) => x && x.kind === "heal")).length
-    + (((c.passive || {}).effects || []).some((x) => x && x.kind === "heal") ? 1 : 0);
-  // 산 아이템도 본다: 흡혈 아이템을 산 적은 회복 많음, 방어 아이템 2개 이상이면 탱커
-  // 확인된 상대 증강도 본다 (소환사 주문 칸 + Tab 점수판): 회복·흡혈 → 회복 많음, 체력·방어 → 탱커, 군중 제어 → 강인함
+  // 회복 많은 적 (v0.1.95 Phase 4 C4): 추천 점수가 쓰는 바로 그 회복 추정값으로 고른다.
+  // 예전엔 '회복 효과 칸 수 2개 이상 + 흡혈 아이템 + 회복 증강'이라는 개수 규칙이라, 문구는 치유 감소를 권하는데
+  // 점수는 자기 회복만 봐서 안 움직였다 (소라카: 문구 판정 3, 계산에 들어간 값 27). 이제 둘이 같은 숫자를 본다.
+  // 기준은 '회복이 있는 전 챔피언의 중앙값'(healBaseline) — 보통 수준의 회복 챔피언 한 명만큼은 회복한다는 뜻이다
+  const healRow = (c) => { const r = enemyHealRows().find((x) => x.id === c.id); return r ? r.heal : healEstOf(c, [], []); };
+  // 확인된 상대 증강도 본다 (소환사 주문 칸 + Tab 점수판): 체력·방어 → 탱커, 군중 제어 → 강인함.
+  // 회복 증강의 회복량은 아직 추정값에 안 들어간다 (공식 데이터에 수치가 없다) → 문구 주석으로만 (후속 F22)
   const healAug = (c) => augsWith(c, ["HEALSHIELD", "VAMP"], 0.5);
   const tankAug = (c) => augsWith(c, ["HP", "ARMOR", "MR"]);
-  const healers = list.filter((c) => heals(c) >= 2 || enemyItems(c).some(healItem) || healAug(c).length);
+  const healMin = healBaseline();
+  const healers = list.filter((c) => healRow(c) >= healMin && healMin > 0).sort((a, b) => healRow(b) - healRow(a));
+  const healSum = list.reduce((a, c) => a + healRow(c), 0);
   const tanks = list.filter((c) => (c.tags || []).includes("Tank") || enemyItems(c).filter(tankItem).length + tankAug(c).length >= 2);
   const ccAugs = list.flatMap((c) => augsWith(c, ["CC"]).map((a) => ({ c, a })));
-  return { list, magic, healers, tanks, fromItems, fed, ccAugs, healAug, tankAug };
+  return { list, magic, healers, tanks, fromItems, fed, ccAugs, healAug, tankAug, healSum, healMin, healRow };
 }
 
 // ---- 상대 아이템 반영 (2026-10-15): 적이 실제로 산 아이템(게임 안 Tab 점수판에 보이는 정보)으로
@@ -351,6 +355,31 @@ const enemyAugStats = (e) => (e.augments || []).length ? S.augStatsOf(e.augments
 // → stats.js 가 한 칸으로 묶어 주는 selfHealAll 을 쓴다 (기술 자기 회복 + 흡혈 + 아이템 회복 + 규칙값, 받는 회복 증가까지).
 // 최대 체력 증가(selfHpAll)·주문 방어막(selfAbsorbAll)·보호막(selfShieldAll)은 회복이 아니라 여전히 안 센다.
 const selfHealOf = (m) => (m.selfHealAll != null ? m.selfHealAll : (m.selfHeal || 0) + (m.vampHeal || 0) + (m.itemSelfHeal || 0));
+// v0.1.95 Phase 4 C4: 그 적이 '아군에게 주는 회복' (기술 회복 + 서포터 아이템 회복: 월석 연쇄·헬리아·구원·미카엘).
+// 치유 감소는 상대가 받는 회복을 모두 깎으므로 자기 회복과 같은 무게로 센다.
+// 보호막(shield·allySupportShield)·최대 체력 증가(selfHpAll)·주문 방어막(selfAbsorbAll)은 회복이 아니라 안 센다 (C1·E4 와 같은 기준).
+const allyHealOf = (m) => (m.allyHealAll != null ? m.allyHealAll : (m.heal || 0));
+// 한타 한 번에 그 적이 '자기 + 아군'에게 주는 회복. TARGET.HEAL 과 조언이 함께 쓰는 단 하나의 추정값이다 (C4)
+const healEstOf = (champ, items, augs) => { const m = St.evaluate(champ, 18, items, augs, { aram: state.aram }).m; return selfHealOf(m) + allyHealOf(m); };
+// '회복이 많다'의 기준: 회복이 있는 전 챔피언(18레벨 맨몸)의 중앙값. 데이터에서 구하므로 패치마다 따라간다.
+// 기존 조언은 '회복 효과가 2개 이상인 적이 2명 이상'이라는 개수 규칙이었다 → 같은 추정값 위로 옮긴 것이 이 기준이다
+let healMid = null;
+function healBaseline() {
+  if (healMid != null) return healMid;
+  const v = state.data.champions.map((c) => healEstOf(c, [], [])).filter((x) => x > 0).sort((a, b) => a - b);
+  healMid = v.length ? v[Math.floor(v.length / 2)] : 0;
+  return healMid;
+}
+// 적별 회복 추정 (한 판 안에서는 같은 빌드면 다시 계산하지 않는다)
+let healRowsCache = null;
+function enemyHealRows() {
+  const b = state.enemyBuilds || [];
+  const key = JSON.stringify(b.map((e) => [e.champ.id, e.items.map((i) => i.id), (e.augments || []).map((a) => a.id)])) + "|" + state.aram;
+  if (healRowsCache && healRowsCache.key === key) return healRowsCache.rows;
+  const rows = b.map((e) => ({ id: e.champ.id, heal: healEstOf(e.champ, e.items, enemyAugStats(e)) }));
+  healRowsCache = { key, rows };
+  return rows;
+}
 // 적 전원의 18레벨 능력치 평균: 산 아이템 그대로 + 아직 안 산 칸은 평균 빌드만큼 산다고 본다 (게임 초반에 상대가 너무 약하게 잡히지 않게)
 function enemyTarget() {
   const b = state.enemyBuilds || [];
@@ -363,8 +392,9 @@ function enemyTarget() {
     for (const k of Object.keys(sum)) sum[k] += ((k === "bonusHP" ? t.bonusHP : t[k]) + empty * sb[k]) / b.length;
   }
   const r5 = (v) => Math.round(v / 5) * 5;  // 5 단위: 작은 차이로 계산을 전부 다시 하지 않게
-  let heal = 0;
-  for (const e of b) heal += selfHealOf(St.evaluate(e.champ, 18, e.items, enemyAugStats(e), { aram: state.aram }).m) / b.length;
+  // v0.1.95 Phase 4 C4: 자기 회복 + 아군에게 주는 회복을 모두 더한 뒤 적 수로 나눈다 = '적 한 명이 평균적으로 받는 회복'.
+  // 아군 회복을 팀 합으로 두면 자기 회복(1인분)과 단위가 섞인다. 소라카 예: (자기 135 + 아군 1045) ÷ 5 = 236 (예전엔 27)
+  const heal = enemyHealRows().reduce((a, r) => a + r.heal, 0) / b.length;
   // 추가 체력(BONUS_HP)도 함께: 상대 추가 체력 비례 피해(도미닉 경의 인사)가 쓴다. 예전엔 안 돌려줘 늘 기본값 300 이었다
   // (v0.1.95 Phase 4 C2 · 실제 5판 상대 평균은 50~1500 이었다). 체력과 같은 50 단위로 맞춘다
   return { ARMOR: r5(sum.ARMOR), MR: r5(sum.MR), HP: Math.round(sum.HP / 50) * 50,
@@ -619,7 +649,9 @@ function enemyAdvice() {
   // 실제로 받은 피해가 아니라 적 챔피언 유형(마법·물리·혼합)·산 아이템·킬로 짐작한 비율이라 '추정'이라고 쓴다
   out.push(`적 구성 ${e.fromItems ? "(산 아이템 반영)" : "추정"}: 마법 ${pct}% · 물리 ${100 - pct}%` + (e.fed.length ? ` (많이 큼: ${e.fed.join("·")})` : "")
     + (resWant ? ` → ${resLabel} 우선` + (resItems.length ? `: ${resItems.slice(0, 2).join(" 또는 ")}` : "") : ""));
-  if (e.healers.length >= 2) {
+  // v0.1.95 Phase 4 C4: 추천 점수와 같은 추정값으로 판정한다 — 적 팀 회복 합이 '보통 수준의 회복 챔피언 2명'만큼일 때.
+  // 예전 규칙('회복 효과 2개 이상인 적이 2명 이상')을 같은 숫자 위로 옮긴 것이다
+  if (e.healSum >= 2 * e.healMin && e.healers.length) {
     // 치유 감소(고통스러운 상처)가 설명에 있는 아이템 중 내 유형에 맞는 것
     // 효과 이름('고통스러운 상처')이 없고 '…의 상처를 남깁니다'만 적힌 아이템도 있다 (화공 펑크 사슬검·가시 갑옷).
     // 이름만 찾아서 가렌에게 맞는 화공 펑크 사슬검을 놓치고 부품만 권했다 (2026-10-22 일관성 점검 R2)
@@ -634,7 +666,10 @@ function enemyAdvice() {
       if (state.champ.tags.includes("Tank")) want.push("덤불 조끼");
       gw = Object.values(state.data.parts || {}).filter((pt) => want.includes(pt.name)).map((pt) => `${pt.name}(부품 ${pt.gold}G)`);
     }
-    out.push(`적 회복 많음 (${e.healers.map((c) => c.name).join("·")})` + augNote(e.healers, e.healAug) + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
+    // 추정 회복량을 함께 적는다: 조언과 점수가 같은 숫자를 본다는 것을 화면에서 확인할 수 있게 (C4)
+    out.push(`적 회복 많음 (${e.healers.slice(0, 3).map((c) => `${c.name} ${fmt(e.healRow(c))}`).join(" · ")}` 
+      + `${e.healers.length > 3 ? ` 외 ${e.healers.length - 3}명` : ""} · 한 명이 받는 양 ${fmt(St.TARGET.HEAL)})`
+      + augNote(e.healers, e.healAug) + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
     want(gw.filter((n) => !n.includes("(부품")), "치유 감소");
   }
   // 관통: 탱커가 많거나, 적이 산 아이템으로 내 피해 유형 쪽 방어가 평소보다 25% 이상 높으면
@@ -828,7 +863,8 @@ function setTargetChamp(id) {
     const [b] = S.buildConcepts(d.items, S.profile(enemy, d.tags), [], [], d.rules, enemy, statOpts(), ["balanced"]);
     const items = b.pick.map((p) => p.item);
     const t = St.computeStats(enemy, 18, items, [], statOpts()).total;
-    // 그 챔피언이 한타에 자기를 회복하는 양 (치유 감소 아이템 값의 근거, enemyTarget 과 같은 계산)
+    // 그 챔피언이 한타에 자기를 회복하는 양 (치유 감소 아이템 값의 근거).
+    // 여기는 '기준 상대 한 명'이라 아군 회복은 더하지 않는다 (C4 의 ÷ 적 수는 받을 아군이 있을 때의 환산이다)
     const heal = selfHealOf(St.evaluate(enemy, 18, items, [], statOpts()).m);
     St.setTarget({ ARMOR: Math.round(t.ARMOR), MR: Math.round(t.MR), HP: Math.round(t.HP), bonusHP: Math.round(t.bonusHP), HEAL: Math.round(heal / 10) * 10 });
   }

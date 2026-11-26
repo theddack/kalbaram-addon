@@ -791,7 +791,7 @@
     const lowAmp = cv.lowHpAt ? (cv.lowHpMagicTrueAmp || 0) * targetBelowShare(cv.lowHpAt) : 0;
     const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
     const ranks = ranksAt(L, champ.spells);
-    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, autoHit: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0 };
+    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, autoHit: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0, allySupportHeal: 0, allySupportShield: 0 };
     const helps = (champ.features || []).includes("allysupport");
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
@@ -1228,7 +1228,14 @@
       const active = (cv.allyActiveHeal || 0) * hsp + (cv.allyActiveShield || 0) * (aram.shielding || 1) * (1 + t.HSP);
       out.allySupport = chain + helia + active;
       out.support += out.allySupport;
+      // v0.1.95 Phase 4 C4: 서포터 아이템이 주는 몫도 '회복'과 '보호막'으로 갈라 둔다 (합계 allySupport 는 그대로).
+      // 치유 감소(고통스러운 상처)는 회복만 깎고 보호막은 못 막아서, 상대 회복량 추정에는 회복 쪽만 쓴다
+      out.allySupportHeal = out.kitHeal * (cv.allyHealMult || 0) + helia + (cv.allyActiveHeal || 0) * hsp;
+      out.allySupportShield = out.kitShield * (cv.allyShieldMult || 0) + (cv.allyActiveShield || 0) * (aram.shielding || 1) * (1 + t.HSP);
     }
+    // v0.1.95 Phase 4 C4: 이 챔피언이 '아군에게 주는 회복'을 한 칸으로 (기술 heal + 서포터 아이템 회복).
+    // 자기 회복(selfHealAll)·보호막(shield·selfShieldAll·allySupportShield)·최대 체력(selfHpAll)·주문 방어막(selfAbsorbAll)과 겹치지 않는 별개 칸이다
+    out.allyHealAll = out.heal + (out.allySupportHeal || 0);
     return out;
   }
 

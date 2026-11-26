@@ -727,7 +727,9 @@ test("상대 아이템 반영: 적이 산 아이템으로 상대 능력치·관�
   assert.equal(e.resistItems.MR, 4, "실제로 산 마법 저항 아이템 수");
   const advice = e.advice.join("\n");
   assert.match(advice, /적이 마법 저항 아이템 4개 \(지금 평균 마법 저항력 \d+\) → 관통/);
-  assert.match(advice, /회복 많음 \([^)]*베인/, "흡혈 아이템을 산 적은 회복 많음");
+  // v0.1.95 Phase 4 C4: '회복 많음'은 추천 점수가 쓰는 회복 추정값으로 고르고, 그 값을 줄에 함께 적는다.
+  // 흡혈 아이템 한 개(베인)는 추정 회복량이 기준에 못 미쳐 더 이상 이름이 오르지 않는다 (조언과 점수를 맞춘 결과)
+  assert.match(advice, /회복 많음 \(소라카 [\d,]+ · 한 명이 받는 양 \d+\)/, advice);
   // 레벨만 오르면 예상 상대는 그대로, 지금 상대만 바뀐다
   const tBefore = T();
   live([[id("가시 갑옷"), id("태양불꽃 방패")], [id("대자연의 힘"), id("정령의 형상"), id("케이닉 루컨")], [], [id("몰락한 왕의 검")], [id("케이닉 루컨")]], 16);
@@ -873,7 +875,9 @@ test("적 증강도 대응 규칙에: 회복→치유 감소, 체력·방어→�
   p.w.renderItemList();
   p.w.sendOverlay();
   advice = sent.at(-1).enemy.advice.join("\n");
-  assert.ok(advice.includes(`적 회복 많음 (럭스·아리) (적 증강: 럭스 ${heal[0].name} · 아리 ${heal[1].name})`), advice);
+  // v0.1.95 Phase 4 C4: 회복 증강의 회복량은 아직 추정값에 안 들어간다 (공식 데이터에 수치가 없다).
+  // 조언과 점수가 같은 숫자를 보게 바꾼 뒤로, 증강만 보고 '회복 많음'이라고 하지 않는다 (후속 F22 로 등록)
+  assert.doesNotMatch(advice, /적 회복 많음/, advice);
   assert.match(advice, /적 군중 제어 증강 \(이즈리얼 .* · 징크스 .*\) → 검토: 헤르메스의 발걸음/, advice);
   assert.ok(p.w.enemyInfo().tanks.some((c) => c.id === "Xerath"), "체력·방어 증강 2개면 탱커로 센다 (관통 조언 기준)");
   assert.doesNotMatch(advice, /제라스 탱커/, "적별 (산 아이템) 줄은 산 아이템만");
@@ -1160,7 +1164,10 @@ test("6칸이 다 찼어도 적 대응(치유 감소)이 필요하면 바꾸기�
   const foes = ["Samira", "Caitlyn"];
   const live = (items, builds) => p.w.applyLive({ enabled: true, inGame: true, champion: "Kindred", level: 18, items, enemies: foes,
     enemyBuilds: foes.map((c) => ({ champion: c, level: 18, items: builds })) });
-  live(six, [id("피바라기")]);
+  // v0.1.95 Phase 4 C4: '회복 많음'은 추정 회복량으로 판정한다. 흡혈 아이템 하나로는 기준에 못 미쳐
+  // 적이 실제로 많이 회복하는 빌드(흡혈 아이템을 채운 빌드)로 바꿨다
+  const vamp = p.data.items.filter((i) => i.kind === "legendary" && (i.tags.VAMP || 0) >= 0.5).map((i) => i.id).slice(0, 6);
+  live(six, vamp);
   p.w.renderItemList();
   p.w.sendOverlay();
   const sw = sent.at(-1).swap;
@@ -1173,7 +1180,7 @@ test("6칸이 다 찼어도 적 대응(치유 감소)이 필요하면 바꾸기�
   assert.match(p.text("#next-buy"), /적 대응으로 바꾸면 좋아요/);
   assert.match(sent.at(-1).hud[0], /적 대응\(치유 감소\)/);
   // 이미 치유 감소 아이템이 있으면 적 대응 바꾸기 없음
-  live([...six.slice(0, 5), buy.id], [id("피바라기")]);
+  live([...six.slice(0, 5), buy.id], vamp);
   p.w.renderItemList();
   p.w.sendOverlay();
   assert.notEqual((sent.at(-1).swap || {}).why, "치유 감소");
@@ -1181,7 +1188,7 @@ test("6칸이 다 찼어도 적 대응(치유 감소)이 필요하면 바꾸기�
   const orig = p.w.itemVerdicts;
   p.w.itemVerdicts = () => orig().map((v) => ({ ...v, mark: "👍" }));
   // 같은 계열(도미닉 ↔ 필멸자의 운명)은 둘 다 못 가져서 바꾸기가 맞다 → 계열이 겹치지 않는 빌드로
-  live(six.map((x) => (x === id("도미닉 경의 인사") ? id("무한의 대검") : x)), [id("피바라기")]);
+  live(six.map((x) => (x === id("도미닉 경의 인사") ? id("무한의 대검") : x)), vamp);
   p.w.renderItemList();
   p.w.sendOverlay();
   assert.equal(sent.at(-1).swap, null, "게임 화면에 바꾸기 아이콘을 보내지 않는다");
