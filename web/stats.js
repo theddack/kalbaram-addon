@@ -406,7 +406,7 @@
 
   function spellTotals(effects, rank, L, t) {
     const { uniq, groups: planGroups, kinds, crit } = spellPlan(effects);
-    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.every ? { every: e.every } : {}), ...(e.autoReplace ? { autoReplace: true } : {}), ...(e.ally ? { ally: e.ally } : {}), ...(e.target ? { target: e.target } : {}) }));
+    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.every ? { every: e.every } : {}), ...(e.autoReplace ? { autoReplace: true } : {}), ...(e.perSec ? { perSec: true } : {}), ...(e.dotSec ? { dotSec: e.dotSec, dotNeedsAuto: !!e.dotNeedsAuto } : {}), ...(e.empower ? { empower: e.empower } : {}), ...(e.ally ? { ally: e.ally } : {}), ...(e.target ? { target: e.target } : {}) }));
     const groups = new Map();
     for (const [k, idx] of planGroups) groups.set(k, idx.map((i) => vals[i]));
     const isCritV = new Map(vals.map((v, i) => [v, crit[i]]));
@@ -714,6 +714,8 @@
       if (!disabled && cdBase > 0) out.boundCastRate += eCobaltRate * weave;
       const vals = disabled ? [] : spellTotals(sp.effects, rank, L, t);
       let dmg = 0, raw = 0, shield = 0, heal = 0, onhit = 0, ally = 0, selfShield = 0, selfHeal = 0;
+      let perSecDmg = 0;  // v0.1.95 F5-E: 값 자체가 '초당 피해' 인 효과(토글 장판·지속 독·강화 평타)가 만드는 초당 피해
+      let cdDmg = 0;      // 재사용 대기시간으로 나눠 초당 피해를 내는 보통 스킬 몫 (위 몫과 겹치지 않게 따로 센다)
       // 보석 건틀릿: 스킬도 치명타 (145% + 추가 치명타 피해) → 치명타 확률만큼 기대값
       // 보석 팔찌(26.21): 궁극기만 치명타 (ultCritDmg)
       const critMul = cv.skillCritDmg || (sp.slot === "R" && cv.ultCritDmg) || 0;
@@ -728,6 +730,51 @@
           onhit += v.value / Math.max(1, v.every || 1) * mit * dealt * (1 + flags.trueBonus);
           continue;
         }
+        // v0.1.95 F5-E: 값이 '초당 피해' 인 토글 장판 (신지드 Q 맹독의 자취·카서스 E 부패).
+        // 켜 두는 스킬이라 '한 번 쓰는 피해' 가 아니다 → 초당 피해에 초당 값을 그대로, 한타 한 번 피해에는 콤보 시간만큼.
+        // 실제로 맞히는 비율은 다른 스킬과 똑같이 바깥에서 SKILL_DPS_SHARE 가 건다 (새 가정값을 만들지 않는다).
+        if (v.perSec && DMG_KINDS.includes(v.kind)) {
+          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
+          const per = v.value * dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * mit * (1 + flags.trueBonus);
+          perSecDmg += per;
+          raw += v.value * COMBO_WINDOW * dealt * (1 + flags.skillDmgMult);
+          dmg += per * COMBO_WINDOW;
+          continue;
+        }
+        // v0.1.95 F5-E: 몇 초에 걸쳐 들어가는 지속 피해 총량 (티모 E 맹독 다트: 평타 적중마다 다시 걸려 덧씌워진다).
+        // 덧씌움이라 여러 번 쌓이지 않는다 → 초당은 총량 ÷ 지속시간이 상한, 한타 한 번 피해에는 총량 한 번.
+        if (v.dotSec && DMG_KINDS.includes(v.kind)) {
+          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
+          const total = v.value * dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * mit * (1 + flags.trueBonus);
+          // 평타로 다시 거는 스킬이면 평타가 지속시간보다 느릴 때 그만큼 빈다 (공격 속도 반영)
+          const refreshed = v.dotNeedsAuto ? Math.min(1, (t.AS || 0) * v.dotSec) : 1;
+          perSecDmg += total / v.dotSec * refreshed;
+          raw += v.value * dealt * (1 + flags.skillDmgMult);
+          dmg += total;
+          continue;
+        }
+        // v0.1.95 F5-E: 기본 공격을 강화하는 스킬 (렝가 Q·애쉬 Q 는 평타 한 대를 대체, 유나라 Q 는 적중 시 얹는다).
+        // 대체형은 '평타 한 대 피해와의 차이' 만 센다 (평타 피해는 이미 autoDps 에 있다 — 이중 계산 방지).
+        if (v.empower && DMG_KINDS.includes(v.kind)) {
+          const e = v.empower;
+          const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
+          const gain = Math.max(0, v.value - (e.mode === "extra" ? 0 : (t.AD || 0)));
+          const hit = gain * mit * dealt * (1 + flags.trueBonus);
+          if (e.mode === "once") {
+            // 충전 1개마다 다음 평타 한 대만 강화 (렝가 Q)
+            const sec = ammoSec || cdNormal || 1;
+            perSecDmg += hit / Math.max(sec, 0.5);
+            dmg += hit;
+          } else {
+            // 지속시간 동안 모든 평타가 강화 (애쉬 Q·유나라 Q) → 평타 쪽으로, 가동률만큼
+            const as = Math.max(t.AS || 0, 1e-6);
+            const needSec = Math.max(0, (e.need - e.dur * as * (e.perHit || 1)) / (as * (e.perHit || 1)));
+            const up = e.dur / (e.dur + needSec);
+            onhit += hit * up;
+            out.empowerUptime = { ...(out.empowerUptime || {}), [sp.slot]: Math.round(up * 1000) / 1000 };
+          }
+          continue;
+        }
         // v0.1.95 F5-C: 기본 공격을 대체하는 스킬(제리 Q '이 스킬은 기본 공격으로 간주됩니다').
         // 평타에 더하지 않고 평타 한 대의 피해를 이 값으로 바꾼다. 스킬 피해로는 세지 않는다 (이중 계산)
         if (v.autoReplace && DMG_KINDS.includes(v.kind)) { out.autoHit = v.value; continue; }
@@ -736,6 +783,7 @@
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
           raw += v.value * amp;
           dmg += v.value * amp * mit * (1 + flags.trueBonus);
+          cdDmg += v.value * amp * mit * (1 + flags.trueBonus);
         } else if (v.kind === "shield" || v.kind === "heal") {
           // 회복·보호막: 대상(게임 규칙)에 따라 자기 생존과 아군 지원으로 나눈다 (v0.1.93 P4-A)
           const amt = v.kind === "shield"
@@ -757,7 +805,8 @@
       out.kitShield += shield;  // 서포터 아이템 발동(향로·월석)은 아군에게 준 몫만 (자기 보호막으로는 발동하지 않는다)
       out.kitHeal += heal;
       // 원래 재사용 대기시간이 아주 짧은 스킬(징크스 Q 같은 전환형)은 DPS에서 제외, 가속으로 짧아진 건 0.5초까지만
-      if (rateBase > 0.5) out.skillDps += dmg / Math.max(rateCd, 0.5);
+      if (rateBase > 0.5) out.skillDps += cdDmg / Math.max(rateCd, 0.5);
+      out.skillDps += perSecDmg;  // 초당 값으로 센 몫은 재사용 대기시간과 상관없다 (보통 스킬 몫 cdDmg 와 겹치지 않는다)
     });
     // 증강·아이템 고유 효과·패시브: 발동 빈도에 따라 콤보·DPS·회복/보호막에 더한다
     const casts = out.spells.filter((s) => !s.disabled).length;

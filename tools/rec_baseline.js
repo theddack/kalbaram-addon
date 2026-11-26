@@ -196,7 +196,7 @@ function compare(base, now) {
 
 function report(sum, base, now) {
   const eng = (x) => (x.engine ? `v${x.engine.app} 가정 ${x.engine.assumptions}` : "엔진 정보 없음");
-  const lines = [`기준선 데이터 ${base.dataVersion} (${eng(base)}) · 지금 ${now.dataVersion} (${eng(now)})`, `장면 ${sum.scenes}개 비교`];
+  const lines = [`기준선 데이터 ${base.dataVersion} (${eng(base)}) · 지금 ${now.dataVersion} (${eng(now)})`, `장면 ${sum.scenes}개 비교 (양쪽에 다 있는 것만 · 새 장면 ${sum.added.length} · 없어진 장면 ${sum.removed.length})`];
   const n = (label, list, show = 12) => {
     lines.push(`${label}: ${list.length}`);
     for (const x of list.slice(0, show)) lines.push(`  ${x}`);
@@ -209,8 +209,9 @@ function report(sum, base, now) {
   n("증강 등급 Top5 바뀜", sum.tiers);
   lines.push(`점수가 비슷해 계산 순서와 달라진 장면 (tieOrder): 기준선 ${sum.tieBase} → 지금 ${sum.tieNow}`);
   lines.push(`같은 아이템 점수 최대 변화: ${sum.scoreShift.toFixed(4)}`);
-  if (sum.added.length) n("새 장면", sum.added, 5);
-  if (sum.removed.length) n("없어진 장면", sum.removed, 5);
+  // 제외된 장면은 번호를 다 적는다 (v0.1.95 F5-E): 비교 가능 / 한쪽에만 있는 장면을 가려 두려고
+  if (sum.added.length) n("새 장면 (지금만 있음 — 증강·아이템이 새로 생긴 자리)", sum.added, 60);
+  if (sum.removed.length) n("없어진 장면 (기준선에만 있음 — 증강·아이템이 사라진 자리)", sum.removed, 60);
   return lines.join("\n");
 }
 

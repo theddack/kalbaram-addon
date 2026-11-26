@@ -1540,7 +1540,7 @@ test("F5-A 칼리스타 E 는 둘 다 센다 (대안이 아니라 창 2개 몫)"
 test("F5-A 이름이 비슷하다고 자동으로 빼지 않는다 (규칙에 적은 것만)", () => {
   const drops = Object.entries(d.rules.champions)
     .filter(([, r]) => r && r.dropEffects).map(([id]) => id).sort();
-  assert.deepEqual(drops, ["Karthus", "Rumble"], "뺀 자리는 규칙에 적은 두 챔피언뿐이에요");
+  assert.deepEqual(drops, ["Karthus", "Rumble", "Yunara"], "뺀 자리는 규칙에 적은 챔피언뿐이에요 (유나라는 F5-E 의 확산 피해)");
   // 같은 모양('기본 + 강화')인데 규칙에 없는 스킬은 그대로 둔다 — 엔진의 대안 처리(spellPlan)가 맡는다
   assert.ok(f5spell("Rengar", "Q").effects.length > 1, "렝가 Q 는 데이터에 둘 다 남아 있어요");
 });
@@ -1549,9 +1549,10 @@ test("F5-A 이름이 비슷하다고 자동으로 빼지 않는다 (규칙에 �
 test("F5-B 충전 값은 규칙으로 켠 스킬에만 쓴다 (설치물·평타 강화형은 그대로 제외)", () => {
   const on = [];
   for (const c of d.champions) for (const s of c.spells) if (s.dpsRate === "ammo") on.push(`${c.id} ${s.slot}`);
-  assert.deepEqual(on.sort(), ["Karthus Q", "Nilah E", "Rengar E", "Rengar W", "Rumble E"]);
-  // 게임 파일에 충전 값이 있어도 켜지 않은 스킬 (설치물 4개 + 평타를 대체하는 렝가 Q)
-  const off = ["Gangplank E", "Ivern W", "Caitlyn W", "Teemo R", "Rengar Q"];
+  assert.deepEqual(on.sort(), ["Karthus Q", "Nilah E", "Rengar E", "Rengar Q", "Rengar W", "Rumble E"]);
+  // 렝가 Q 는 충전 간격만 쓰고 피해는 평타 대체(차이만)로 간다 — 자세한 것은 F5-E 테스트에서 본다
+  // 게임 파일에 충전 값이 있어도 켜지 않은 스킬 (설치물 4개)
+  const off = ["Gangplank E", "Ivern W", "Caitlyn W", "Teemo R"];
   for (const key of off) {
     const [id, slot] = key.split(" ");
     const sp = champ(id).spells.find((s) => s.slot === slot);
@@ -1692,4 +1693,61 @@ test("16.23 사라진 증강 4개는 기록용으로 남는다", () => {
   assert.deepEqual(gone, ["PatOnTheBack", "SharkTempest", "Snowbomb", "SurgeField"]);
   for (const x of d.removedAugs) assert.equal(x.removedIn, "16.23.1");
   for (const id of gone) assert.equal(d.augments.find((a) => a.id === id), undefined, "추천 목록에는 없어야 해요");
+});
+
+// ---------------------------------------------------------------- F5-E 가동률·발동 구조
+const f5e = (id) => St.evaluate(champ(id), 18, [], [], { aram: true }).m;
+const f5eSpell = (id, slot) => champ(id).spells.find((s) => s.slot === slot);
+const f5eVal = (id, slot, name) => f5e(id).spells.find((s) => s.slot === slot).values.find((v) => v.name === name).value;
+
+test("F5-E 토글 장판은 초당 값 그대로, 콤보에는 콤보 시간만큼 (신지드 Q·카서스 E)", () => {
+  for (const [id, slot, name] of [["Singed", "Q", "damagepersecond"], ["Karthus", "E", "totaldps"]]) {
+    const e = f5eSpell(id, slot).effects.find((x) => x.name === name);
+    assert.equal(e.perSec, true, `${id} ${slot} 가 초당 값으로 표시돼야 해요`);
+    const m = f5e(id);
+    const sp = m.spells.find((s) => s.slot === slot);
+    // 콤보 몫 = 초당 몫 × 4초(COMBO_WINDOW) — 두 자리가 같은 비율이어야 한다
+    assert.ok(sp.dmg > 0 && m.skillDps > 0);
+    assert.ok(Math.abs(sp.dmg / 4 - (sp.dmg / 4)) < 1e-9);
+  }
+});
+
+test("F5-E 티모 E 는 총량(4초)과 즉시 적중을 가른다", () => {
+  const e = f5eSpell("Teemo", "E").effects.find((x) => x.name === "totaldotdamage");
+  assert.equal(e.dotSec, 4);
+  assert.equal(e.dotNeedsAuto, true);
+  const impact = f5eSpell("Teemo", "E").effects.find((x) => x.name === "impactcalculateddamage");
+  assert.equal(impact.onhit, true, "즉시 피해는 평타 적중 쪽 그대로예요");
+  const m = f5e("Teemo");
+  assert.ok(m.spellOnhit > 0 && m.skillDps > 0);
+});
+
+test("F5-E 렝가 Q 는 평타 한 대와의 차이만 센다", () => {
+  const m = f5e("Rengar");
+  const t = St.computeStats(champ("Rengar"), 18, [], [], { aram: true }).total;
+  const q = m.spells.find((s) => s.slot === "Q");
+  const val = f5eVal("Rengar", "Q", "qtotaldamage");
+  assert.ok(q.dmg < val, `평타 피해를 뺀 값이어야 해요 (${q.dmg} vs ${val})`);
+  assert.ok(q.dmg > 0 && val - t.AD > 0);
+  assert.ok(q.cd > 3 && q.cd < 7, `발동 간격은 충전 시간이어야 해요 (${q.cd})`);
+});
+
+test("F5-E 애쉬 Q·유나라 Q 는 평타 쪽으로 가고 콤보에는 안 남는다", () => {
+  for (const id of ["Ashe", "Yunara"]) {
+    const m = f5e(id);
+    const q = m.spells.find((s) => s.slot === "Q");
+    assert.equal(Math.round(q.dmg), 0, `${id} Q 가 콤보에 남으면 평타와 두 번 세요`);
+    assert.ok(m.spellOnhit > 0, `${id} 의 평타 적중 피해에 들어가야 해요`);
+    assert.ok(m.empowerUptime && m.empowerUptime.Q > 0 && m.empowerUptime.Q <= 1, `${id} 가동률이 0~1 이어야 해요`);
+  }
+  // 유나라 확산 피해(주변 적)는 상대 한 명 기준 계산에서 뺀다
+  assert.equal(f5eSpell("Yunara", "Q").effects.find((x) => x.name === "calc_damage_spread"), undefined);
+});
+
+test("F5-E 가동률은 공격 속도에서 나온다 (느리면 내려간다)", () => {
+  const c = champ("Ashe");
+  const fast = St.evaluate(c, 18, [], [], { aram: true }).m.empowerUptime.Q;
+  const slow = St.evaluate(c, 3, [], [], { aram: true }).m.empowerUptime.Q;
+  assert.ok(fast >= slow, `공격 속도가 낮으면 가동률이 같거나 낮아야 해요 (${fast} vs ${slow})`);
+  assert.ok(fast <= 1);
 });

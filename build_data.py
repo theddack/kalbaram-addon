@@ -1833,6 +1833,34 @@ def main():
                     continue
                 sp["cooldownFrom"] = "rules"
                 sp["cooldown"] = [round(float(v), 2) for v in (vals * len(sp["cooldown"]))[:len(sp["cooldown"])]]                     if len(vals) == 1 else [round(float(v), 2) for v in vals]
+        if rc and rc.get("perSecDamage"):  # 값 자체가 '초당 피해' 인 효과 (v0.1.95 F5-E, basis 에 근거)
+            for slot, names in rc["perSecDamage"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                for nm in names:
+                    e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == nm), None)
+                    if e is None:
+                        stack_warn.append(f"{c['name']}: perSecDamage {slot} '{nm}' 효과가 없음")
+                    else:
+                        e["perSec"] = True
+        if rc and rc.get("dotTotal"):  # 몇 초에 걸쳐 들어가는 총량 (v0.1.95 F5-E)
+            for slot, names in rc["dotTotal"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                for nm, spec in names.items():
+                    e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == nm), None)
+                    if e is None:
+                        stack_warn.append(f"{c['name']}: dotTotal {slot} '{nm}' 효과가 없음")
+                    else:
+                        e["dotSec"] = spec["sec"] if isinstance(spec, dict) else spec
+                        if isinstance(spec, dict) and spec.get("needsAuto"):
+                            e["dotNeedsAuto"] = True
+        if rc and rc.get("empowerAttack"):  # 기본 공격을 대체·강화하는 스킬 (v0.1.95 F5-E)
+            for slot, spec in rc["empowerAttack"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == spec["effect"]), None)
+                if e is None:
+                    stack_warn.append(f"{c['name']}: empowerAttack {slot} '{spec['effect']}' 효과가 없음")
+                else:
+                    e["empower"] = {k: v for k, v in spec.items() if k != "effect"}
         if rc and rc.get("onhitEvery"):  # 몇 번째 기본 공격마다 들어가는 피해 (v0.1.95 F5-C, basis 에 근거)
             for slot, names in rc["onhitEvery"].items():
                 sp = next((s for s in c["spells"] if s["slot"] == slot), None)
@@ -1877,7 +1905,8 @@ def main():
         if buff_basis:
             c["fightBasis"] = (c.get("fightBasis") or []) + buff_basis
         if rc and (rc.get("dropEffects") or rc.get("dpsRate") or rc.get("onhitEvery") or rc.get("autoReplace")
-                   or rc.get("spellCd")) and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
+                   or rc.get("spellCd") or rc.get("perSecDamage") or rc.get("dotTotal")
+                   or rc.get("empowerAttack")) and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("effectTarget") and not (rc.get("fight") or rc.get("rangeAt18")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
