@@ -969,8 +969,10 @@ test("게임 중 능력치 표에 게임 실제 값을 옆에 보여 주고, 5% 
   assert.deepEqual(p.errors, []);
 });
 
-test("적 대응 조언이 권한 아이템은 '다음 구매' 3번째에 이유와 함께 (치유 감소는 점수에 없어 순위와 상관없이)", async () => {
-  // 2026-10-17 지적: 조언은 '치유 감소: 필멸자의 운명'인데 다음 구매엔 없었다
+// v0.1.95 Phase 4 C5 (2026-11-26): 2026-10-17 에 '조언과 다음 구매가 따로 논다'고 해서 조언 아이템을
+// 3번째 자리에 끼워 넣었는데, 점수 근거 없는 추천이 됐다 → 강제 삽입을 없앴다.
+// 조언은 그대로 보이고, 계산되는 대응(치유 감소)은 점수가 알아서 올려 준다.
+test("적 대응 조언은 보이되 '다음 구매'에 아이템을 끼워 넣지 않는다 (C5)", async () => {
   const p = await loadPage({ simple: true });
   const sent = [];
   p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
@@ -979,14 +981,10 @@ test("적 대응 조언이 권한 아이템은 '다음 구매' 3번째에 이유
     enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
   p.w.sendOverlay();
   const next = sent.at(-1).hud.find((x) => x.startsWith("다음 구매"));
-  assert.match(next, /> 필멸자의 운명\(치유 감소\)$/, next);
-  assert.match(p.text("#next-buy"), /🛡️ 치유 감소/);
-  // 이미 샀으면 다시 권하지 않는다
-  const mr = p.data.items.find((i) => i.name === "필멸자의 운명").id;
-  p.w.applyLive({ enabled: true, inGame: true, champion: "Jinx", level: 12, items: [mr], enemies: foes,
-    enemyBuilds: foes.map((c) => ({ champion: c, level: 12, items: [] })) });
-  p.w.sendOverlay();
-  assert.doesNotMatch(sent.at(-1).hud.find((x) => x.startsWith("다음 구매")), /필멸자의 운명/);
+  assert.doesNotMatch(next, /\(치유 감소\)|\(관통\)|\(마법 저항\)|\(방어력\)/, next);
+  assert.doesNotMatch(p.text("#next-buy"), /🛡️ 치유 감소/);
+  // 조언 줄 자체는 그대로 (아이템 이름까지)
+  assert.match(sent.at(-1).enemy.advice.join("\n"), /적 회복 많음 \(.*\) → 치유 감소: /);
   assert.deepEqual(p.errors, []);
 });
 
@@ -1226,7 +1224,10 @@ test("6칸이 다 차면 게임 화면 상자에 다음 구매 대신 '6칸 완�
   p.w.applyLive({ enabled: true, inGame: true, champion: "Graves", level: 9, items: ["6672"], stats, enemies: ["Soraka", "Yuumi", "Aatrox"],
     enemyBuilds: [heal, heal2, { champion: "Aatrox", level: 9, items: [] }] });
   p.w.renderItemList();
-  assert.match(p.text("#next-buy"), /🔁 필멸자의 운명 ← 치유 감소/);
+  // v0.1.95 Phase 4 C5: 조언이 아이템을 끼워 넣지 않으므로 '← 치유 감소' 같은 조언 원인 줄은 더 이상 나오지 않는다.
+  // 적이 바뀌어 순위가 움직였으면 원인은 '적 …에 맞춰'로 적힌다 (점수가 실제로 바뀐 경우만)
+  assert.doesNotMatch(p.text("#next-buy"), /← 치유 감소|← 관통|← 마법 저항|← 방어력/);
+  assert.match(p.text("#next-buy"), /적 회복 많음 \(.*\) → 치유 감소: /);
   assert.deepEqual(p.errors, []);
 });
 
@@ -1250,7 +1251,8 @@ test("적 마법 비중이 높으면 마법 저항 아이템을 다음 구매에
   assert.ok(m1 > m0, `킬 12개 럭스 → 마법 비중 ${m0}% → ${m1}%`);
   assert.match(txt, /많이 큼: 럭스/);
   assert.match(txt, /마법 저항 우선: /);
-  assert.ok(sent.at(-1).hud.some((l) => l.startsWith("다음 구매") && /\(마법 저항\)/.test(l)), sent.at(-1).hud.join("\n"));
+  // v0.1.95 Phase 4 C5: 저항 조언도 다음 구매에 끼워 넣지 않는다 (점수가 올리면 그대로 올라온다)
+  assert.ok(!sent.at(-1).hud.some((l) => l.startsWith("다음 구매") && /\(마법 저항\)/.test(l)), sent.at(-1).hud.join("\n"));
   assert.deepEqual(p.errors, []);
 });
 

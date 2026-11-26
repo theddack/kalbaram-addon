@@ -603,13 +603,21 @@ function counterItems(avail, keep) {
 
 // 적 구성 조언 (게임 화면 상자·애드온): 받는 피해 쪽 방어, 회복 많으면 치유 감소, 탱커 많으면 관통
 
+// v0.1.95 Phase 4 C5: 대응을 '점수에 들어가는가'로 나눈다.
+//   계산됨(A) — 상대 값을 실제로 읽어 점수에 들어간다: 치유 감소(TARGET.HEAL) · 관통/저항(TARGET.ARMOR·MR) · 추가 체력(TARGET.BONUS_HP)
+//   계산 밖(B) — 환산할 수 있으나 데이터나 통로가 없다: 보호막 감소(수치 0%) · 공속 대응(상대 공속 미전달) · 군중 제어 대응(받는 CC 모델 없음)
+// (B)는 조언 줄에 '계산 밖'으로 남겨 참고만 하고, 다음 구매·바꾸기에는 밀지 않는다.
+// 아이템 자체를 추천에서 빼는 것은 아니다 — 기본 능력치·구현된 효과·증강 연계로 올라오는 정상 추천은 그대로다.
+// (B) → (A) 승격 조건은 docs/v0.1.95_Phase4_수정안.md 보완 3 과 docs/향후_개선_목록.md 에 적어 둔다
+const ADVICE_CALC = new Set(["치유 감소", "관통", "방어력", "마법 저항"]);
+const adviceCalc = (why) => ADVICE_CALC.has(why);
+const UNCALC_NOTE = " · 계산에는 안 들어감(참고)";
 function enemyAdvice() {
   const e = enemyInfo();
-  state.adviceWant = [];  // 조언이 권한 완성 아이템 {name, why} → 다음 구매 3번째 자리 후보 (renderNextBuy)
-  state.adviceNeed = [];  // 조언이 필요하다고 본 효과 {why, names(같은 계열을 가졌어도 후보), have(이미 갖춤)} → 6칸이 찼을 때 바꾸기 (swapAdvice)
+  state.adviceNeed = [];  // 조언이 필요하다고 본 효과 {why, names(같은 계열을 가졌어도 후보), have(이미 갖춤)} → 6칸이 찼을 때 바꾸기 (swapAdvice).
+  // v0.1.95 Phase 4 C5: 점수에 들어가는 대응(A)만 넣는다. 계산 밖(B)은 조언 줄에만 남는다
   if (!e || !state.champ) return [];
   const out = [];
-  const want = (names, why) => { for (const n of names) if (!state.adviceWant.some((w) => w.name === n)) state.adviceWant.push({ name: n, why }); };
   const pct = Math.round(e.magic * 100);
   const items = state.data.items.filter((i) => i.kind === "legendary");
   // 내 피해 유형은 고른 증강의 환산·특징 변경까지 반영한다 (아이템 추천과 같은 기준: rankItems 의 convert·withChosenFeatures).
@@ -626,7 +634,7 @@ function enemyAdvice() {
   const ownedLimits = new Set(state.items.map((i) => i.limit).filter(Boolean));
   const typeOk = (i) => (mineType === "magic" ? (i.tags.AP || 0) >= 0.5 : (i.tags.AD || 0) >= 0.5 && (critOk || !hasCrit(i)));
   const fits = (i) => !(i.limit && ownedLimits.has(i.limit)) && !state.items.some((o) => o.name === i.name) && typeOk(i);
-  const need = (why, list, have) => state.adviceNeed.push({ why, names: byRank(list.filter(typeOk).map((i) => i.name)), have });
+  const need = (why, list, have) => { if (adviceCalc(why)) state.adviceNeed.push({ why, names: byRank(list.filter(typeOk).map((i) => i.name)), have }); };
   // 후보 이름은 지금 다음 구매 순위 순서로 (조언에 먼저 쓴 아이템 = 다음 구매에 들어가는 아이템)
   const order = state.rankOrder || [];
   const byRank = (names) => names.slice().sort((a, b) => (order.indexOf(a) + 1 || 1e9) - (order.indexOf(b) + 1 || 1e9));
@@ -670,7 +678,6 @@ function enemyAdvice() {
     out.push(`적 회복 많음 (${e.healers.slice(0, 3).map((c) => `${c.name} ${fmt(e.healRow(c))}`).join(" · ")}` 
       + `${e.healers.length > 3 ? ` 외 ${e.healers.length - 3}명` : ""} · 한 명이 받는 양 ${fmt(St.TARGET.HEAL)})`
       + augNote(e.healers, e.healAug) + (gw.length ? ` → 치유 감소: ${gw.join(" 또는 ")}` : ""));
-    want(gw.filter((n) => !n.includes("(부품")), "치유 감소");
   }
   // 관통: 탱커가 많거나, 적이 산 아이템으로 내 피해 유형 쪽 방어가 평소보다 25% 이상 높으면
   // 근거는 적이 실제로 산 아이템만 (예상 빌드로 채운 값이 아니라): 내 피해 쪽 방어 아이템을 팀이 3개 이상 샀으면
@@ -686,7 +693,6 @@ function enemyAdvice() {
     const why = [e.tanks.length >= 2 ? `적 탱커 많음 (${e.tanks.map((c) => c.name).join("·")})${augNote(e.tanks, e.tankAug)}` : "",
       resHigh ? `적이 ${resKey === "MR" ? "마법 저항" : "방어"} 아이템 ${resN}개 (지금 평균 ${resKey === "MR" ? "마법 저항력" : "방어력"} ${fmt(now[resKey])})` : ""].filter(Boolean).join(" · ");
     out.push(why + (pen.length ? ` → 관통: ${pen.join(" 또는 ")}` : ""));
-    want(pen, "관통");
   }
   // 팀 평균에 묻히는 위협을 적 하나하나로 (2026-10-16 기획: "탱커 2명이 체력 아이템 다수" 처럼)
   const threats = enemyThreats();
@@ -695,17 +701,15 @@ function enemyAdvice() {
   if (threats.shield >= 3) {
     const cut = items.filter((i) => i.name === "독사의 송곳니" && fits(i)).map((i) => i.name);
     need("보호막 감소", items.filter((i) => i.name === "독사의 송곳니"), state.items.some((i) => i.name === "독사의 송곳니"));
-    out.push(`적 보호막 많음 (보호막 아이템 ${threats.shield}개)` + (cut.length ? ` → 보호막 감소: ${cut.join("")}` : ""));
-    want(cut, "보호막 감소");
+    out.push(`적 보호막 많음 (보호막 아이템 ${threats.shield}개)` + (cut.length ? ` → 보호막 감소: ${cut.join("")}` : "") + UNCALC_NOTE);
   }
   // 공격 속도: 공격 속도 아이템을 2개 이상 산 적이 있고 내가 앞에서 맞는 챔피언이면 공격 속도 대응 방어 아이템
   const front = state.champ.tags.includes("Tank") || (state.champ.melee && !state.champ.tags.includes("Assassin"));
   if (threats.as.length && front) {
     const asDef = (i) => ["얼어붙은 심장", "란두인의 예언", "가시 갑옷"].includes(i.name);
     const def = items.filter(asDef).map((i) => i.name).slice(0, 2);
-    state.adviceNeed.push({ why: "공속 대응", names: def, have: state.items.some(asDef) });  // 방어 아이템이라 내 피해 유형과 상관없이
-    out.push(`적 공격 속도 높음 (${threats.as.join("·")})` + (def.length ? ` → 검토: ${def.join(" 또는 ")}` : ""));
-    want(def, "공속 대응");
+    // C5: 상대 공격 속도가 계산에 안 들어와 점수가 안 움직인다 → 참고 줄로만 (다음 구매·바꾸기에는 안 민다)
+    out.push(`적 공격 속도 높음 (${threats.as.join("·")})` + (def.length ? ` → 검토: ${def.join(" 또는 ")}` : "") + UNCALC_NOTE);
   }
   // 군중 제어 증강이 2개 이상이면 강인함 신발·정화 (확인된 적 증강만: 소환사 주문 칸 + Tab 점수판)
   if (e.ccAugs.length >= 2) {
@@ -713,10 +717,8 @@ function enemyAdvice() {
     const boots = state.data.items.find((i) => i.name === "헤르메스의 발걸음");
     const hasBoots = state.items.some((i) => i.name === "헤르메스의 발걸음");
     const opts = [boots && !hasBoots ? boots.name : "", ...qss.filter((i) => !state.items.some((o) => o.name === i.name)).map((i) => i.name)].filter(Boolean);
-    out.push(`적 군중 제어 증강 (${e.ccAugs.map((x) => `${x.c.name} ${x.a.name}`).join(" · ")})` + (opts.length ? ` → 검토: ${opts.join(" 또는 ")}` : ""));
-    want(qss.filter(fits).map((i) => i.name), "군중 제어 대응");
-    state.adviceNeed.push({ why: "군중 제어 대응", names: qss.map((i) => i.name),
-      have: hasBoots || state.items.some((i) => i.name === "헤르메스의 시미터") });
+    // C5: 받는 군중 제어 시간 모델이 없어 강인함·해제는 점수로 환산되지 않는다 → 참고 줄로만
+    out.push(`적 군중 제어 증강 (${e.ccAugs.map((x) => `${x.c.name} ${x.a.name}`).join(" · ")})` + (opts.length ? ` → 검토: ${opts.join(" 또는 ")}` : "") + UNCALC_NOTE);
   }
   // 상대 증강: 소환사 주문 칸에 보이는 것만 확인된 정보로 (나머지는 공식 데이터에 없어 추측하지 않는다)
   const seen = (state.enemyBuilds || []).filter((x) => x.augments.length).map((x) => `${x.champ.name} ${x.augments.map((a) => a.name).join("·")}`);
@@ -728,7 +730,6 @@ function enemyAdvice() {
     const names = state.counter.items.map((id) => (state.data.items.find((i) => i.id === id) || {}).name).filter(Boolean).slice(0, 2);
     out.push(`${state.counter.why} → 적 대응: ${names.join(" 또는 ")}`);
   }
-  want(resItems, resLabel);  // 저항은 마지막 후보 (치유 감소·관통처럼 콕 집은 대응이 먼저)
   return out;
 }
 // 적 하나하나가 산 아이템으로 본 위협 (팀 평균에 묻히지 않게). 이름은 위협이 큰 순서로 최대 3명
@@ -2150,28 +2151,13 @@ function renderNextBuy(rows) {
     const c = avail.find((r) => r.counter && fit3(r));
     if (c) pick[2] = c;
   }
-  // 조언(치유 감소·관통·보호막 감소·공속 대응)이 권한 아이템이 위 3개에 없으면 3번째 자리에 (이유를 붙여서).
-  // 2026-10-17 지적: 조언 줄과 다음 구매가 따로 놀았다 (조언은 필멸자의 운명, 다음 구매엔 없음).
-  // 보호막 감소·공속 대응 효과는 점수 계산에 없어 순위가 안 오른다 → 순위와 상관없이. 관통은 계산에 있으니 8위 안일 때만.
-  // 치유 감소는 v0.1.93 P4-B 5단계부터 점수에 들어가지만, 우리 계산에 회복량이 안 잡히는 적(아군을 회복시키는 소라카 등)도
-  // 있어서 조언 쪽은 그대로 둔다 (점수로 이미 올라왔으면 아래 조건에서 걸러진다)
+  // v0.1.95 Phase 4 C5: 조언이 권한 아이템을 3번째 자리에 끼워 넣던 것을 없앴다.
+  // 2026-10-17 에 '조언 줄과 다음 구매가 따로 논다'고 해서 넣었는데, 점수 근거 없이 올라오는 아이템이 생겼다
+  // (보호막 감소·공속 대응·군중 제어 대응은 계산에 아예 없다). 이제는 두 갈래다:
+  //   계산되는 대응(치유 감소·관통·저항) → 점수가 이미 올려 주므로 그대로 순위로 올라온다
+  //   계산 밖 대응 → 조언 줄에 '계산에는 안 들어감(참고)'으로만 남는다 (아이템을 추천에서 빼지는 않는다)
+  // 점수로 설명되는 '적 대응'(state.counter: 적이 산 아이템으로 순위가 실제로 오른 것)은 위에서 그대로 들어간다
   const adv = enemyAdvice();
-  // 이유는 조언 순서대로, 같은 이유 안에서는 지금 순위가 가장 높은 아이템 (저항 아이템은 후보가 여럿)
-  const wanted = [...new Set((state.adviceWant || []).map((w) => w.why))].map((why) => {
-    const names = state.adviceWant.filter((w) => w.why === why).map((w) => w.name);
-    // 위 2개 중 같은 계열(치명상 등)과 겹치면 그 자리를 대응 아이템으로 바꾼다 (도미닉 대신 필멸자의 운명: 둘 다 관통, 필멸자는 치유 감소까지)
-    const r = avail.slice(0, why === "관통" ? COUNTER_TOP : avail.length).find((x) => names.includes(x.item.name)
-      && (fit3(x) || pick.slice(0, 2).some((o) => !o.must && o.item.limit && o.item.limit === x.item.limit)));
-    return r ? { w: { name: r.item.name, why }, r } : null;
-  }).find(Boolean);
-  if (wanted && !pick.some((r) => r.counter || r.item.name === wanted.w.name) && pick.length === 3) {
-    const at = pick.slice(0, 2).findIndex((o) => !o.must && !o.building && o.item.limit && o.item.limit === wanted.r.item.limit);
-    const slot = at >= 0 ? at : !fixedAt(2) ? 2 : -1;
-    if (slot >= 0) {
-      wanted.r.advice = wanted.w.why;
-      pick[slot] = wanted.r;
-    }
-  }
   // 추천이 바뀌면 왜 바뀌었는지 (상황 → 필요): 사람이 보고 따를지 정하게.
   // 새로 들어온 아이템마다 원인을 붙인다: 적 상황(조언·적 대응)이 먼저, 그다음 고른 증강
   // (2026-10-17 그레이브즈 판: 탄환 세례를 고르자 세릴다의 원한이 들어왔는데 이유가 안 보였다)
@@ -2185,8 +2171,7 @@ function renderNextBuy(rows) {
     const newAug = now.augs.filter((n) => !prev.augs.includes(n)).at(-1);
     // 조언 때문이면 짧은 이유 이름만 ('마법 저항' 등). 예전엔 그 순간의 '적 구성 … 마법 77% · 물리 23%' 문장을 통째로 붙여
     // 다음 구매가 바뀔 때까지 옛 %가 남아, 상자에 지금 값 줄(76%)과 같은 줄이 두 번 보였다 (피드백 #20)
-    const why = (r) => r.advice ? r.advice
-      : r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
+    const why = (r) => r.counter ? now.enemy || "적 아이템" : r.must ? "증강에 필요" : newAug ? `${newAug} 골라서`
       : now.enemy !== prev.enemy && now.enemy ? `${now.enemy}에 맞춰` : null;
     const added = pick.filter((r) => !prev.names.includes(r.item.name)).map((r) => [r.item.name, why(r)]).filter(([, w]) => w);
     // 새로 들어온 게 없고 1순위만 바뀌었으면 '먼저'로 (고른 증강·적 변화가 원인일 때만)
@@ -2198,8 +2183,8 @@ function renderNextBuy(rows) {
   } else if (!now.names.length) state.nextChange = null;
   box.innerHTML = `<h2>다음에 살 아이템 <span class="muted small">${state.chosen.length ? "(고른 증강 연계 우선)" : ""}</span></h2>`
     + (state.nextChange ? `<div class="small next-change">${esc(state.nextChange)}</div>` : "")
-    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.building ? "(만드는 중)" : r.must ? "(증강)" : r.counter ? "(적 대응)" : r.advice ? `(${r.advice})` : ""))}">
-      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.building ? ` <span class="chip syn" title="산 부품 ${fmt(r.sunk)}G 어치를 이 아이템에 쓰고 있어요">🧩 만드는 중</span>` : r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.advice ? ` <span class="chip adv">🛡️ ${esc(r.advice)}</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
+    + (pick.length ? pick.map((r, i) => `<div class="next-row" data-id="${r.item.id}" title="${esc(r.item.name)}" data-label="${esc(r.item.name + (r.building ? "(만드는 중)" : r.must ? "(증강)" : r.counter ? "(적 대응)" : ""))}">
+      <b>${i + 1}</b><img src="${icon("item", r.item.id)}" alt=""><div><div>${esc(r.item.name)} <span class="gold">${fmt(Number(r.item.gold) || 0)}G</span>${r.building ? ` <span class="chip syn" title="산 부품 ${fmt(r.sunk)}G 어치를 이 아이템에 쓰고 있어요">🧩 만드는 중</span>` : r.must ? ` <span class="chip syn">🎯 증강에 필요</span>` : r.counter ? ` <span class="chip adv" title="${esc(state.counter.why)}">🛡️ 적 대응</span>` : r.synergy ? ` <span class="chip syn">🔗 연계</span>` : ""}</div>
       <div class="small muted">${esc([r.tie, itemReason(r)].filter(Boolean).join(" · "))}</div>${gainLine(r.gain)}</div></div>`).join("") : swapHtml());
   if (adv.length) box.insertAdjacentHTML("beforeend", `<div class="enemy-advice small">${adv.map((a) => `<div>🛡️ ${esc(a)}</div>`).join("")}</div>`);
   box.insertAdjacentHTML("beforeend", `<div id="buy-now" class="small"></div>`);
