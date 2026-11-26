@@ -106,6 +106,9 @@
     // 주문력만 예외로 % 증가·주문력 전환(치명타·가속)을 아래에서 같이 적용한다 (리치 두뇌)
     const late = [];
     for (const s of mods) {
+      // v0.1.95 Phase 5: 그 챔피언의 스킬 특징이 있어야 켜지는 아이템 효과 (밴들파이프 '팡파르' 는 둔화·이동 불가를 걸어야 켜진다).
+      // 증강 쪽 rule.requires 와 같은 뜻이고(scoring.js), 아이템은 계산 엔진에서 걸러야 해서 여기에 둔다
+      if (s && s._needFeature && !(champ.features || []).includes(s._needFeature)) continue;
       if (s && s.refundPct) conv.refunds.push({ pct: s.refundPct, ranged: s.refundChanceRanged ?? 1, melee: s.refundChanceMelee ?? 1, all: !!s.refundAll });
       // 원거리 챔피언은 값이 다른 능력치 (rules rangedStats → statsResolved.rangedScale: 유리 대포 고정 피해 ×0.6)
       const rScale = (!champ.melee && s && s.rangedScale) || {};
@@ -114,7 +117,7 @@
       // '멀리서 맞히면' 조건 고유 효과 (rules _farMark: 지평선의 초점 600 밖에서 스킬 적중): 값 × 멀리서 맞힐 수 있는 몫 (farMarkShare)
       const far = s && s._farMark != null ? farMarkShare(champ, s._farMark) : 1;
       for (const [k, raw0] of entriesOf(s)) {
-        if (k === "rangedScale" || k === "_belowAt" || k === "_farMark") continue;
+        if (k === "rangedScale" || k === "_belowAt" || k === "_farMark" || k === "_needFeature") continue;
         const raw = typeof raw0 === "number" ? (rScale[k] != null ? raw0 * rScale[k] : raw0) * below * far : raw0;
         // needsItem: 그 아이템을 가졌을 때만 터지는 증강 효과 (폭풍 쇄도 업그레이드: 폭풍 쇄도의 질풍이 폭발)
         if (k === "_effects") { effects.push(...raw.filter((e) => !e.needsItem || items.some((it) => it.name === e.needsItem))); continue; }

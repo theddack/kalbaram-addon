@@ -28,7 +28,7 @@ import build_data  # 근거 줄(basisView)은 전체 빌드와 같은 함수로 
 # 그대로 베껴 넣는 키 — build_data.py 도 아이템은 rules 의 stats 를 통째로 복사한다(item["passiveStats"] = ir["stats"]).
 # _effects 는 글자(src·kind·name·trigger.from)가 섞여 있지만 게임 데이터 이름 해석이 필요 없는 리터럴이다
 # (2026-11-26 Phase 5A: 굶주린 히드라·발걸음 분쇄기 쪼개기를 넣으려다 '숫자가 아닌 값'으로 막혔다)
-LITERAL_KEYS = {"_shred", "_effects", "selfHealOfDmg"}
+LITERAL_KEYS = {"_shred", "_effects", "selfHealOfDmg", "_needFeature"}
 
 
 def plain(v):
