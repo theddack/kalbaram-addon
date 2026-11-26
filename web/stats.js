@@ -192,6 +192,9 @@
     if (conv.bonusHPtoAP) t.AP += t.bonusHP * conv.bonusHPtoAP * (1 + mult.APmult);  // 균열 생성기: 추가 체력의 2% 주문력
     // 지배자의 피갑옷 '폭정': 추가 체력의 2.5% 공격력 (추가 공격력으로, 공격력 % 증가를 받는다)
     if (conv.bonusHPtoAD) { const ad = t.bonusHP * conv.bonusHPtoAD * (1 + mult.ADmult); t.AD += ad; t.bonusAD += ad; }
+    // v0.1.95 Phase 5A: 스테락의 도전 '잡아채는 발톱' — '기본 공격력'의 50% 만큼 추가 공격력.
+    // 기준이 챔피언 기본 공격력(레벨 비례)이라 아이템·증강이 올린 추가 공격력(bonusAD)과 섞이지 않는다 → 서로 다시 키우지 않는다
+    if (conv.baseADtoAD) { const ad = base.AD * conv.baseADtoAD * (1 + mult.ADmult); t.AD += ad; t.bonusAD += ad; }
     // 블라디미르 패시브: 주문력 1당 체력 1.6 (추가 체력 → 주문력과 서로 다시 키우지 않는다: 게임 규칙)
     if (conv.APtoBonusHP) { t.HP += apBeforeHP * conv.APtoBonusHP; t.bonusHP = t.HP - base.HP; }
     // 라이즈 패시브: 주문력 100당 최대 마나 10% (게임 데이터 PercentManaIncrease 10 · APAmount 100)
