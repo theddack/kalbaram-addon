@@ -503,6 +503,9 @@
   // 중첩이 아니라 '걸려 있는 시간' 인 효과(악의: 궁극기로 피해를 입히면 3초)는 한타 한 번과 길게 싸울 때가 다르다.
   //   한타 한 번(콤보) : min(1, 지속 ÷ 한타 시간)   길게(초당 피해) : min(1, 지속 ÷ 궁극기 재사용 대기시간)
   // 그래서 shredFrom 은 두 벌을 돌려준다 (fight · long). 중첩형은 두 벌이 같다 (평균 중첩에 이미 시간이 들어 있다).
+  // 같은 효과인지 가르는 서명 (C9-B): 같은 아이템·증강은 수치가 같아 서명이 같다.
+  // 아군이 '같은 효과' 를 들고 있으면 겹쳐도 더 쌓이지 않는다고 본다 (아래 shredCombine) — 실게임 미검증이라 보수적으로 잡은 쪽이다
+  const shredSig = (sp) => `${sp.stat}|${sp.on}|${sp.perStack}|${sp.maxStacks}|${sp.dur}|${sp.pinnedAvg != null ? sp.pinnedAvg : ""}`;
   function shredFrom(specs, ctx) {
     const mk = () => ({ armorShred: 0, mrShred: 0, armorFlatShred: 0, mrFlatShred: 0 });
     const fight = mk(), long = mk(), detail = [];
@@ -518,12 +521,12 @@
         const ul = (ctx.ultUptime ? ctx.ultUptime(sp.dur || 0) : 0) * can;
         vf = (sp.perStack || 0) * uf;
         vl = (sp.perStack || 0) * ul;
-        info = { stat: sp.stat, on: "ult", fightUptime: uf, longUptime: ul, value: vf, valueLong: vl };
+        info = { stat: sp.stat, on: "ult", sig: shredSig(sp), fightUptime: uf, longUptime: ul, value: vf, valueLong: vl };
       } else {
         const r = shredExpect({ perStack: sp.perStack || 0, maxStacks: sp.maxStacks || 0, dur: sp.dur || 0,
           rate: sp.pinnedAvg != null ? 1 : shredRate(sp.on, ctx), fightSec: ctx.fightSec, pinnedAvg: sp.pinnedAvg });
         vf = vl = r.value;
-        info = { stat: sp.stat, on: sp.on, stackAvg: r.stackAvg, saturated: r.saturated, value: r.value, valueLong: r.value };
+        info = { stat: sp.stat, on: sp.on, sig: shredSig(sp), stackAvg: r.stackAvg, saturated: r.saturated, value: r.value, valueLong: r.value };
       }
       if (!(vf > 0) && !(vl > 0)) continue;
       // 비율은 관통 % 처럼 곱해서, 고정은 더해서 합친다 (C9-A2 와 같은 규칙)
@@ -532,6 +535,97 @@
       detail.push(info);
     }
     return { fight, long, detail };
+  }
+
+  // ---- C9-B: 저항 감소로 '아군이' 더 넣게 되는 피해 (2026-11-26)
+  // 저항 감소는 그 대상을 때리는 모두에게 득이 된다. 내 피해 쪽은 위에서 이미 셌고, 여기서는 아군 몫만 센다.
+  // 단위·시간은 기존 아군 강화(allyGain)와 같다: '아군이 더 넣는 피해 1 = 지원 1(체력 단위)', 한타 AUTO_FIGHT_SEC 초.
+  // 넣지 않는 것: 아군의 저항 감소가 '내' 피해를 키워 주는 역방향 몫 (이번 범위 밖 — docs C9 조사 12.1).
+  //
+  // 아군 한 명 = { dps, phys, magic, pen:{ARPEN,LETHALITY,MPENP,MPEN}, keys:{서명: {stat, kind, value}} }
+  //   dps   그 아군의 초당 피해 (평타 + 스킬) — '그 아군 자신의 관통·저항 감소가 이미 들어간' 값이다
+  //   phys·magic  방어 적용 뒤 실제로 들어가는 피해의 물리·마법 비중. 고정 피해는 저항 감소가 안 걸려서 뺀다
+  //   keys  그 아군이 이미 들고 있는 저항 감소 (겹침 계산용)
+  // 실제 아군(F11)이 있으면 그걸 쓰고, 한 명도 못 봤을 때만 대체 모델 한 명을 쓴다.
+  // 일부만 봤으면 '본 아군' 으로만 센다 — 모자란 인원을 대체 모델로 채우지 않는다.
+  let ALLIES = null;    // [{dps, phys, magic, pen, keys}] · null 이면 대체 모델
+  let ALLY_KEY = "";    // 캐시 열쇠용 지문 (아군이 바뀌면 추천을 다시 계산해야 한다)
+  function setAllies(list) {
+    ALLIES = Array.isArray(list) && list.length ? list.map((a) => ({
+      dps: Number(a.dps) || 0, phys: Number(a.phys) || 0, magic: Number(a.magic) || 0,
+      pen: { ARPEN: (a.pen || {}).ARPEN || 0, LETHALITY: (a.pen || {}).LETHALITY || 0,
+        MPENP: (a.pen || {}).MPENP || 0, MPEN: (a.pen || {}).MPEN || 0 },
+      keys: a.keys || {}, name: a.name || null,
+    })) : null;
+    ALLY_KEY = ALLIES ? JSON.stringify(ALLIES.map((a) => [a.name, Math.round(a.dps), a.phys, a.magic,
+      a.pen.ARPEN, a.pen.LETHALITY, a.pen.MPENP, a.pen.MPEN, Object.keys(a.keys).sort().join(";")])) : "";
+  }
+  const allyKey = () => ALLY_KEY;
+  // 아군을 한 명도 못 봤을 때의 대체 모델 (회복·보호막과 같은 기준: 아군 한 명).
+  //   초당 피해 = 기준 아군(ALLY) 의 평타 + 스킬 · 피해 유형은 원거리 딜러 29명 중앙값 (물리 98.7% · 마법 1.3%)
+  //   관통·저항 감소는 0 으로 본다 (모르는 것을 지어내지 않는다 → 내 몫을 조금 크게 잡는 쪽)
+  const ALLY_MODEL_MIX = { phys: 0.987, magic: 0.013 };
+  const allyModel = () => ({ dps: ALLY.autoDps + ALLY.skillDps, phys: ALLY_MODEL_MIX.phys, magic: ALLY_MODEL_MIX.magic,
+    pen: { ARPEN: 0, LETHALITY: 0, MPENP: 0, MPEN: 0 }, keys: {}, name: null });
+
+  // 저항 감소 목록(서명 → 값)을 능력치별 합계로 접는다. 비율은 곱, 고정은 합 (C9-A2 와 같은 규칙)
+  function shredFold(keys) {
+    const o = { armorShred: 0, mrShred: 0, armorFlatShred: 0, mrFlatShred: 0 };
+    for (const k of Object.keys(keys || {})) {
+      const e = keys[k];
+      if (!e || !(e.value > 0)) continue;
+      if (e.kind === "pct") o[e.stat] = Math.min(SHRED_CAP, 1 - (1 - o[e.stat]) * (1 - e.value));
+      else o[e.stat] += e.value;
+    }
+    return o;
+  }
+  // 나와 아군의 저항 감소를 합친다. 같은 서명(= 같은 아이템·증강)은 '하나의 효과' 로 보고 큰 쪽만 센다.
+  // 서로 다른 효과만 곱해서 쌓는다. 같은 효과를 여럿이 들었을 때 게임이 어떻게 쌓는지는 확인하지 못했다 (후속 F21).
+  function shredCombine(mine, ally) {
+    const out = {};
+    for (const k of Object.keys(ally || {})) out[k] = ally[k];
+    for (const k of Object.keys(mine || {})) {
+      const m = mine[k], a = out[k];
+      out[k] = a && a.value >= m.value ? a : m;
+    }
+    return shredFold(out);
+  }
+  // 아군 몫 = Σ 그 아군의 (초당 피해 × [물리 비중 × (물리 배율비 − 1) + 마법 비중 × (마법 배율비 − 1)]) × 한타 시간
+  //   배율비 = (내 감소를 더했을 때의 피해 배율) ÷ (그 아군이 원래 받던 피해 배율)
+  //   그 아군 자신의 관통·저항 감소는 분자·분모에 똑같이 들어간다 → 아군 자신의 효과를 두 번 세지 않는다
+  // 점수에는 '확인된 아군의 평균 한 명분' 만 넣는다 (ALLY_TARGETS = 1, 회복·보호막과 같은 기준). 합계는 따로 적어 둔다.
+  function shredAllyGain(myKeys, fightSec) {
+    const live = !!(ALLIES && ALLIES.length);
+    const list = live ? ALLIES : [allyModel()];
+    const per = [];
+    let sum = 0;
+    const has = Object.keys(myKeys || {}).some((k) => myKeys[k] && myKeys[k].value > 0);
+    for (const a of list) {
+      if (!has || !(a.dps > 0)) { per.push({ name: a.name, gain: 0 }); continue; }
+      const base = shredFold(a.keys), both = shredCombine(myKeys, a.keys);
+      const mp0 = mitigation(TARGET.ARMOR, a.pen.ARPEN, a.pen.LETHALITY, base.armorShred, base.armorFlatShred);
+      const mp1 = mitigation(TARGET.ARMOR, a.pen.ARPEN, a.pen.LETHALITY, both.armorShred, both.armorFlatShred);
+      const mm0 = mitigation(TARGET.MR, a.pen.MPENP, a.pen.MPEN, base.mrShred, base.mrFlatShred);
+      const mm1 = mitigation(TARGET.MR, a.pen.MPENP, a.pen.MPEN, both.mrShred, both.mrFlatShred);
+      const g = a.dps * (a.phys * (mp1 / Math.max(1e-12, mp0) - 1) + a.magic * (mm1 / Math.max(1e-12, mm0) - 1)) * fightSec;
+      const gain = g > 0 ? g : 0;
+      per.push({ name: a.name, gain, physRatio: mp1 / Math.max(1e-12, mp0), magicRatio: mm1 / Math.max(1e-12, mm0) });
+      sum += gain;
+    }
+    return { source: live ? "live" : "model", n: list.length, sum, avg: list.length ? (sum / list.length) * ALLY_TARGETS : 0, per };
+  }
+  // 한타 기준(out.shred) / 길게 싸울 때 기준(out.shredLong) 각각의 '서명 → 값' 목록.
+  // 규칙에 숫자로 바로 적힌 감소값(출처를 모르는 것)은 따로 서명을 준다
+  function shredKeysOf(cv, detail, long) {
+    const m = {};
+    for (const st of Object.keys(SHRED_STATS)) if (cv[st] > 0) m["static|" + st] = { stat: st, kind: SHRED_STATS[st], value: cv[st] };
+    for (const d of detail || []) {
+      const v = long ? d.valueLong : d.value;
+      if (!(v > 0)) continue;
+      const cur = m[d.sig];
+      m[d.sig] = { stat: d.stat, kind: SHRED_STATS[d.stat], value: cur && cur.value > v ? cur.value : v };
+    }
+    return m;
   }
 
   // 기준 상대: 전 챔피언 173명의 18레벨 균형 빌드 능력치 중앙값 (패치 16.20, tools/target_median.js 로 계산)
@@ -772,6 +866,15 @@
     // 초당 피해에 쓸 보정 (한타 기준으로 센 값에 곱한다). 고정 피해는 저항과 무관하므로 1
     const dpsAdj = same ? () => 1 : (kind) => (kind === "magic" ? adjM : kind === "physical" ? adjP : 1);
     out.shredAdj = { physical: adjP, magic: adjM };
+    // C9-B: 저항 감소로 아군이 더 넣는 피해. 내 피해(combo·dps)와 섞지 않고 지원 쪽(out.allyDmg)으로만 간다.
+    // 점수에 들어가는 것은 '확인된 아군의 평균 한 명분'(avg) 이고, 팀 합계(sum)는 근거 표시·점검용으로 같이 둔다.
+    // 한타 쪽은 out.shred, 길게 싸울 때 쪽은 out.shredLong 으로 따로 센다 (섞지 않는다). 점수는 한타 쪽만 쓴다 —
+    // out.allyDmg 는 '한타 한 번에 아군이 더 넣는 피해' 라서 단위가 같다 (allyGain 과 같은 AUTO_FIGHT_SEC 초)
+    const myShredKeys = shredKeysOf(cv, shred.detail, false);
+    out.shred.keys = myShredKeys;   // 아군 쪽에서 '같은 효과를 이미 들고 있나' 를 가릴 때 쓴다 (F11 → C9-B)
+    const allyShred = shredAllyGain(myShredKeys, AUTO_FIGHT_SEC);
+    out.shredAlly = { ...allyShred, long: same ? null : shredAllyGain(shredKeysOf(cv, shred.detail, true), AUTO_FIGHT_SEC) };
+    if (allyShred.avg > 0) out.allyDmg += allyShred.avg;
     // 스킬 증강({{SpellName}}): 원본 설명이 '챔피언 스킬 하나'에만 건다. 어느 스킬인지는 게임 카드에만 나와서
     // 배운 스킬(Q·W·E·R, 재사용 대기시간이 있는 것) 중 하나가 같은 확률로 대상이라고 보고 기대값을 낸다 (가정, 실게임 검증 필요).
     // 궁극기도 대상이 될 수 있다: 같은 계열 증강 설명에 '궁극기가 대상이면' 규칙이 있다 (위키 Terrain'd·Chain Reaction)
@@ -1134,7 +1237,7 @@
     return { stats, m: metrics(champ, L, stats, opts) };
   }
 
-  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt, mitigation, shredExpect };
+  const api = { SKILL_DPS_SHARE, setExperiment, ROWS, TARGET, DEFAULT_TARGET, ALLY, ALLY_TARGETS, allyGain, setAllies, allyKey, allyModel, shredCombine, shredFold, ASSUMPTIONS, setTarget, targetBelowShare, baseStats, computeStats, metrics, evaluate, ranksAt, mitigation, shredExpect };
   if (typeof module !== "undefined") module.exports = api;
   else root.Stats = api;
 })(this);

@@ -1961,3 +1961,112 @@ test("F5-E 가동률은 공격 속도에서 나온다 (느리면 내려간다)",
   assert.ok(fast >= slow, `공격 속도가 낮으면 가동률이 같거나 낮아야 해요 (${fast} vs ${slow})`);
   assert.ok(fast <= 1);
 });
+
+// ---- v0.1.95 Phase 4 C9-B: 저항 감소로 '아군이' 더 넣는 피해
+// 아군 모델은 setAllies 로 넣는다 (게임에서는 app.js 가 실제 아군으로 만든다). 테스트는 끝나면 반드시 비운다.
+const ally = (o) => ({ name: o.name || "t", dps: o.dps != null ? o.dps : 1000, phys: o.phys != null ? o.phys : 1,
+  magic: o.magic != null ? o.magic : 0, pen: o.pen || {}, keys: o.keys || {} });
+const withAllies = (list, fn) => { St.setAllies(list); try { return fn(); } finally { St.setAllies(null); } };
+const BC = () => item("칠흑의 양날 도끼");
+
+test("C9-B 저항 감소가 없으면 아군 몫도 0 이다", () => {
+  withAllies([ally({})], () => {
+    for (const [id, items] of [["Garen", []], ["Jhin", [item("무한의 대검")]], ["Lux", [item("루덴의 메아리")]]]) {
+      const m = St.evaluate(champ(id), 18, items, [], { aram: true }).m;
+      assert.equal(m.shredAlly.avg, 0, `${id} 는 저항 감소가 없는데 아군 몫이 생겼어요`);
+    }
+  });
+});
+
+test("C9-B 점수에 들어가는 것은 '본 아군의 평균 한 명분' 이다 (합계가 아니다)", () => {
+  const one = ally({ name: "a", dps: 1000, phys: 1 });
+  const four = [one, ally({ name: "b", dps: 1000, phys: 1 }), ally({ name: "c", dps: 1000, phys: 1 }), ally({ name: "d", dps: 1000, phys: 1 })];
+  const m1 = withAllies([one], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m);
+  const m4 = withAllies(four, () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m);
+  assert.equal(m4.shredAlly.n, 4);
+  assert.ok(Math.abs(m4.shredAlly.sum - m1.shredAlly.sum * 4) < 1e-6, "같은 아군 넷이면 합은 네 배여야 해요");
+  assert.ok(Math.abs(m4.shredAlly.avg - m1.shredAlly.avg) < 1e-6, "평균 한 명분은 인원수와 무관해야 해요");
+  // out.allyDmg 에는 평균만 더해진다
+  const base = withAllies([one], () => St.evaluate(champ("Garen"), 18, [], [], { aram: true }).m);
+  assert.ok(Math.abs((m1.allyDmg - base.allyDmg) - m1.shredAlly.avg) < 1e-6, "지원 쪽에는 평균 한 명분만 들어가야 해요");
+});
+
+test("C9-B 아군을 한 명도 못 보면 대체 모델 하나, 일부만 보면 본 아군만 센다", () => {
+  const seen = withAllies([ally({ dps: 1000 }), ally({ name: "b", dps: 1000 })],
+    () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly);
+  assert.equal(seen.source, "live");
+  assert.equal(seen.n, 2, "모자란 인원을 기준 아군으로 채우면 안 돼요");
+  St.setAllies(null);
+  const none = St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly;
+  assert.equal(none.source, "model");
+  assert.equal(none.n, 1);
+  assert.ok(none.avg > 0);
+});
+
+test("C9-B 고정 피해에는 저항 감소가 걸리지 않는다", () => {
+  const m = withAllies([ally({ dps: 1000, phys: 0, magic: 0 })], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m);
+  assert.equal(m.shredAlly.avg, 0, "고정 피해만 넣는 아군에게는 득이 없어야 해요");
+});
+
+test("C9-B 물리 감소는 물리 아군에게, 마법 감소는 마법 아군에게 간다", () => {
+  const physAlly = [ally({ dps: 1000, phys: 1, magic: 0 })], magAlly = [ally({ dps: 1000, phys: 0, magic: 1 })];
+  const bc = (list) => withAllies(list, () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly.avg);
+  const mal = (list) => withAllies(list, () => St.evaluate(champ("Lux"), 18, [item("악의")], [], { aram: true }).m.shredAlly.avg);
+  assert.ok(bc(physAlly) > 0 && bc(magAlly) === 0, "칠흑(방어력 감소)은 물리 아군에게만 가야 해요");
+  assert.ok(mal(magAlly) > 0 && mal(physAlly) === 0, "악의(마법 저항력 감소)는 마법 아군에게만 가야 해요");
+});
+
+test("C9-B 아군이 같은 효과를 들고 있으면 내 기여가 줄고, 같은 값이면 0 이다", () => {
+  const myKeys = St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shred.keys;
+  const plain = ally({ dps: 1000, phys: 1 });
+  const sameItem = ally({ dps: 1000, phys: 1, keys: myKeys });   // 나와 똑같은 칠흑을 들었다
+  const half = ally({ dps: 1000, phys: 1, keys: Object.fromEntries(Object.entries(myKeys)
+    .map(([k, v]) => [k, { ...v, value: v.value / 2 }])) });
+  const g = (a) => withAllies([a], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly.avg);
+  assert.ok(g(plain) > 0);
+  assert.equal(g(sameItem), 0, "같은 효과를 같은 값으로 들고 있으면 더해 줄 몫이 없어야 해요");
+  assert.ok(g(half) > 0 && g(half) < g(plain), "일부만 겹치면 내 기여가 줄어야 해요");
+});
+
+test("C9-B 서로 다른 효과는 겹치지 않는다 (곱해서 쌓인다)", () => {
+  const malKeys = St.evaluate(champ("Lux"), 18, [item("악의")], [], { aram: true }).m.shred.keys;
+  const plain = ally({ dps: 1000, phys: 1 });
+  const other = ally({ dps: 1000, phys: 1, keys: malKeys });  // 아군은 고정 마법 저항력 감소 — 내 방어력 감소와 다르다
+  const g = (a) => withAllies([a], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly.avg);
+  assert.ok(Math.abs(g(other) - g(plain)) < 1e-9, "효과가 다르면 내 몫이 깎이지 않아야 해요");
+});
+
+test("C9-B 아군 자신의 관통으로 센다 (내 관통이 아니다)", () => {
+  const noPen = ally({ dps: 1000, phys: 1 });
+  const penAlly = ally({ dps: 1000, phys: 1, pen: { ARPEN: 0.4 } });
+  const g = (a) => withAllies([a], () => St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shredAlly.avg);
+  assert.ok(g(penAlly) < g(noPen), "관통이 많은 아군에게는 저항 감소의 득이 작아야 해요");
+  // 내 관통을 바꿔도 아군 쪽 배율비는 그대로여야 한다 (내 관통을 아군에게 쓰면 틀린다)
+  const mine = (items) => withAllies([noPen], () => St.evaluate(champ("Garen"), 18, items, [], { aram: true }).m);
+  const plainMe = mine([BC()]), penMe = mine([BC(), item("도미닉 경의 인사")]);
+  assert.equal(plainMe.shred.armorShred, penMe.shred.armorShred, "관통 아이템은 감소량을 바꾸지 않아요");
+  assert.ok(Math.abs(plainMe.shredAlly.per[0].physRatio - penMe.shredAlly.per[0].physRatio) < 1e-12,
+    "내가 관통을 더 사도 아군 쪽 배율비는 그대로여야 해요");
+});
+
+test("C9-B 아군은 내 피해를 바꾸지 않는다 (역방향 기여는 이번 범위 밖)", () => {
+  const keys = St.evaluate(champ("Garen"), 18, [BC()], [], { aram: true }).m.shred.keys;
+  const none = St.evaluate(champ("Lux"), 18, [item("루덴의 메아리")], [], { aram: true }).m;
+  const with4 = withAllies([ally({ keys }), ally({ name: "b", keys })],
+    () => St.evaluate(champ("Lux"), 18, [item("루덴의 메아리")], [], { aram: true }).m);
+  assert.equal(with4.combo, none.combo, "아군의 저항 감소가 내 피해를 키우면 안 돼요 (아직 안 센다)");
+  assert.equal(with4.dps, none.dps);
+});
+
+test("C9-B 아군 지문(allyKey)은 아군이 바뀔 때만 바뀐다", () => {
+  St.setAllies(null);
+  assert.equal(St.allyKey(), "");
+  St.setAllies([ally({ name: "a", dps: 1000 })]);
+  const k1 = St.allyKey();
+  St.setAllies([ally({ name: "a", dps: 1000 })]);
+  assert.equal(St.allyKey(), k1, "같은 아군이면 지문도 같아야 캐시를 쓸 수 있어요");
+  St.setAllies([ally({ name: "a", dps: 1200 })]);
+  assert.notEqual(St.allyKey(), k1, "아군이 아이템을 사면 지문이 달라져야 해요");
+  St.setAllies(null);
+  assert.equal(St.allyKey(), "");
+});
