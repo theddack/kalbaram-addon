@@ -1912,6 +1912,11 @@ def main():
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("allyBasis"):  # 아군이 넣는 추가 피해(allyDealt)의 근거
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc["allyBasis"]}, {}, "", stack_warn, c["name"])
+        if rc and rc.get("aramOff") and rc["aramOff"].get("temporary"):
+            # 임시 규칙은 원본이 갱신되면 할 일이 없어진다 → 그때 알려서 지우게 한다 (중복 적용 방지, v0.1.95)
+            gone = [k for k in rc["aramOff"]["keys"] if k not in (c.get("aram") or {})]
+            if gone:
+                rule_warn.append(f"{c['name']}: aramOff 임시 규칙이 끌 값이 없다 ({', '.join(gone)}) → 원본이 갱신됐으니 rules.json 에서 지워도 된다")
         if rc and rc.get("aramOff") and c.get("aram"):  # 실게임 능력치 대조로 증강 모드에 없다고 확인한 일반 칼바람 보정
             c["aramOff"] = {k: c["aram"].pop(k) for k in rc["aramOff"]["keys"] if k in c["aram"]}
             c["aramOffWhy"] = rc["aramOff"]["why"]
