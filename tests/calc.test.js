@@ -1375,8 +1375,8 @@ test("C9-A2 비율 저항 감소는 곱해서 합친다 (관통 %와 같은 규�
   const two = St.computeStats(champ("Lux"), 18, [], [{ mrShred: 0.075 }, { mrShred: 0.075 }], { aram: true }).conv.mrShred;
   near(two, 1 - 0.925 * 0.925, 1e-12, "두 출처를 더했다 (곱해야 해요)");
   assert.ok(two < 0.15, "더한 값(0.15)보다 작아야 해요");
-  // 아이템 쪽 출처와 섞여도 곱한다 (핏빛 저주 11.25% + 가상 7.5%)
-  const mixed = St.computeStats(champ("Lux"), 18, [item("핏빛 저주")], [{ mrShred: 0.075 }], { aram: true }).conv.mrShred;
+  // 아이템 쪽 출처(C9-A3 공통 중첩 규칙)와 섞여도 곱한다 (핏빛 저주 11.25% + 가상 7.5%)
+  const mixed = St.evaluate(champ("Lux"), 18, [item("핏빛 저주")], [{ mrShred: 0.075 }], { aram: true }).m.shred.mrShred;
   near(mixed, 1 - 0.8875 * 0.925, 1e-12, "아이템·증강 출처를 더했다");
   assert.ok(mixed < 0.1125 + 0.075, "더한 값보다 작아야 해요");
 });
@@ -1388,17 +1388,73 @@ test("C9-A2 고정 저항 감소는 더해서 합친다", () => {
   near(sum.armorFlatShred, 5, 1e-12, "고정 방어력 감소");
 });
 
-test("C9-A2.5 핏빛 저주는 중첩 평균 1.5 가정을 그대로 쓰고 결과가 바뀌지 않는다", () => {
+test("C9-A3 핏빛 저주는 공통 중첩 식을 타고도 값이 그대로다 (중첩 평균 1.5 고정)", () => {
   const rule = (d.rules.items || {})["핏빛 저주"];
-  assert.ok(rule && rule.stats, "핏빛 저주 규칙이 있어야 해요");
-  near(rule.stats.mrShred, 0.1125, 1e-12, "중첩 평균 1.5 × 7.5% 가정 (C9-A3 전까지 그대로)");
+  assert.ok(rule && rule.stats && rule.stats._shred, "핏빛 저주가 공통 중첩 규칙(_shred)으로 적혀 있어야 해요");
+  const spec = rule.stats._shred[0];
+  assert.equal(spec.stat, "mrShred");
+  near(spec.perStack * spec.pinnedAvg, 0.1125, 1e-12, "중첩 평균 1.5 × 7.5% 가정 (값 불변)");
   // 공통 자리로 옮겨도 깎인 마법 저항력과 피해 배율이 예전 식과 같다
   const blight = item("핏빛 저주");
   assert.ok(blight, "핏빛 저주 아이템이 있어야 해요");
-  const cv = St.computeStats(champ("Lux"), 18, [blight], [], { aram: true }).conv;
-  near(cv.mrShred, 0.1125, 1e-12, "아이템 하나면 곱·합이 같다");
-  near(St.mitigation(St.TARGET.MR, 0, 0, cv.mrShred, 0),
+  const sh = St.evaluate(champ("Lux"), 18, [blight], [], { aram: true }).m.shred;
+  near(sh.mrShred, 0.1125, 1e-12, "아이템 하나면 곱·합이 같다");
+  near(sh.armorShred, 0, 1e-12, "마법 쪽 효과가 물리 쪽으로 새면 안 돼요");
+  near(St.mitigation(St.TARGET.MR, 0, 0, sh.mrShred, 0),
     100 / (100 + St.TARGET.MR * (1 - 0.1125)), 1e-12, "예전 식(MR × (1 − mrShred))과 같은 값");
+  // 중첩 평균이 고정값이라 공격 속도·스킬 빈도가 달라도 흔들리지 않는다
+  for (const id of ["Lux", "Garen", "Ashe"]) {
+    near(St.evaluate(champ(id), 18, [blight], [], { aram: true }).m.shred.mrShred, 0.1125, 1e-12, `${id}`);
+  }
+});
+
+test("C9-A3 공통 중첩 식 연결: 쌓는 방법(on)마다 빈도가 다르고 경계에서 0 이 된다", () => {
+  const sh = (specs, id = "Ashe", items = []) =>
+    St.evaluate(champ(id), 18, items, [{ _shred: specs }], { aram: true }).m.shred;
+  // 발동 빈도 0 · 지속시간 0 · 최대 중첩 0 → 값 0 (NaN 이 번지지 않는다)
+  for (const bad of [{ stat: "armorShred", perStack: 0.06, maxStacks: 5, dur: 0, on: "auto" },
+    { stat: "armorShred", perStack: 0.06, maxStacks: 0, dur: 6, on: "auto" },
+    { stat: "armorShred", perStack: 0.06, maxStacks: 5, dur: 6, on: "none" }]) {
+    const r = sh([bad]);
+    assert.equal(r.armorShred, 0, `${JSON.stringify(bad)} 는 0 이어야 해요`);
+    assert.ok(Number.isFinite(r.armorShred));
+  }
+  // 평타로 쌓는 효과와 스킬로 쌓는 효과는 빈도가 다르다 (공격 속도 vs 시전 빈도 × 공통 가정)
+  const base = { perStack: 0.06, maxStacks: 5, dur: 6 };
+  const auto = sh([{ stat: "armorShred", ...base, on: "auto" }]).armorShred;
+  const skill = sh([{ stat: "armorShred", ...base, on: "skill" }]).armorShred;
+  const both = sh([{ stat: "armorShred", ...base, on: "both" }]).armorShred;
+  assert.ok(auto > skill && skill > 0, `평타 쪽이 더 자주 쌓여야 해요 (${auto} vs ${skill})`);
+  assert.ok(both >= auto, "둘 다면 더 쌓여야 해요");
+  // 최대 중첩에 도달하는 조합과 못 하는 조합
+  const reach = sh([{ stat: "armorShred", perStack: 0.01, maxStacks: 2, dur: 6, on: "auto" }]);
+  const far = sh([{ stat: "armorShred", perStack: 0.01, maxStacks: 30, dur: 60, on: "auto" }]);
+  assert.ok(reach.armorShred > 0 && reach.armorShred <= 0.01 * 2 + 1e-12, "도달 조합도 최대 중첩(2)을 넘으면 안 돼요");
+  assert.ok(far.armorShred > 0 && far.armorShred < 0.01 * 30, "못 채우는 조합은 쌓는 중 평균");
+  // 물리·마법 경로가 섞이지 않는다
+  const split = sh([{ stat: "armorShred", ...base, on: "auto" }, { stat: "mrFlatShred", perStack: 5, maxStacks: 1, dur: 6, on: "auto" }]);
+  assert.ok(split.armorShred > 0 && split.mrShred === 0, "비율 방어력 감소가 마법 쪽으로 새면 안 돼요");
+  assert.ok(split.mrFlatShred > 0 && split.armorFlatShred === 0, "고정 감소도 경로가 갈려야 해요");
+  // 비율은 곱, 고정은 합
+  const one = sh([{ stat: "armorShred", ...base, on: "auto" }]).armorShred;
+  const two = sh([{ stat: "armorShred", ...base, on: "auto" }, { stat: "armorShred", ...base, on: "auto" }]).armorShred;
+  near(two, 1 - (1 - one) * (1 - one), 1e-12, "비율 감소 둘은 곱한다");
+  const f2 = sh([{ stat: "armorFlatShred", perStack: 5, maxStacks: 1, dur: 6, on: "auto" },
+    { stat: "armorFlatShred", perStack: 5, maxStacks: 1, dur: 6, on: "auto" }]).armorFlatShred;
+  const f1 = sh([{ stat: "armorFlatShred", perStack: 5, maxStacks: 1, dur: 6, on: "auto" }]).armorFlatShred;
+  near(f2, f1 * 2, 1e-12, "고정 감소 둘은 더한다");
+});
+
+test("C9-A3 저항 감소 → 관통 순서를 그대로 지킨다", () => {
+  // 고정 감소 → 비율 감소 → 비율 관통 → 고정 관통
+  const R = 100, pctRed = 0.2, flatRed = 10, pctPen = 0.3, flatPen = 5;
+  const want = 100 / (100 + Math.max(0, (R - flatRed) * (1 - pctRed) * (1 - pctPen) - flatPen));
+  near(St.mitigation(R, pctPen, flatPen, pctRed, flatRed), want, 1e-12, "순서가 바뀌면 값이 달라져요");
+  // 공통 중첩 식으로 들어온 감소도 같은 자리에 들어간다 (마법 쪽)
+  const sh = St.evaluate(champ("Lux"), 18, [item("핏빛 저주")], [], { aram: true }).m.shred;
+  near(sh.mrShred, 0.1125, 1e-12);
+  assert.ok(St.mitigation(St.TARGET.MR, 0.4, 0, sh.mrShred, 0) > St.mitigation(St.TARGET.MR, 0.4, 0, 0, 0),
+    "감소가 관통과 같이 걸리면 피해가 더 들어가야 해요");
 });
 
 test("C9-A2.5 중첩 평균 식: 포화 전·후 두 갈래가 손 계산과 같다", () => {
@@ -1433,7 +1489,8 @@ test("C9-A2.5 중첩 평균은 0 아래로도 포화 위로도 안 간다 (발�
 test("C9-A2.5 중첩 평균을 1.5 로 고정하면 핏빛 저주의 지금 값이 그대로 나온다", () => {
   const r = St.shredExpect({ perStack: 0.075, maxStacks: 4, rate: 1, dur: 6, pinnedAvg: 1.5 });
   near(r.value, 0.1125, 1e-12, "지금 규칙 값 (중첩 평균 1.5 × 7.5%)");
-  near(r.value, (d.rules.items["핏빛 저주"].stats || {}).mrShred, 1e-12, "데이터 규칙과 같은 값");
+  const spec = (d.rules.items["핏빛 저주"].stats || {})._shred[0];
+  near(r.value, spec.perStack * spec.pinnedAvg, 1e-12, "데이터 규칙과 같은 값");
 });
 
 // ---- v0.1.95 Phase 4 E4·F12: 자기 회복 / 최대 체력 증가 / 일반 보호막 / 주문 방어막·피해 흡수를 가른다

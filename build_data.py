@@ -769,6 +769,8 @@ def resolve_rule_stats(rules, aug_spells):
         for key, v in spec.items():
             if isinstance(v, (int, float, bool)):
                 out[key] = v
+            elif key == "_shred":  # C9-A3 중첩형 저항 감소 규칙: 숫자 해석 없이 그대로 넘긴다 (stats.js 가 푼다)
+                out[key] = v
             elif isinstance(v, str):
                 neg = v.startswith("-")
                 val = calc.value(v.lstrip("-"), 1)

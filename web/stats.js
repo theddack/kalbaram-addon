@@ -118,6 +118,9 @@
         const raw = typeof raw0 === "number" ? (rScale[k] != null ? raw0 * rScale[k] : raw0) * below * far : raw0;
         // needsItem: 그 아이템을 가졌을 때만 터지는 증강 효과 (폭풍 쇄도 업그레이드: 폭풍 쇄도의 질풍이 폭발)
         if (k === "_effects") { effects.push(...raw.filter((e) => !e.needsItem || items.some((it) => it.name === e.needsItem))); continue; }
+        // C9-A3: 중첩형 저항 감소는 숫자가 아니라 '쌓이는 방식' 으로 적는다 ({stat, perStack, maxStacks, dur, on}).
+        // 쌓는 속도는 챔피언의 공격 속도·스킬 빈도라 여기서는 풀지 않고 모아만 둔다 (metrics 에서 shredExpect 로 푼다).
+        if (k === "_shred") { (conv._shreds || (conv._shreds = [])).push(...(Array.isArray(raw) ? raw : [raw])); continue; }
         if (REFUND_KEYS.includes(k)) continue;
         if (raw && typeof raw === "object" && raw.ratios && Object.keys(raw.ratios).length) { late.push([k, raw]); continue; }
         const v = levelValue(raw, L);
@@ -475,6 +478,35 @@
     return { stackAvg: avg, saturated: sat, value: avg * perStack };
   }
 
+  // C9-A3: 모아 둔 중첩형 저항 감소 규칙을 실제 값으로 푼다.
+  //   stat      armorShred·mrShred(비율) · armorFlatShred·mrFlatShred(고정) — 물리와 마법 경로를 섞지 않는다
+  //   on        어떻게 쌓나: "auto" 기본 공격 · "skill" 스킬 · "both" 둘 다
+  //   pinnedAvg 중첩 평균을 못 세는 효과의 기존 가정값 (핏빛 저주 1.5) — 주면 rate 를 보지 않는다
+  // 쌓는 속도(rate)는 여기서 한 번만 정한다. shredExpect 가 돌려주는 평균 중첩에는 이미 '쌓는 시간·지속시간' 이
+  // 들어 있으므로 바깥에서 가동률을 다시 곱하지 않는다 (docs C9 조사 7.1).
+  const SHRED_STATS = { armorShred: "pct", mrShred: "pct", armorFlatShred: "flat", mrFlatShred: "flat" };
+  function shredRate(on, ctx) {
+    const auto = Math.max(0, (ctx.AS || 0) * EXP.autoUptime);
+    // 스킬로 쌓는 효과는 '실제로 쓰여 맞는 스킬 빈도' (시전 빈도 × 공통 가정) — 다른 스킬 효과와 같은 기준
+    const skill = Math.max(0, (ctx.castRate || 0) * EXP.skillShare);
+    return on === "auto" ? auto : on === "skill" ? skill : on === "both" ? auto + skill : 0;
+  }
+  function shredFrom(specs, ctx) {
+    const out = { armorShred: 0, mrShred: 0, armorFlatShred: 0, mrFlatShred: 0, detail: [] };
+    for (const sp of specs || []) {
+      const kind = SHRED_STATS[sp && sp.stat];
+      if (!kind) continue;
+      const r = shredExpect({ perStack: sp.perStack || 0, maxStacks: sp.maxStacks || 0, dur: sp.dur || 0,
+        rate: sp.pinnedAvg != null ? 1 : shredRate(sp.on, ctx), fightSec: ctx.fightSec, pinnedAvg: sp.pinnedAvg });
+      if (!(r.value > 0)) continue;
+      // 비율은 관통 % 처럼 곱해서, 고정은 더해서 합친다 (C9-A2 와 같은 규칙)
+      if (kind === "pct") out[sp.stat] = 1 - (1 - out[sp.stat]) * (1 - r.value);
+      else out[sp.stat] += r.value;
+      out.detail.push({ stat: sp.stat, stackAvg: r.stackAvg, saturated: r.saturated, value: r.value });
+    }
+    return out;
+  }
+
   // 기준 상대: 전 챔피언 173명의 18레벨 균형 빌드 능력치 중앙값 (패치 16.20, tools/target_median.js 로 계산)
   // 현재 체력 비례 피해는 체력 70% 상태, 잃은 체력 비례는 30% 잃은 상태로 가정
   // 받는 피해량(초당): 18레벨 칼바람 한타에서 집중될 때 평균 정도. 무적·피해 감소를 버티는 힘으로 바꿀 때 쓴다
@@ -636,10 +668,6 @@
     // 마법 저항력 감소(핏빛 저주 '썩은 부식')는 상대 마법 저항력 자체를 줄인다
     // 체력 조건 피해 증가 (그림자불꽃: 체력 40% 아래 대상에게 마법·고정 피해 +20%): 조건 아래에서 들어가는 피해 비율만큼 (targetBelowShare)
     const lowAmp = cv.lowHpAt ? (cv.lowHpMagicTrueAmp || 0) * targetBelowShare(cv.lowHpAt) : 0;
-    const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY,
-      Math.min(SHRED_CAP, cv.armorShred || 0), cv.armorFlatShred || 0) * (1 + (cv.physDmgMult || 0));
-    const magMit = mitigation(TARGET.MR, t.MPENP, t.MPEN,
-      Math.min(SHRED_CAP, cv.mrShred || 0), cv.mrFlatShred || 0) * (1 + (cv.magicDmgMult || 0) + lowAmp);
     const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
     const ranks = ranksAt(L, champ.spells);
     const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, autoHit: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0 };
@@ -668,6 +696,28 @@
       + ((champ.features || []).includes("dash") ? (cv.dashHaste || 0) / 3 : 0)
       + (cv.ultTriggerHaste || 0) * ultUptime(cv.ultTriggerDur) + refund();
     out.haste = { basic: basicHaste, ult: ultHaste };
+    // ---- C9-A3: 중첩형 저항 감소를 공통 식(shredExpect)으로 풀어 피해 경감에 넣는다
+    // 스킬로 쌓는 효과의 시전 빈도: 아래 스킬 루프의 castRate 와 같은 규칙(한 스킬은 최대 CAST_MIN_CD 초에 1번).
+    // 다만 원 히트 원더·핏빛 코발트의 대기시간 보정은 빼고 센다 (저항 감소는 스킬 하나만 겨냥하지 않는다).
+    const shredCastRate = champ.spells.reduce((a, sp, i) => {
+      if (ranks[i] === 0 || (flags.noUlt && sp.slot === "R")) return a;
+      const cdBase = sp.cooldown[Math.max(0, Math.min(ranks[i], sp.cooldown.length) - 1)] || 0;
+      if (!(cdBase > 0)) return a;
+      const h = (sp.slot === "R" ? ultHaste : basicHaste) + (flags.slotHaste[sp.slot] || 0);
+      return a + 1 / Math.max(cdBase * 100 / (100 + h), CAST_MIN_CD);
+    }, 0);
+    const shred = shredFrom(cv._shreds, { AS: t.AS, castRate: shredCastRate, fightSec: EXP.fightSec });
+    // 규칙에 숫자로 바로 적힌 감소값과 합친다 (비율은 곱, 고정은 합 — C9-A2 와 같은 규칙)
+    // 한쪽이 0 이면 그대로 둔다 (1-(1-a)*(1-0) 는 부동소수점 끝자리를 흔들어 기존 값과 미세하게 달라진다)
+    const pctShred = (k) => Math.min(SHRED_CAP, !shred[k] ? (cv[k] || 0) : !cv[k] ? shred[k] : 1 - (1 - cv[k]) * (1 - shred[k]));
+    out.shred = { armorShred: pctShred("armorShred"), mrShred: pctShred("mrShred"),
+      armorFlatShred: (cv.armorFlatShred || 0) + shred.armorFlatShred,
+      mrFlatShred: (cv.mrFlatShred || 0) + shred.mrFlatShred, detail: shred.detail };
+    // 적용 순서는 그대로다: 고정 감소 → 비율 감소 → 비율 관통 → 고정 관통 (mitigation)
+    const physMit = mitigation(TARGET.ARMOR, t.ARPEN, t.LETHALITY, out.shred.armorShred, out.shred.armorFlatShred)
+      * (1 + (cv.physDmgMult || 0));
+    const magMit = mitigation(TARGET.MR, t.MPENP, t.MPEN, out.shred.mrShred, out.shred.mrFlatShred)
+      * (1 + (cv.magicDmgMult || 0) + lowAmp);
     // 스킬 증강({{SpellName}}): 원본 설명이 '챔피언 스킬 하나'에만 건다. 어느 스킬인지는 게임 카드에만 나와서
     // 배운 스킬(Q·W·E·R, 재사용 대기시간이 있는 것) 중 하나가 같은 확률로 대상이라고 보고 기대값을 낸다 (가정, 실게임 검증 필요).
     // 궁극기도 대상이 될 수 있다: 같은 계열 증강 설명에 '궁극기가 대상이면' 규칙이 있다 (위키 Terrain'd·Chain Reaction)

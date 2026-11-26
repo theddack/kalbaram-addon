@@ -24,6 +24,10 @@ sys.path.insert(0, str(ROOT))
 import build_data  # 근거 줄(basisView)은 전체 빌드와 같은 함수로 만든다 (두 경로가 어긋나지 않게)
 
 
+# C9-A3 중첩형 저항 감소 규칙은 글자(감소 키·쌓는 방법)가 들어 있지만 게임 데이터 해석이 필요 없다 → 그대로 넘긴다
+LITERAL_KEYS = {"_shred"}
+
+
 def plain(v):
     """숫자(또는 숫자만 든 구조)인가 — 게임 데이터 이름 해석이 필요 없는 값인가"""
     if isinstance(v, (int, float)):
@@ -33,7 +37,7 @@ def plain(v):
     if isinstance(v, dict):
         if {"dv", "calc", "calc18"} & set(v):
             return False
-        return all(plain(x) for x in v.values())
+        return all(plain(x) for k, x in v.items() if k not in LITERAL_KEYS)
     return False
 
 
