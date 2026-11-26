@@ -134,3 +134,56 @@ console.log("== 7. 끝없는 절망 — 입힌 피해의 250% 자기 회복 ==")
 
 console.log(bad ? `\n틀린 항목 ${bad}개` : "\n모두 통과");
 process.exitCode = bad ? 1 : 0;
+
+console.log("== 8. 173명 전부 · 관련 증강 단독과 복합 조합 ==");
+{
+  const P0 = ["스테락의 도전", "굶주린 히드라", "발걸음 분쇄기", "악의", "아트마의 심판", "마나무네", "혹한의 손길", "끝없는 절망"];
+  // 전 챔피언에게 P0 아이템을 하나씩 넣어 본다: 숫자가 깨지지 않고, 값이 맨몸보다 작아지지 않아야 한다
+  let nan = 0, worse = 0, up = 0;
+  for (const c of d.champions) {
+    const a = ev(c, []).m;
+    for (const n of P0) {
+      const b = ev(c, [item(n)]).m;
+      for (const k of ["combo", "dps", "ehp", "support", "mobility", "control"]) if (!Number.isFinite(b[k])) nan++;
+      const sum = (m) => m.combo + m.dps + m.ehp;
+      if (sum(b) < sum(a) - 1e-6) worse++;
+      if (sum(b) > sum(a) + 1e-6) up++;
+    }
+  }
+  console.log(`  챔피언 ${d.champions.length}명 × 아이템 ${P0.length}개 = ${d.champions.length * P0.length}가지`);
+  ok(nan === 0, `숫자가 깨진 자리 ${nan}개`);
+  ok(worse === 0, `아이템을 넣었는데 값이 줄어든 자리 ${worse}개`);
+  console.log(`  값이 오른 자리 ${up}개`);
+
+  // 관련 증강: 단독과 둘씩 묶은 조합 (연계가 서로를 깨뜨리지 않는지)
+  const AUG = ["굶주린 히드라 업그레이드", "보석 건틀릿", "정신 변환", "죽음의 순환", "흡수", "묵직한 한 방", "왕관의 무게"]
+    .map((n) => d.augments.find((a) => a.name === n)).filter(Boolean);
+  console.log(`  관련 증강 ${AUG.length}개: ${AUG.map((a) => a.name).join(" · ")}`);
+  const champs = ["Garen", "Ryze", "Jinx", "Lux", "Darius"].map(champ);
+  let bad2 = 0, pairs = 0;
+  for (const c of champs) for (const n of P0) {
+    const it = [item(n)];
+    const solo = AUG.map((a) => ev(c, it, [a]).m);
+    solo.forEach((m, i) => { if (!Number.isFinite(m.combo + m.ehp)) { bad2++; console.log(`    깨짐 단독 ${c.id}/${n}/${AUG[i].name}`); } });
+    for (let i = 0; i < AUG.length; i++) for (let j = i + 1; j < AUG.length; j++) {
+      pairs++;
+      const m = ev(c, it, [AUG[i], AUG[j]]).m;
+      if (!Number.isFinite(m.combo + m.ehp + m.dps + m.support)) { bad2++; console.log(`    깨짐 복합 ${c.id}/${n}/${AUG[i].name}+${AUG[j].name}`); }
+      // 값이 커지는지로는 볼 수 없다 — 증강 자체가 값을 낮출 수 있다 (메이지가 묵직한 한 방을 고르면 공격 속도를 잃는다).
+      // 대신 '이번에 넣은 효과가 두 번 들어가지 않았는지'와 '다시 계산해도 같은지'를 본다
+      const rows = (m.effects || []).filter((e) => e.src === n);
+      if (rows.length > 1) { bad2++; console.log(`    효과가 ${rows.length}번 ${c.id}/${n}/${AUG[i].name}+${AUG[j].name}`); }
+      const again = ev(c, it, [AUG[i], AUG[j]]).m;
+      if (again.combo !== m.combo || again.ehp !== m.ehp) { bad2++; console.log(`    다시 계산하니 다름 ${c.id}/${n}/${AUG[i].name}+${AUG[j].name}`); }
+    }
+  }
+  console.log(`  단독 ${champs.length * P0.length * AUG.length}가지 · 복합 ${pairs}가지`);
+  ok(bad2 === 0, `증강 단독·복합에서 깨지거나 효과가 두 번 들어간 자리 ${bad2}개`);
+
+  // 캐시: 같은 입력을 여러 번 계산해도 같은 값 (계산 기억이 있어도 초기화 후와 같아야)
+  const c0 = champ("Garen");
+  const first = JSON.stringify(ev(c0, P0.slice(0, 3).map(item)).m.combo);
+  let same = true;
+  for (let i = 0; i < 5; i++) if (JSON.stringify(ev(c0, P0.slice(0, 3).map(item)).m.combo) !== first) same = false;
+  ok(same, "같은 입력을 여섯 번 계산해도 값이 같다 (캐시 적중 ↔ 다시 계산)");
+}
