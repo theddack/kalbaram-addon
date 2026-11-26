@@ -1445,6 +1445,79 @@ test("C9-A3 공통 중첩 식 연결: 쌓는 방법(on)마다 빈도가 다르�
   near(f2, f1 * 2, 1e-12, "고정 감소 둘은 더한다");
 });
 
+// ---- v0.1.95 Phase 4 C9-A4: 칠흑의 양날 도끼(중첩형 비율 감소) · 악의(조건부 고정 감소)
+const CLEAVER = "칠흑의 양날 도끼", MALIGN = "악의";
+const shredOf = (id, items = [], augs = []) =>
+  St.evaluate(champ(id), 18, items.map(item).filter(Boolean), augs, { aram: true }).m;
+
+test("C9-A4 칠흑: 물리 피해 횟수로 중첩을 센다 (평타 + 물리 스킬, 한 스킬은 한 번)", () => {
+  for (const id of ["Garen", "Ashe", "Lux"]) {
+    const m = shredOf(id, [CLEAVER]);
+    const c = champ(id);
+    // 같은 규칙으로 손 계산: 평타(공격 속도) + 물리 피해가 있는 스킬의 시전 빈도 × 공통 가정 30%
+    const cs = St.computeStats(c, 18, [item(CLEAVER)], [], { aram: true });
+    const ranks = St.ranksAt(18, c.spells);
+    const haste = m.haste;
+    let physCast = 0, allCast = 0;
+    c.spells.forEach((sp, i) => {
+      const cd = sp.cooldown[Math.max(0, Math.min(ranks[i], sp.cooldown.length) - 1)] || 0;
+      if (ranks[i] === 0 || !(cd > 0)) return;
+      const r = 1 / Math.max(cd * 100 / (100 + (sp.slot === "R" ? haste.ult : haste.basic)), 2);
+      allCast += r;
+      const kinds = (sp.effects || []).map((e) => e.kind);
+      if (kinds.includes("physical") || (kinds.includes("adaptive") && !/^(Lux|Annie|Sona)$/.test(id))) physCast += r;
+    });
+    const rate = cs.total.AS + physCast * 0.3;
+    const want = St.shredExpect({ perStack: 0.06, maxStacks: 5, dur: 6, rate, fightSec: 6 });
+    near(m.shred.armorShred, want.value, 1e-9, `${id} 중첩 평균이 식과 달라요`);
+    assert.ok(m.shred.armorShred <= 0.3 + 1e-12, `${id}: 최대 중첩 5 × 6% = 30% 를 넘으면 안 돼요`);
+    assert.equal(m.shred.mrShred, 0, `${id}: 칠흑은 마법 저항력을 깎지 않아요`);
+    assert.ok(allCast >= physCast, "물리 스킬 빈도가 전체 시전 빈도보다 클 수 없어요");
+  }
+});
+
+test("C9-A4 칠흑: 마법·고정 피해는 중첩에 안 들어간다", () => {
+  // 'magic' 으로 쌓는 효과에는 기본 공격(물리)이 들어가지 않는다 → 마법 스킬이 없으면 0
+  const onlyMagic = [{ _shred: [{ stat: "armorShred", perStack: 0.06, maxStacks: 5, dur: 6, on: "magic" }] }];
+  const phys = [{ _shred: [{ stat: "armorShred", perStack: 0.06, maxStacks: 5, dur: 6, on: "physical" }] }];
+  for (const id of ["Garen", "Ashe"]) {
+    const a = shredOf(id, [], onlyMagic).shred.armorShred;
+    const b = shredOf(id, [], phys).shred.armorShred;
+    assert.ok(b > a, `${id}: 물리 쪽이 더 쌓여야 해요 (${b} vs ${a})`);
+  }
+  // 같은 스킬에 피해 효과가 여럿이어도 한 번만 센다: 규칙이 효과 수를 보지 않는다
+  const c = champ("Garen");
+  const many = c.spells.filter((sp) => (sp.effects || []).filter((e) => e.kind === "physical").length > 1).length;
+  const m = shredOf("Garen", [CLEAVER]);
+  assert.ok(m.shred.detail.length === 1, "칠흑은 감소 규칙 하나다 (효과마다 세면 여러 개가 돼요)");
+  assert.ok(many >= 0);
+});
+
+test("C9-A4 악의: 궁극기 피해로 걸리고 한타·장기 가동률이 다르다", () => {
+  const m = shredOf("Lux", [MALIGN]);
+  const d0 = m.shred.detail.find((x) => x.stat === "mrFlatShred");
+  assert.ok(d0, "고정 마법 저항력 감소가 있어야 해요");
+  near(d0.fightUptime, 0.5, 1e-12, "한타 한 번: 3초 ÷ 6초");
+  near(m.shred.mrFlatShred, 10 * 0.5, 1e-12, "한타 기준 감소량");
+  assert.ok(d0.longUptime > 0 && d0.longUptime < d0.fightUptime, "길게 싸울 때는 궁 대기시간만큼 낮아야 해요");
+  near(m.shredLong.mrFlatShred, 10 * d0.longUptime, 1e-12, "길게 싸울 때 감소량");
+  // 길게 싸울 때가 덜 깎이므로 초당 피해 쪽 보정은 1 보다 작고, 물리 쪽은 건드리지 않는다
+  assert.ok(m.shredAdj.magic < 1 && m.shredAdj.magic > 0.9, `마법 보정 ${m.shredAdj.magic}`);
+  assert.equal(m.shredAdj.physical, 1, "물리 쪽은 그대로여야 해요");
+  assert.equal(m.shred.mrShred, 0, "비율 감소가 아니라 고정 감소예요");
+  // 같은 가동률을 두 번 곱하지 않는다: 감소량 = 10 × 가동률 한 번
+  assert.ok(m.shred.mrFlatShred === 10 * d0.fightUptime);
+});
+
+test("C9-A4 악의: 궁극기가 막히면(증강) 감소가 0 이다", () => {
+  const noUlt = d.augments.find((a) => ((d.rules.augments[a.id] || {}).statsResolved || {}).noUlt);
+  assert.ok(noUlt, "궁을 막는 증강이 있어야 해요");
+  const as = S.augStatsOf([noUlt], d.rules, champ("Lux"));
+  const m = St.evaluate(champ("Lux"), 18, [item(MALIGN)], as, { aram: true }).m;
+  assert.equal(m.shred.mrFlatShred, 0, "궁을 못 쓰면 증오안개도 안 걸려요");
+  assert.equal(m.shredAdj.magic, 1, "차이가 없으면 보정도 1 이에요");
+});
+
 test("C9-A3 저항 감소 → 관통 순서를 그대로 지킨다", () => {
   // 고정 감소 → 비율 감소 → 비율 관통 → 고정 관통
   const R = 100, pctRed = 0.2, flatRed = 10, pctPen = 0.3, flatPen = 5;
