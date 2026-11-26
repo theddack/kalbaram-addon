@@ -121,6 +121,8 @@
         // C9-A3: 중첩형 저항 감소는 숫자가 아니라 '쌓이는 방식' 으로 적는다 ({stat, perStack, maxStacks, dur, on}).
         // 쌓는 속도는 챔피언의 공격 속도·스킬 빈도라 여기서는 풀지 않고 모아만 둔다 (metrics 에서 shredExpect 로 푼다).
         if (k === "_shred") { (conv._shreds || (conv._shreds = [])).push(...(Array.isArray(raw) ? raw : [raw])); continue; }
+        // v0.1.95 Phase 5A: '그 효과가 입힌 피해의 N% 를 자기 회복' (끝없는 절망 '고뇌') — 숫자가 아니라 {src, pct} 라 그대로 둔다
+        if (k === "selfHealOfDmg") { conv.selfHealOfDmg = raw; continue; }
         if (REFUND_KEYS.includes(k)) continue;
         if (raw && typeof raw === "object" && raw.ratios && Object.keys(raw.ratios).length) { late.push([k, raw]); continue; }
         const v = levelValue(raw, L);
@@ -1142,6 +1144,18 @@
       else out.augCombo += hit;
     }
     out.combo += out.augCombo;
+    // v0.1.95 Phase 5A: 끝없는 절망 '고뇌' — 그 효과가 '실제로 입힌 피해(방어 적용 후)'의 250% 를 자기 자신에게 회복.
+    // 순환 참조 막기: 이미 계산이 끝난 그 효과 줄(row.hit)만 읽는다. 회복이 피해를 다시 키우지 않고, 자기 자신도 다시 읽지 않는다.
+    // 들어가는 자리: 아이템 자기 회복(itemSelfHeal) → selfHealAll → 버티는 힘 · 정령의 형상 회복 증폭 · 죽음의 순환 ·
+    //   상대 회복량 추정(app.js selfHealOf)까지 한 번에 따라온다. 아군에게 주는 회복이 아니라 지원 지표에는 안 들어간다
+    if (cv.selfHealOfDmg) {
+      const row = out.effects.find((r) => r.src === cv.selfHealOfDmg.src && r.hit > 0);
+      if (row) {
+        const amt = row.hit * cv.selfHealOfDmg.pct * (aram.healing || 1) * (1 + t.HSP);
+        out.itemSelfHeal += amt;
+        out.itemSelfHp += amt;
+      }
+    }
     // 치유 감소(고통스러운 상처 40%): 상대가 한타에서 회복할 양 중 못 하게 막는 몫 = 그만큼 더 깎은 것과 같다 → 한타 피해에 더한다.
     // 기준 상대의 회복량(TARGET.HEAL)은 상대를 모르면 0 이라 기본 추천에서는 값이 0 이다 (위 TARGET 설명)
     if (cv.healCut && TARGET.HEAL > 0) {
