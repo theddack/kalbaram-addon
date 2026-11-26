@@ -1821,6 +1821,23 @@ def main():
                     if not any(e.get("name") == nm for e in sp["effects"]):
                         stack_warn.append(f"{c['name']}: dropEffects {slot} '{nm}' 효과가 없음 (패치로 이름 바뀜?)")
                 sp["effects"] = [e for e in sp["effects"] if e.get("name") not in names]
+        if rc and rc.get("onhitEvery"):  # 몇 번째 기본 공격마다 들어가는 피해 (v0.1.95 F5-C, basis 에 근거)
+            for slot, names in rc["onhitEvery"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                for nm, every in names.items():
+                    e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == nm), None)
+                    if e is None:
+                        stack_warn.append(f"{c['name']}: onhitEvery {slot} '{nm}' 효과가 없음")
+                    else:
+                        e["onhit"], e["every"] = True, every
+        if rc and rc.get("autoReplace"):  # 기본 공격을 대체하는 스킬 (v0.1.95 F5-C, basis 에 근거)
+            for slot, nm in rc["autoReplace"].items():
+                sp = next((s for s in c["spells"] if s["slot"] == slot), None)
+                e = next((e for e in (sp or {}).get("effects", []) if e.get("name") == nm), None)
+                if e is None:
+                    stack_warn.append(f"{c['name']}: autoReplace {slot} '{nm}' 효과가 없음")
+                else:
+                    e["autoReplace"] = True
         if rc and rc.get("dpsRate"):  # 장기 초당 피해의 발동 간격 (v0.1.95 F5-B, basis 에 근거)
             # 게임 파일에 충전 값이 있다고 모두 같게 세지 않는다. 바로 들어가는 피해인 스킬만 규칙에 적어 켠다
             # (설치물·평타 강화형은 적중 조건이 달라 여기서 켜지 않는다).
@@ -1847,7 +1864,7 @@ def main():
             c["fightBasis"] = rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if buff_basis:
             c["fightBasis"] = (c.get("fightBasis") or []) + buff_basis
-        if rc and (rc.get("dropEffects") or rc.get("dpsRate")) and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
+        if rc and (rc.get("dropEffects") or rc.get("dpsRate") or rc.get("onhitEvery") or rc.get("autoReplace")) and not (rc.get("fight") or rc.get("rangeAt18") or rc.get("effectTarget")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])
         if rc and rc.get("effectTarget") and not (rc.get("fight") or rc.get("rangeAt18")):
             c["fightBasis"] = (c.get("fightBasis") or []) + rule_basis({"basis": rc.get("basis")}, {}, "", stack_warn, c["name"])

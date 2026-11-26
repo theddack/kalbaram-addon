@@ -404,7 +404,7 @@
 
   function spellTotals(effects, rank, L, t) {
     const { uniq, groups: planGroups, kinds, crit } = spellPlan(effects);
-    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.ally ? { ally: e.ally } : {}), ...(e.target ? { target: e.target } : {}) }));
+    const vals = uniq.map((e) => ({ kind: e.kind, name: e.name, value: effectValue(e, rank, L, t), ...(e.onhit ? { onhit: true } : {}), ...(e.every ? { every: e.every } : {}), ...(e.autoReplace ? { autoReplace: true } : {}), ...(e.ally ? { ally: e.ally } : {}), ...(e.target ? { target: e.target } : {}) }));
     const groups = new Map();
     for (const [k, idx] of planGroups) groups.set(k, idx.map((i) => vals[i]));
     const isCritV = new Map(vals.map((v, i) => [v, crit[i]]));
@@ -639,7 +639,7 @@
       Math.min(SHRED_CAP, cv.mrShred || 0), cv.mrFlatShred || 0) * (1 + (cv.magicDmgMult || 0) + lowAmp);
     const trueMit = 1 + (cv.trueDmgMult || 0) + lowAmp;
     const ranks = ranksAt(L, champ.spells);
-    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0 };
+    const out = { spells: [], combo: 0, comboRaw: 0, skillDps: 0, autoHit: 0, shield: 0, heal: 0, kitShield: 0, kitHeal: 0, spellOnhit: 0, allyDmg: 0, selfShield: 0, selfHeal: 0 };
     const helps = (champ.features || []).includes("allysupport");
     // ---- 스킬 가속 환산 (쿨 반환·초기화 증강·아이템)
     const ranged = !champ.melee;
@@ -720,10 +720,14 @@
         if (v.ally) { const g = allyGain("allyOnhit", v.value, v.ally.sec, v.ally.hits, asCapOf) * ALLY_TARGETS; out.allyDmg += g; ally += g; continue; }
         if (v.onhit && DMG_KINDS.includes(v.kind)) {
           // 스킬의 '기본 지속 효과' 적중 시 피해: 기본 공격마다 (초당 피해의 평타 쪽). 스킬 피해 증폭은 안 받는다
+          // v0.1.95 F5-C: '4번째 기본 공격마다'(every) 처럼 몇 번에 한 번인 효과는 그 횟수로 나눠 한 대당 평균으로 센다
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
-          onhit += v.value * mit * dealt * (1 + flags.trueBonus);
+          onhit += v.value / Math.max(1, v.every || 1) * mit * dealt * (1 + flags.trueBonus);
           continue;
         }
+        // v0.1.95 F5-C: 기본 공격을 대체하는 스킬(제리 Q '이 스킬은 기본 공격으로 간주됩니다').
+        // 평타에 더하지 않고 평타 한 대의 피해를 이 값으로 바꾼다. 스킬 피해로는 세지 않는다 (이중 계산)
+        if (v.autoReplace && DMG_KINDS.includes(v.kind)) { out.autoHit = v.value; continue; }
         if (DMG_KINDS.includes(v.kind)) {
           const amp = dealt * (1 + flags.skillDmgMult) * (1 + (flags.slotDmg[sp.slot] || 0)) * skillCrit * ((ohwK || cobalt) && cdBase ? eMult : 1);
           const mit = v.kind === "magic" ? magMit : v.kind === "physical" ? physMit : trueMit;
@@ -875,7 +879,8 @@
     // 한 발에 두 놈: 치명타 평타는 적중 효과를 한 번 더 (conv.onhitOnCrit 번) → 적중 효과에 (1 + 치명타 확률 × 횟수)
     // 구인수의 격노검: 다 쌓인 뒤 세 번째 평타마다 적중 효과를 한 번 더 (t.onhitRepeat = 쌓는 동안까지 평균 낸 값)
     const onCrit = 1 + Math.min(1, t.critAuto ?? t.CRIT) * (cv.onhitOnCrit || 0) + (t.onhitRepeat || 0);
-    out.autoDps = t.AD * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS * onCrit;
+    // 평타 한 대의 피해: 보통은 공격력, 기본 공격을 대체하는 스킬이 있으면 그 값 (제리 Q)
+    out.autoDps = (out.autoHit || t.AD) * t.AS * critMul * physMit * dealt * (1 + flags.trueBonus) + out.spellOnhit * t.AS * onCrit;
     // ---- 버티는 힘: 체력 × 저항 + 무적·피해 감소(그동안 받을 피해) + 생명선 회복 + 아이템 피해 감소
     // 흡혈: 콤보 한 번(COMBO_WINDOW 초) 동안 준 피해로 회복한 만큼 더 버틴다. 생명력 흡수는 기본 공격 피해만, 모든 피해 흡혈은 스킬·효과 피해까지.
     // 예전엔 흡혈 수치를 합계만 내고 점수엔 안 써서 '마도사의 주스 상자'(모든 피해 흡혈 10%)가 누구에게나 이득 0 → D 였다 (2026-10-22 점검)

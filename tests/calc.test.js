@@ -1584,3 +1584,32 @@ test("F5-B 한타 한 번 피해는 그대로 한 번만 센다 (처음 들고 �
       `${id}: 콤보가 스킬 한 번씩의 합에서 크게 벗어나면 안 돼요 (${m.combo} vs ${sum})`);
   }
 });
+
+// ---------------------------------------------------------------- F5-C 평타 쪽으로 가야 하는 피해
+test("F5-C 제리 Q 는 평타를 대체한다 (평타에 더하지 않는다)", () => {
+  const c = champ("Zeri");
+  const sp = c.spells.find((s) => s.slot === "Q");
+  assert.ok(sp.effects.some((e) => e.autoReplace), "규칙이 데이터에 붙어 있어야 해요");
+  const m = St.evaluate(c, 18, [], [], { aram: true }).m;
+  assert.ok(m.autoHit > 0, "평타 한 대의 피해가 Q 값이어야 해요");
+  const t = St.computeStats(c, 18, [], [], { aram: true }).total;
+  assert.ok(m.autoHit > t.AD, `Q 값(${m.autoHit})이 그냥 공격력(${t.AD})보다 커야 해요`);
+  const q = m.spells.find((s) => s.slot === "Q");
+  assert.equal(Math.round(q.dmg), 0, "같은 피해를 스킬 쪽으로 또 세면 안 돼요");
+});
+
+test("F5-C 트위스티드 페이트 E 는 4번째 평타마다 (한 대당 1/4)", () => {
+  const c = champ("TwistedFate");
+  const e = c.spells.find((s) => s.slot === "E").effects.find((x) => x.name === "bonusdamage");
+  assert.equal(e.every, 4);
+  assert.equal(e.onhit, true);
+  const m = St.evaluate(c, 18, [], [], { aram: true }).m;
+  assert.ok(m.spellOnhit > 0, "평타 적중 피해에 들어가야 해요");
+  const raw = m.spells.find((s) => s.slot === "E").values.find((v) => v.name === "bonusdamage").value;
+  assert.ok(m.spellOnhit < raw, `한 대당 평균은 원래 값보다 작아야 해요 (${m.spellOnhit} vs ${raw})`);
+});
+
+test("F5-C 평타를 대체·강화하지 않는 챔피언은 그대로다", () => {
+  const n = d.champions.filter((c) => c.spells.some((s) => s.effects.some((e) => e.autoReplace || e.every))).length;
+  assert.equal(n, 2, "규칙에 적은 두 명(제리·트위스티드 페이트)뿐이어야 해요");
+});
