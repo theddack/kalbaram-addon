@@ -212,7 +212,11 @@
     let critDmgFromAS = 0;
     if (conv.AStoCRITDMG) { const moved = bonusAS * conv.AStoCRITDMG; bonusAS -= moved; critDmgFromAS = moved * (conv.AStoCRITDMGper || 0); }
     // 보석 건틀릿: 주문력 1당 치명타 확률 (conv.APtoCRIT, 원본 CritConverRatio 0.00045 = 주문력 100당 4.5%)
-    t.CRIT = Math.min(1, critRaw + (conv.APtoCRIT ? t.AP * conv.APtoCRIT : 0));
+    // v0.1.95 Phase 5A: 아트마의 심판 '큰손' — 추가 체력 100당 치명타 확률 1%, 최대 30% (설명).
+    // 자기 상한(30%)을 먼저 걸고 더한 뒤, 전체 치명타 확률은 지금처럼 100% 에서 자른다.
+    // 치명타 확률 증가 증강(critChanceMult)은 아이템이 준 치명타(add.CRIT)에만 곱하고 이 몫에는 곱하지 않는다 (원본 근거 없음).
+    const hpCrit = conv.bonusHPtoCRIT ? Math.min(conv.bonusHPtoCRITcap != null ? conv.bonusHPtoCRITcap : 1, t.bonusHP * conv.bonusHPtoCRIT) : 0;
+    t.CRIT = Math.min(1, critRaw + hpCrit + (conv.APtoCRIT ? t.AP * conv.APtoCRIT : 0));
     // 그레이브즈처럼 공격 속도 표시값이 다른 챔피언은 레벨별 상한 (champ.asCapLv = [1레벨, 18레벨], rules.json champions.asCap)
     const cap = champ.asCapLv ? champ.asCapLv[0] + (champ.asCapLv[1] - champ.asCapLv[0]) * (L - 1) / 17 : ms.asCap || AS_CAP;
     const asOf = (b) => Math.min(cap, (base.AS + b * champ.asRatio) * (1 + mult.ASmult) * (aram.total_as || 1));
