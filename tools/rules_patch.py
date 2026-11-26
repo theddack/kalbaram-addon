@@ -20,6 +20,8 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+import build_data  # 근거 줄(basisView)은 전체 빌드와 같은 함수로 만든다 (두 경로가 어긋나지 않게)
 
 
 def plain(v):
@@ -46,6 +48,7 @@ def main():
     data = json.load(io.open(ROOT / "web" / "data.json", encoding="utf-8"))
     items_by_name = {i["name"]: i for i in data["items"]}
     changed = []
+    warn = []  # build_data.rule_basis 가 '근거 없는 가정값' 을 담는 자리
 
     for name in a.item:
         src = (rules.get("items") or {}).get(name)
@@ -64,11 +67,10 @@ def main():
         if chk and chk not in plain_desc:
             sys.exit(f"아이템 '{name}': 설명에 '{chk}' 가 없다 (패치로 수치 변경?) → build_data.py 가 미적용으로 둔다")
         it["passiveStats"] = json.loads(json.dumps(src["stats"], ensure_ascii=False))
-        # 화면 '근거' 글귀(basisView)의 calc 줄도 rules.json 의 새 글귀로 (나머지 줄은 build_data.py 가 만든 그대로)
-        calc = (src.get("basis") or {}).get("calc")
-        for row in it.get("basisView") or []:
-            if row.get("t") == "calc" and calc:
-                row["text"] = calc
+        # 화면 '근거' 글귀도 build_data.py 와 같은 함수로 다시 만든다
+        # (전에는 calc 줄만 바꿔 '설명에 나온 수치' 줄이 빠졌다 — 2026-11-26 두 경로 대조에서 찾음)
+        it["basisView"] = build_data.rule_basis(src, src["stats"],
+                                                (it.get("passiveHtml") or "") + it["desc"], warn, name)
         changed.append(f"아이템 {name}: {before} → {json.dumps(src['stats'], ensure_ascii=False)}")
 
     for aid in a.augment:
@@ -83,13 +85,11 @@ def main():
         merged = json.loads(json.dumps(src, ensure_ascii=False))
         # basisView 는 build_data.py 가 만든 것을 그대로 둔다 (본문 글귀만 basis 에서 다시 쓴다)
         merged["statsResolved"] = json.loads(json.dumps(st, ensure_ascii=False))
-        if cur.get("basisView"):
-            bv = json.loads(json.dumps(cur["basisView"], ensure_ascii=False))
-            calc = (src.get("basis") or {}).get("calc")
-            for row in bv:
-                if row.get("t") == "calc" and calc:
-                    row["text"] = calc
-            merged["basisView"] = bv
+        aug = next((x for x in data["augments"] if x["id"] == aid), None)
+        if aug is not None:
+            merged["basisView"] = build_data.rule_basis(merged, st, aug["desc"], warn, aug["name"])
+        elif cur.get("basisView"):
+            merged["basisView"] = json.loads(json.dumps(cur["basisView"], ensure_ascii=False))
         data["rules"]["augments"][aid] = merged
         changed.append(f"증강 {aid}: {before} → {json.dumps(st, ensure_ascii=False)}")
 
@@ -97,6 +97,8 @@ def main():
         sys.exit("옮길 것을 안 줬다 (--item / --augment)")
     for line in changed:
         print(" ", line)
+    for w in warn:
+        print("  [규칙 수치]", w)
     if a.dry:
         print("  (--dry: 저장하지 않음)")
         return
