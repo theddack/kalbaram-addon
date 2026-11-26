@@ -1996,3 +1996,25 @@ test("게임 연동: 적 일부만 체력 아이템을 사도 추가 체력이 �
   assert.ok(T.BONUS_HP > bonus0, `밴드 안이라고 추가 체력 갱신을 통째로 넘겼다: ${bonus0} → ${T.BONUS_HP}`);
   assert.deepEqual(p.errors, []);
 });
+
+// ---- v0.1.95 Phase 4 C9-B: 아군이 추천 계산까지 들어간다
+test("C9-B 아군을 엔진에 넘기고, 판이 끝나면 비운다", async () => {
+  const p = await loadPage({ simple: true });
+  const sent = [];
+  p.w.pywebview = { api: { set_overlay: (x) => sent.push(x) } };
+  const live = (x) => p.w.applyLive({ enabled: true, inGame: true, champion: "Ashe", level: 16, items: ["3006"], enemies: [], ...x });
+  live({ allyBuilds: [{ champion: "Lux", level: 16, items: ["6655"] }, { champion: "Garen", level: 16, items: ["3071"] }] });
+  await until(() => sent.length && sent.at(-1).ally);
+  const k1 = p.w.Stats.allyKey();
+  assert.ok(k1, "아군을 봤으면 엔진에도 넘어가야 해요");
+  assert.ok(!/Ashe/.test(k1), "내가 아군으로 들어가면 안 돼요");
+  assert.equal(sent.at(-1).ally.models, undefined, "기록에는 엔진용 모델을 넣지 않아요");
+  // 아군이 아이템을 사면 지문이 바뀐다 → 추천을 다시 계산한다
+  live({ allyBuilds: [{ champion: "Lux", level: 16, items: ["6655", "3020"] }, { champion: "Garen", level: 16, items: ["3071"] }] });
+  await until(() => p.w.Stats.allyKey() !== k1);
+  assert.notEqual(p.w.Stats.allyKey(), k1);
+  // 판이 끝나면 비운다 (다음 판에 이전 아군이 남지 않게)
+  p.w.applyLive({ enabled: true, inGame: false });
+  assert.equal(p.w.Stats.allyKey(), "", "판이 끝나면 아군을 비워야 해요");
+  p.w.close();
+});
